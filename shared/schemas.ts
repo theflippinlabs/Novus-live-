@@ -70,6 +70,13 @@ const handle = z
   .max(64)
   .transform((s) => s.replace(/^@/, "").toLowerCase());
 
+const tiktokHandle = z
+  .string()
+  .trim()
+  .max(64)
+  .regex(/^@?[A-Za-z0-9._]*$/)
+  .transform((s) => s.replace(/^@/, ""));
+
 export const settingsPatchSchema = z
   .object({
     sensitivity: z.enum(["low", "balanced", "strict", "custom"]),
@@ -81,7 +88,11 @@ export const settingsPatchSchema = z
     language: z.enum(["en", "fr"]),
     streamerName: z.string().trim().min(1).max(64),
     aiEnabled: z.boolean(),
-    tiktokUsername: z.string().trim().max(64).regex(/^@?[A-Za-z0-9._]*$/).transform((s) => s.replace(/^@/, "")),
+    tiktokUsername: tiktokHandle,
+    tiktokProfiles: z
+      .array(tiktokHandle.pipe(z.string().min(2)))
+      .max(20)
+      .transform((list) => [...new Set(list)]),
   })
   .partial()
   .strict();

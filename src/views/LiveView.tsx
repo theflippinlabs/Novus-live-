@@ -4,6 +4,7 @@ import { api } from "../api";
 import { runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
+import { ProfileSwitcher } from "../components/TikTokProfiles";
 import { Avatar, Logo, Segmented, SeverityBadge } from "../components/ui";
 import { useLang, useT } from "../i18n";
 import { navigate, openViewer, toast, useStore } from "../store";
@@ -76,6 +77,7 @@ function WaitingForLive({ username }: { username: string }) {
       <button className="btn sm" onClick={() => navigate("settings")}>
         {t("tiktokIntegration")} →
       </button>
+      <ProfileSwitcher />
     </div>
   );
 }

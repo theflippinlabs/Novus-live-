@@ -22,6 +22,7 @@ export function defaultSettings(): Settings {
     streamerName: "novarys",
     aiEnabled: true,
     tiktokUsername: "",
+    tiktokProfiles: [],
   };
 }
 

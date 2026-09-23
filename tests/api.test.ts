@@ -50,6 +50,10 @@ describe("HTTP API", () => {
     const ok = await request(app).put("/api/settings").send({ sensitivity: "strict", trustedUsers: ["@OldFriend"] }).expect(200);
     expect(ok.body.sensitivity).toBe("strict");
     expect(ok.body.trustedUsers).toEqual(["oldfriend"]);
+    const profiles = await request(app).put("/api/settings").send({ tiktokProfiles: ["@w_amanda_g", "second.acc", "w_amanda_g"] }).expect(200);
+    expect(profiles.body.tiktokProfiles).toEqual(["w_amanda_g", "second.acc"]);
+    await request(app).put("/api/settings").send({ tiktokProfiles: ["bad name!"] }).expect(400);
+    await request(app).put("/api/settings").send({ tiktokProfiles: Array.from({ length: 21 }, (_, i) => `acc${i}`) }).expect(400);
   });
 
   it("protects the connector ingestion endpoint with a bearer token", async () => {

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { TikTokIntegrationState } from "../../shared/types";
-import { api, ApiError } from "../api";
+import { api } from "../api";
+import { TikTokProfiles } from "../components/TikTokProfiles";
 import { useLang, useT } from "../i18n";
 import { ago } from "../format";
-import { setState, toast, useStore } from "../store";
+import { setState, useStore } from "../store";
 
 const STATES: TikTokIntegrationState[] = ["NOT_CONNECTED", "CONNECTOR_AVAILABLE", "CONNECTED", "LIVE_DETECTED", "LIVE_ENDED", "ERROR"];
 
@@ -39,7 +40,6 @@ export function TikTokIntegration() {
   const t = useT();
   const lang = useLang();
   const status = useStore((s) => s.tiktok);
-  const [username, setUsername] = useState(status?.username ?? "");
 
   useEffect(() => {
     api
@@ -49,21 +49,6 @@ export function TikTokIntegration() {
   }, []);
 
   if (!status) return <div className="card muted">…</div>;
-
-  const connect = async () => {
-    try {
-      const s = await api.tiktokConnect(username);
-      setState({ tiktok: s });
-      toast(`@${s.username}`, "ok");
-    } catch (e) {
-      toast(e instanceof ApiError ? e.code : "Error", "warn");
-    }
-  };
-  const disconnect = async () => {
-    const s = await api.tiktokDisconnect();
-    setState({ tiktok: s });
-    setUsername("");
-  };
 
   const tone = status.state === "LIVE_DETECTED" || status.state === "CONNECTED" ? "good" : status.state === "ERROR" ? "bad" : status.state === "CONNECTOR_AVAILABLE" ? "gold" : "";
 
@@ -93,21 +78,7 @@ export function TikTokIntegration() {
         ))}
       </div>
 
-      <div className="card-title" style={{ marginTop: 14 }}>
-        TikTok account
-      </div>
-      <div className="row">
-        <input className="input" placeholder="@yourhandle" value={username} onChange={(e) => setUsername(e.target.value)} aria-label="TikTok username" autoCapitalize="off" autoCorrect="off" />
-        {status.username ? (
-          <button className="btn" onClick={disconnect}>
-            {t("disconnect")}
-          </button>
-        ) : (
-          <button className="btn gold" onClick={connect} disabled={username.trim().length < 2}>
-            {t("connect")}
-          </button>
-        )}
-      </div>
+      <TikTokProfiles />
       <div className="small muted" style={{ marginTop: 6 }}>
         {status.source === "unofficial_live_connector"
           ? lang === "fr"

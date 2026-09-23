@@ -86,7 +86,9 @@ async function main() {
 
   const onTikTokAccount = async (username: string | null) => {
     if (username) {
-      await runtime.updateSettings({ tiktokUsername: username, streamerName: username });
+      const saved = runtime.settings.tiktokProfiles ?? [];
+      const tiktokProfiles = saved.includes(username) ? saved : [...saved, username].slice(-20);
+      await runtime.updateSettings({ tiktokUsername: username, streamerName: username, tiktokProfiles });
       watcher?.watch(username);
     } else {
       watcher?.stop();

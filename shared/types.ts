@@ -230,6 +230,8 @@ export interface Settings {
   aiEnabled: boolean;
   /** TikTok account whose LIVE the connector follows ("" = none). */
   tiktokUsername: string;
+  /** Saved TikTok accounts the owner can switch between (without "@"). */
+  tiktokProfiles: string[];
 }
 
 export type SessionStatus = "idle" | "live" | "ended";
