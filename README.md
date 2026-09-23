@@ -179,7 +179,11 @@ server's service role writes. If Supabase is unreachable at boot, Novus logs it 
 
 ## TikTok integration status
 
-Implemented now: normalized event model, `TikTokAdapter` with the full state machine
+**Live TikTok data:** by the owner's choice, an optional **unofficial, read-only** connector
+(`tiktok-live-connector`) follows the account set in Settings and streams its LIVE into Novus
+automatically. It is not authorized by TikTok and can break; disable with `TIKTOK_LIVE_CONNECTOR=off`.
+
+Also implemented: normalized event model, `TikTokAdapter` with the full state machine
 (NOT CONNECTED · CONNECTOR AVAILABLE · CONNECTED · LIVE DETECTED · LIVE ENDED · ERROR), a token‑protected
 ingestion API for an authorized connector, and manual‑action guidance for every moderator action.
 

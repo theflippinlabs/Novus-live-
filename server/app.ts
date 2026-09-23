@@ -26,6 +26,8 @@ export interface AppDeps {
   runtime: NovusRuntime;
   hub: RealtimeHub;
   tiktok: TikTokAdapter;
+  /** Called after the moderator sets / clears the TikTok account (starts/stops the live connector). */
+  onTikTokAccount?: (username: string | null) => Promise<void> | void;
 }
 
 class HttpError extends Error {
@@ -59,7 +61,7 @@ const param = (req: Request, name: string): string => {
   return v;
 };
 
-export function createApp({ config, runtime, hub, tiktok }: AppDeps) {
+export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: AppDeps) {
   const app = express();
   app.disable("x-powered-by");
   if (config.trustProxy) app.set("trust proxy", 1);
@@ -274,6 +276,7 @@ export function createApp({ config, runtime, hub, tiktok }: AppDeps) {
     h(async (req) => {
       const { username } = parse(tiktokConnectSchema, req.body);
       await tiktok.connect(username);
+      await onTikTokAccount?.(username.replace(/^@/, ""));
       hub.pushExtras({ tiktok: tiktok.status() });
       return tiktok.status();
     }),
@@ -282,6 +285,7 @@ export function createApp({ config, runtime, hub, tiktok }: AppDeps) {
     "/integrations/tiktok/disconnect",
     h(async () => {
       await tiktok.disconnect();
+      await onTikTokAccount?.(null);
       hub.pushExtras({ tiktok: tiktok.status() });
       return tiktok.status();
     }),

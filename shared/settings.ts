@@ -21,6 +21,7 @@ export function defaultSettings(): Settings {
     language: "en",
     streamerName: "novarys",
     aiEnabled: true,
+    tiktokUsername: "",
   };
 }
 

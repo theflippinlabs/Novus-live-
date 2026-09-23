@@ -228,6 +228,8 @@ export interface Settings {
   language: "en" | "fr";
   streamerName: string;
   aiEnabled: boolean;
+  /** TikTok account whose LIVE the connector follows ("" = none). */
+  tiktokUsername: string;
 }
 
 export type SessionStatus = "idle" | "live" | "ended";
@@ -286,6 +288,10 @@ export interface TikTokIntegrationStatus {
   connectorConfigured: boolean;
   lastEventAt?: number;
   error?: string;
+  /** Human-readable connector status, e.g. "Waiting for @x to go LIVE". */
+  detail?: string;
+  /** Which source feeds events: an authorized connector push, or the unofficial live connector. */
+  source?: "connector_push" | "unofficial_live_connector";
   capabilities: CapabilityInfo[];
 }
 

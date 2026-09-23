@@ -32,6 +32,8 @@ export interface Config {
   dataDir?: string;
   apiRateLimitPerMinute: number;
   ingestRateLimitPerMinute: number;
+  tiktokLiveConnector: boolean;
+  eulerApiKey?: string;
 }
 
 export function loadConfig(): Config {
@@ -65,5 +67,8 @@ export function loadConfig(): Config {
     dataDir: str("DATA_DIR"),
     apiRateLimitPerMinute: int("API_RATE_LIMIT_PER_MINUTE", 600, 10),
     ingestRateLimitPerMinute: int("INGEST_RATE_LIMIT_PER_MINUTE", 1200, 10),
+    // Unofficial read-only TikTok LIVE connector (see docs/TIKTOK_INTEGRATION.md). On unless set to "off".
+    tiktokLiveConnector: (process.env.TIKTOK_LIVE_CONNECTOR ?? "on").toLowerCase() !== "off",
+    eulerApiKey: str("EULER_API_KEY"),
   };
 }

@@ -2,17 +2,18 @@
 
 NOVUS LIVE is built so that **TikTok is a replaceable input**, not a dependency. The moderation
 engine, streamer assistant, analytics and UI only ever see the platform‑independent event model
-(`shared/types.ts`). TikTok enters the system in exactly two isolated places:
+(`shared/types.ts`). TikTok enters the system only in these isolated places:
 
 | Direction | Interface | File |
 | --- | --- | --- |
-| Events **in** (comments, viewers, gifts, follows, joins, stream start/end) | `TikTokEventSource` (used by `TikTokAdapter`) and the token‑protected ingestion endpoint | `server/platform/TikTokAdapter.ts`, `server/app.ts` (`/api/ingest/*`) |
+| Events **in** (comments, viewers, gifts, follows, joins, stream start/end) | `TikTokEventSource` (used by `TikTokAdapter`), the token‑protected ingestion endpoint, and the optional unofficial `TikTokLiveWatcher` | `server/platform/TikTokAdapter.ts`, `server/app.ts` (`/api/ingest/*`), `server/platform/TikTokLiveWatcher.ts` |
 | Actions **out** (warn, mute, block, report) | `ModerationActionAdapter` | `server/actions/ModerationActionAdapter.ts`, `server/actions/adapters.ts` |
 
 ## Ground rules this code follows
 
-- **No invented endpoints.** Novus does not call any TikTok URL. It contains no reverse‑engineered
-  protocol, no scraping, no private/undocumented API, and never asks for a TikTok password or session cookie.
+- **No invented endpoints.** Novus' own code calls no TikTok URL and never asks for a TikTok password
+  or session cookie. The only exception is the optional unofficial live connector below, which the
+  owner explicitly chose to enable and which can be switched off.
 - **No fake success.** When there is no authorized API for an action, the action adapter returns
   `manual_required` and the UI shows **MANUAL ACTION REQUIRED** with the exact in‑app steps. The alert
   stays open until the moderator taps **Done in TikTok**; both the recommendation and the confirmation
@@ -22,8 +23,25 @@ engine, streamer assistant, analytics and UI only ever see the platform‑indepe
   ability to mute/block/report viewers on a moderator's behalf. TikTok's public developer products
   (see <https://developers.tiktok.com>) change over time — check them, and any partner program you have
   access to, before implementing a source. Unofficial community libraries that reverse‑engineer TikTok's
-  web client exist; Novus deliberately does **not** bundle or recommend them because they are not
-  authorized by TikTok, can break at any time and may violate TikTok's Terms of Service.
+  web client exist; they are not authorized by TikTok, can break at any time and may violate TikTok's
+  Terms of Service. Novus includes one only as an opt‑in, read‑only source (next section).
+
+## Unofficial live connector (enabled by the owner)
+
+At the owner's explicit request, Novus also ships an **optional, read-only** source based on the
+community library [`tiktok-live-connector`](https://www.npmjs.com/package/tiktok-live-connector)
+(`server/platform/TikTokLiveWatcher.ts`, mapping in `server/platform/tiktokMapping.ts`).
+
+- **What it does:** follows the TikTok account set in *Settings › TikTok Integration*, checks every
+  minute whether it is LIVE, joins automatically, and streams comments, gifts, joins, follows and
+  viewer counts into Novus. When the LIVE ends, the session closes and its report is generated.
+- **What it never does:** log in, ask for a password or cookie, post messages, or perform any
+  moderation action. Mute / block / report stay **MANUAL ACTION REQUIRED**.
+- **Risks (accepted by the owner):** the library reverse-engineers TikTok's web client and relies
+  on a third-party signing service (Euler Stream). It is **not authorized by TikTok**, may conflict
+  with TikTok's Terms of Service, and can stop working at any time. An optional `EULER_API_KEY`
+  raises the signing service's rate limits.
+- **Turn it off:** set `TIKTOK_LIVE_CONNECTOR=off` on the server.
 
 ## Capability matrix
 
@@ -34,7 +52,7 @@ engine, streamer assistant, analytics and UI only ever see the platform‑indepe
 | Integration state machine (NOT CONNECTED → CONNECTOR AVAILABLE → CONNECTED → LIVE DETECTED → LIVE ENDED / ERROR) | ✅ Implemented | `TikTokAdapter.state()`, shown in Settings › TikTok Integration |
 | Automatic session start/stop from `stream_status` events + post‑LIVE report | ✅ Implemented | `NovusRuntime.ingestExternal()` |
 | Target TikTok account name (which LIVE a connector should follow) | ✅ Implemented | `POST /api/integrations/tiktok/connect` — stored only, no TikTok call |
-| Reading LIVE comments directly from TikTok | ⛔ Requires authorized access | Implement `TikTokEventSource` once you have approved access |
+| Reading LIVE comments, gifts, joins, follows, viewers | 🟧 Via the unofficial connector (opt-in) | Not authorized by TikTok; for an approved source implement `TikTokEventSource` |
 | Warn viewer | 🟨 Manual | Novus prepares the exact text to paste in chat |
 | Mute viewer | 🟨 Manual | Exact in‑app steps; confirmation logged |
 | Block / remove viewer | 🟨 Manual | Exact in‑app steps; confirmation logged |

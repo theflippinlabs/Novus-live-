@@ -81,6 +81,7 @@ export const settingsPatchSchema = z
     language: z.enum(["en", "fr"]),
     streamerName: z.string().trim().min(1).max(64),
     aiEnabled: z.boolean(),
+    tiktokUsername: z.string().trim().max(64).regex(/^@?[A-Za-z0-9._]*$/).transform((s) => s.replace(/^@/, "")),
   })
   .partial()
   .strict();

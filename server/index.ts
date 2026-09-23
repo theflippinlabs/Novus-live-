@@ -5,9 +5,11 @@ import { AnthropicProvider } from "./ai/AnthropicProvider";
 import { NovusRuntime } from "./core/NovusRuntime";
 import { MemoryRepository } from "./persistence/MemoryRepository";
 import type { Repository } from "./persistence/Repository";
+import type { LiveEvent } from "../shared/types";
 import { SupabaseRepository } from "./persistence/SupabaseRepository";
 import { MockLiveAdapter } from "./platform/MockLiveAdapter";
 import { TikTokAdapter } from "./platform/TikTokAdapter";
+import { defaultConnectionFactory, TikTokLiveWatcher } from "./platform/TikTokLiveWatcher";
 import { RealtimeHub } from "./realtime/RealtimeHub";
 
 async function main() {
@@ -47,7 +49,52 @@ async function main() {
   mock.onAutoStop = () => void runtime?.endSession();
   hub.start();
 
-  const app = createApp({ config, runtime, hub, tiktok });
+  // Optional unofficial, read-only TikTok LIVE connector (owner opted in; TIKTOK_LIVE_CONNECTOR=off disables it).
+  let watcher: TikTokLiveWatcher | null = null;
+  if (config.tiktokLiveConnector) {
+    tiktok.unofficialLiveConnector = true;
+    const rt = runtime;
+    watcher = new TikTokLiveWatcher(
+      defaultConnectionFactory(config.eulerApiKey),
+      {
+        push: async (events) => {
+          // Only one session per LIVE: a late "started" marker must not reset a running session.
+          const live = rt.session?.status === "live" && rt.session.source === "tiktok";
+          const batch = (events as unknown as LiveEvent[]).filter((e) => !(live && e.type === "stream_status" && e.status === "started"));
+          if (batch.length) await rt.ingestExternal(batch, "tiktok");
+          hub.pushExtras({ tiktok: tiktok.status() });
+        },
+        waiting: (detail) => {
+          tiktok.noteWaiting(detail);
+          hub.pushExtras({ tiktok: tiktok.status() });
+        },
+        error: (message) => {
+          tiktok.fail(message);
+          hub.pushExtras({ tiktok: tiktok.status() });
+        },
+        alive: () => tiktok.noteHeartbeat(),
+      },
+      { pollMs: 60_000, errorBackoffMs: 180_000, log: (m) => console.log(m) },
+    );
+    const saved = runtime.settings.tiktokUsername;
+    if (saved) {
+      await tiktok.connect(saved);
+      watcher.watch(saved);
+      console.log(`[novus] TikTok live connector watching @${saved}`);
+    }
+  }
+
+  const onTikTokAccount = async (username: string | null) => {
+    if (username) {
+      await runtime.updateSettings({ tiktokUsername: username, streamerName: username });
+      watcher?.watch(username);
+    } else {
+      watcher?.stop();
+      await runtime.updateSettings({ tiktokUsername: "" });
+    }
+  };
+
+  const app = createApp({ config, runtime, hub, tiktok, onTikTokAccount });
   const server = app.listen(config.port, config.host, () => {
     console.log(`[novus] NOVUS LIVE listening on http://${config.host}:${config.port}`);
     console.log(`[novus] AI: ${ai.available() ? `${ai.name} (${ai.model})` : "local heuristics only (no ANTHROPIC_API_KEY)"}`);
@@ -58,6 +105,7 @@ async function main() {
 
   const shutdown = async () => {
     console.log("[novus] shutting down…");
+    watcher?.stop();
     hub.stop();
     await runtime?.endSession().catch(() => undefined);
     await runtime?.shutdown();

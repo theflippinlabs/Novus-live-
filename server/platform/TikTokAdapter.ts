@@ -4,16 +4,17 @@ import type { LiveEventHandler, LivePlatformAdapter } from "./LivePlatformAdapte
 /*
  * TikTok LIVE adapter.
  *
- * Novus does NOT call any TikTok endpoint itself: we are not aware of a generally
- * available, documented TikTok API that streams LIVE chat to third-party apps or
- * lets them mute/block on a moderator's behalf. We do not reverse-engineer or
- * invent one.
+ * We are not aware of a generally available, documented TikTok API that streams
+ * LIVE chat to third-party apps or lets them mute/block on a moderator's behalf.
  *
- * Instead the adapter exposes ONE isolated integration point, `TikTokEventSource`.
- * Today the only implementation is the authorized connector bridge: an external,
- * approved process POSTs *normalized* events to /api/ingest/events with the
- * INGEST_TOKEN. When approved TikTok access exists, implement TikTokEventSource
- * (see docs/TIKTOK_INTEGRATION.md) and nothing else in the app changes.
+ * Event sources (isolated from the rest of the app):
+ *  1. Authorized connector push: an approved process POSTs normalized events to
+ *     /api/ingest/events with the INGEST_TOKEN.
+ *  2. Optional UNOFFICIAL read-only live connector (TikTokLiveWatcher, using the
+ *     community `tiktok-live-connector` library), enabled by the owner's choice and
+ *     switchable off with TIKTOK_LIVE_CONNECTOR=off.
+ *  3. Future approved access: implement TikTokEventSource (docs/TIKTOK_INTEGRATION.md).
+ * Moderation actions are never automated: they stay MANUAL ACTION REQUIRED.
  */
 
 export interface TikTokEventSource {
@@ -34,7 +35,18 @@ export const TIKTOK_CAPABILITIES: CapabilityInfo[] = [
   { capability: "Automated platform actions", status: "not_available", detail: "Would require an authorized TikTok moderation API. Plug in via ModerationActionAdapter." },
 ];
 
-const CONNECTED_TIMEOUT_MS = 90_000;
+/** Capabilities when the unofficial live connector is enabled. */
+export const TIKTOK_CAPABILITIES_UNOFFICIAL: CapabilityInfo[] = TIKTOK_CAPABILITIES.map((c) =>
+  c.capability.startsWith("Reading LIVE comments")
+    ? {
+        capability: "Reading LIVE comments, gifts, joins, follows, viewer count",
+        status: "implemented",
+        detail: "Via the UNOFFICIAL tiktok-live-connector library (read-only, no login). Not authorized by TikTok: it can break at any time and may conflict with TikTok's Terms.",
+      }
+    : c,
+);
+
+const CONNECTED_TIMEOUT_MS = 150_000;
 
 export class TikTokAdapter implements LivePlatformAdapter {
   readonly platform = "tiktok" as const;
@@ -44,11 +56,22 @@ export class TikTokAdapter implements LivePlatformAdapter {
   private lastEventAt?: number;
   private liveState: "none" | "live" | "ended" = "none";
   private error?: string;
+  private detail?: string;
+  unofficialLiveConnector = false;
 
   constructor(
     private connectorConfigured: boolean,
     private source?: TikTokEventSource,
   ) {}
+
+  /** The live connector reached TikTok; the account is not live right now. */
+  noteWaiting(detail: string): void {
+    this.lastEventAt = Date.now();
+    this.error = undefined;
+    this.detail = detail;
+    if (this.liveState === "live") this.liveState = "ended";
+    else this.liveState = "none";
+  }
 
   /** Store the target account. The connector (or a future TikTokEventSource) does the actual connection. */
   async connect(username: string): Promise<void> {
@@ -61,6 +84,8 @@ export class TikTokAdapter implements LivePlatformAdapter {
     this.username = undefined;
     this.liveState = "none";
     this.lastEventAt = undefined;
+    this.detail = undefined;
+    this.error = undefined;
   }
 
   async start(sessionId: string, emit: LiveEventHandler): Promise<void> {
@@ -87,6 +112,7 @@ export class TikTokAdapter implements LivePlatformAdapter {
   noteEvent(event: LiveEvent): void {
     this.lastEventAt = Date.now();
     this.error = undefined;
+    this.detail = undefined;
     if (event.type === "stream_status") this.liveState = event.status === "started" ? "live" : "ended";
     else if (event.type === "comment" || event.type === "viewer_count" || event.type === "gift") {
       if (this.liveState !== "ended") this.liveState = "live";
@@ -108,7 +134,7 @@ export class TikTokAdapter implements LivePlatformAdapter {
     if (this.liveState === "ended" && this.lastEventAt !== undefined) return "LIVE_ENDED";
     if (fresh && this.liveState === "live") return "LIVE_DETECTED";
     if (fresh) return "CONNECTED";
-    if (this.connectorConfigured || this.source) return "CONNECTOR_AVAILABLE";
+    if (this.connectorConfigured || this.source || this.unofficialLiveConnector) return "CONNECTOR_AVAILABLE";
     return "NOT_CONNECTED";
   }
 
@@ -116,10 +142,12 @@ export class TikTokAdapter implements LivePlatformAdapter {
     return {
       state: this.state(),
       username: this.username,
-      connectorConfigured: this.connectorConfigured || Boolean(this.source),
+      connectorConfigured: this.connectorConfigured || Boolean(this.source) || this.unofficialLiveConnector,
       lastEventAt: this.lastEventAt,
       error: this.error,
-      capabilities: TIKTOK_CAPABILITIES,
+      detail: this.detail,
+      source: this.unofficialLiveConnector ? "unofficial_live_connector" : this.connectorConfigured ? "connector_push" : undefined,
+      capabilities: this.unofficialLiveConnector ? TIKTOK_CAPABILITIES_UNOFFICIAL : TIKTOK_CAPABILITIES,
     };
   }
 }
