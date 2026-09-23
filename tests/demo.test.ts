@@ -69,4 +69,19 @@ describe("mock LIVE generation", () => {
     expect(mock.isRunning()).toBe(false);
     vi.useRealTimers();
   });
+
+  it("stops a forgotten demo on its own after the time limit", async () => {
+    vi.useFakeTimers();
+    const { MockLiveAdapter } = await import("../server/platform/MockLiveAdapter");
+    const mock = new MockLiveAdapter(1, 100, 5_000);
+    let stopped = false;
+    mock.onAutoStop = () => {
+      stopped = true;
+    };
+    await mock.start("s", () => undefined);
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(mock.isRunning()).toBe(false);
+    expect(stopped).toBe(true);
+    vi.useRealTimers();
+  });
 });

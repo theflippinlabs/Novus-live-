@@ -44,6 +44,7 @@ async function main() {
     aiQueueOptions: { batchSize: config.aiBatchSize, flushMs: 1200, maxCallsPerMinute: config.aiMaxCallsPerMinute, maxQueue: 64 },
   });
   await runtime.init();
+  mock.onAutoStop = () => void runtime?.endSession();
   hub.start();
 
   const app = createApp({ config, runtime, hub, tiktok });

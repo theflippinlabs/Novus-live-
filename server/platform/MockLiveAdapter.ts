@@ -10,10 +10,14 @@ export class MockLiveAdapter implements LivePlatformAdapter {
   private generator: DemoTrafficGenerator | null = null;
   private lastTick = 0;
   private speed: DemoSpeed = 1;
+  private startedAt = 0;
+  /** Called when the demo stops on its own (time limit), so the session can be closed. */
+  onAutoStop?: () => void;
 
   constructor(
     private seed = Date.now() % 100_000,
     private tickMs = 100,
+    private maxDurationMs = 10 * 60_000,
   ) {}
 
   setSpeed(speed: DemoSpeed): void {
@@ -25,8 +29,14 @@ export class MockLiveAdapter implements LivePlatformAdapter {
     await this.stop();
     this.generator = new DemoTrafficGenerator({ seed: this.seed, speed: this.speed });
     this.lastTick = Date.now();
+    this.startedAt = this.lastTick;
     this.timer = setInterval(() => {
       const now = Date.now();
+      // A forgotten demo must not run (and spend AI credits) forever.
+      if (now - this.startedAt > this.maxDurationMs) {
+        void this.stop().then(() => this.onAutoStop?.());
+        return;
+      }
       const elapsed = Math.min(1000, now - this.lastTick);
       this.lastTick = now;
       for (const ev of this.generator!.advance(elapsed, sessionId, now)) emit(ev);
