@@ -102,6 +102,7 @@ create table if not exists public.moderation_actions (
   confirmed_at timestamptz
 );
 create index if not exists moderation_actions_session on public.moderation_actions (session_id, performed_at);
+create index if not exists moderation_actions_alert on public.moderation_actions (alert_id);
 
 create table if not exists public.viewer_flags (
   username text primary key,
@@ -124,6 +125,7 @@ create table if not exists public.ai_analyses (
   created_at timestamptz not null default now()
 );
 create index if not exists ai_analyses_comment on public.ai_analyses (comment_id);
+create index if not exists ai_analyses_session on public.ai_analyses (session_id);
 
 create table if not exists public.stream_summaries (
   session_id text primary key references public.live_sessions(id) on delete cascade,

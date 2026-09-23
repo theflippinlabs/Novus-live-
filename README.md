@@ -156,6 +156,13 @@ stage‑1 verdict and the status shows **AI degraded**.
 
 ## Supabase setup
 
+> **Already done for this deployment:** project **“Novus live”** (`eqlisqcolmmioolagudh`, URL
+> `https://eqlisqcolmmioolagudh.supabase.co`) exists with the full schema applied and RLS enabled.
+> Only step left: copy its **secret / service_role key** (Dashboard → Project Settings → API Keys)
+> into the server's `SUPABASE_SERVICE_ROLE_KEY`, and set `SUPABASE_URL` to the URL above.
+
+For a fresh project:
+
 1. Create a Supabase project.
 2. Apply the migration:
    ```bash

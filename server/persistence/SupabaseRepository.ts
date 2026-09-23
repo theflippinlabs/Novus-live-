@@ -120,30 +120,6 @@ export class SupabaseRepository implements Repository {
           "alerts",
         ),
       );
-    if (b.actions.length)
-      ops.push(
-        this.check(
-          this.db.from("moderation_actions").upsert(
-            b.actions.map((a) => ({
-              id: a.id,
-              session_id: a.sessionId,
-              alert_id: a.alertId ?? null,
-              viewer_id: a.viewer.id,
-              username: a.viewer.username,
-              action: a.action,
-              status: a.status,
-              adapter: a.adapter,
-              message: a.message,
-              instructions: a.instructions ?? null,
-              note: a.note ?? null,
-              response_time_ms: a.responseTimeMs ?? null,
-              performed_at: iso(a.performedAt),
-              confirmed_at: iso(a.confirmedAt),
-            })),
-          ),
-          "actions",
-        ),
-      );
     if (b.viewers.length) {
       ops.push(
         this.check(
@@ -184,6 +160,31 @@ export class SupabaseRepository implements Repository {
         ),
       );
     await Promise.all(ops);
+    // Actions reference alerts (FK), so they are written after the alerts above land.
+    if (b.actions.length)
+      await Promise.all([
+        this.check(
+          this.db.from("moderation_actions").upsert(
+            b.actions.map((a) => ({
+              id: a.id,
+              session_id: a.sessionId,
+              alert_id: a.alertId ?? null,
+              viewer_id: a.viewer.id,
+              username: a.viewer.username,
+              action: a.action,
+              status: a.status,
+              adapter: a.adapter,
+              message: a.message,
+              instructions: a.instructions ?? null,
+              note: a.note ?? null,
+              response_time_ms: a.responseTimeMs ?? null,
+              performed_at: iso(a.performedAt),
+              confirmed_at: iso(a.confirmedAt),
+            })),
+          ),
+          "actions",
+        ),
+      ]);
   }
 
   /** Per-session viewer stats are written separately because they are keyed by (session, viewer). */
