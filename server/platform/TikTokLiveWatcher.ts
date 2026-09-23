@@ -31,7 +31,7 @@ export interface WatcherSink {
   alive(): void;
 }
 
-export function defaultConnectionFactory(signApiKey?: string): ConnectionFactory {
+export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) => void): ConnectionFactory {
   return async (username) => {
     const mod = await import("tiktok-live-connector");
     const conn = new mod.TikTokLiveConnection(username, {
@@ -39,21 +39,50 @@ export function defaultConnectionFactory(signApiKey?: string): ConnectionFactory
       processInitialData: false,
       enableExtendedGiftInfo: false,
     });
-    return conn as unknown as LiveConnectionLike;
+    return {
+      on: (event, handler) => conn.on(event as never, handler as never),
+      disconnect: () => conn.disconnect(),
+      // TikTok often serves cloud servers a cached profile page that still points at the
+      // previous (ended) room, so the library reports "offline" during a real LIVE.
+      // Before believing it, ask Euler Stream for the current room id and retry once.
+      connect: async () => {
+        try {
+          return await conn.connect();
+        } catch (err) {
+          if (!isOffline(err)) throw err;
+          const stale = conn.roomId;
+          const cfg = mod.RoomIdRouteConfig;
+          const saved = { html: cfg.skipFetchRoomInfoFromHtmlRoute, api: cfg.skipFetchRoomInfoFromApiLiveRoute };
+          let fresh: string | undefined;
+          try {
+            cfg.skipFetchRoomInfoFromHtmlRoute = true;
+            cfg.skipFetchRoomInfoFromApiLiveRoute = true;
+            fresh = await conn.fetchRoomId();
+          } catch (e) {
+            log?.(`[tiktok] @${username}: offline per TikTok (room ${stale}); Euler lookup failed: ${describeError(e)}`);
+            throw err;
+          } finally {
+            cfg.skipFetchRoomInfoFromHtmlRoute = saved.html;
+            cfg.skipFetchRoomInfoFromApiLiveRoute = saved.api;
+          }
+          if (!fresh || fresh === stale) throw err;
+          log?.(`[tiktok] @${username}: TikTok page had stale room ${stale}; retrying with room ${fresh}`);
+          return conn.connect(fresh);
+        }
+      },
+    };
   };
 }
 
-const isOffline = (err: unknown): boolean => {
-  const e = err as { name?: string; message?: string; constructor?: { name?: string } };
-  const text = `${e?.name ?? ""} ${e?.constructor?.name ?? ""} ${e?.message ?? ""}`.toLowerCase();
-  return text.includes("offline") || text.includes("not live") || text.includes("isn't online") || text.includes("not online");
-};
-
 /** The library emits `{ info, exception }` objects as well as plain Errors. */
-const describeError = (e: unknown): string => {
-  const o = e as { message?: string; info?: unknown; exception?: { message?: string } };
-  const text = o?.message ?? (typeof o?.info === "string" ? o.info : undefined) ?? o?.exception?.message;
-  if (text) return text.slice(0, 200);
+export const describeError = (e: unknown): string => {
+  const o = e as { name?: string; message?: string; info?: string; exception?: unknown };
+  if (o && typeof o === "object" && "exception" in o) return `${o.info ?? "error"}: ${describeError(o.exception)}`;
+  if (e instanceof Error) {
+    const nested = (e as { requestErrs?: unknown[] }).requestErrs;
+    const extra = Array.isArray(nested) && nested.length ? ` [${nested.map((n) => (n instanceof Error ? n.message : String(n)).slice(0, 120)).join(" | ")}]` : "";
+    return `${e.name}: ${e.message}${extra}`.slice(0, 400);
+  }
   try {
     return JSON.stringify(e).slice(0, 200);
   } catch {
@@ -61,11 +90,18 @@ const describeError = (e: unknown): string => {
   }
 };
 
+const isOffline = (err: unknown): boolean => {
+  const e = err as { name?: string; message?: string; constructor?: { name?: string } };
+  const text = `${e?.name ?? ""} ${e?.constructor?.name ?? ""} ${e?.message ?? ""}`.toLowerCase();
+  return text.includes("offline") || text.includes("not live") || text.includes("isn't online") || text.includes("not online");
+};
+
 export class TikTokLiveWatcher {
   private username: string | null = null;
   private conn: LiveConnectionLike | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private live = false;
+  private loggedOffline = false;
   private generation = 0;
   private queue: Promise<void> = Promise.resolve();
 
@@ -154,18 +190,23 @@ export class TikTokLiveWatcher {
     };
     conn.on("streamEnd", ended);
     conn.on("disconnected", ended);
-    conn.on("error", (e) => this.opts.log?.(`[tiktok] connection error: ${describeError(e)}`));
+    conn.on("error", (e) => {
+      if (this.live) this.opts.log?.(`[tiktok] connection error: ${describeError(e)}`);
+    });
 
     try {
       await conn.connect();
     } catch (e) {
       if (gen !== this.generation) return;
       if (isOffline(e)) {
+        if (!this.loggedOffline) this.opts.log?.(`[tiktok] @${username} not live (${describeError(e)}) — checking every ${Math.round(this.opts.pollMs / 1000)}s`);
+        this.loggedOffline = true;
         this.sink.waiting(`Waiting for @${username} to go LIVE`);
         this.schedule(gen, this.opts.pollMs);
       } else {
         const msg = e instanceof Error ? e.message : String(e);
-        this.opts.log?.(`[tiktok] connect failed: ${msg}`);
+        this.loggedOffline = false;
+        this.opts.log?.(`[tiktok] connect failed: ${describeError(e)}`);
         this.sink.error(msg.slice(0, 200));
         this.schedule(gen, this.opts.errorBackoffMs);
       }
@@ -177,6 +218,7 @@ export class TikTokLiveWatcher {
     }
     this.conn = conn;
     this.live = true;
+    this.loggedOffline = false;
     this.sink.alive();
     this.opts.log?.(`[tiktok] connected to @${username}'s LIVE`);
     this.enqueue([{ id: `tt:start:${Date.now()}`, timestamp: Date.now(), type: "stream_status", status: "started", title: `@${username} LIVE` } as Draft]);

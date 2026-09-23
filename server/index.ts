@@ -55,7 +55,7 @@ async function main() {
     tiktok.unofficialLiveConnector = true;
     const rt = runtime;
     watcher = new TikTokLiveWatcher(
-      defaultConnectionFactory(config.eulerApiKey),
+      defaultConnectionFactory(config.eulerApiKey, (m) => console.log(m)),
       {
         push: async (events) => {
           // Only one session per LIVE: a late "started" marker must not reset a running session.
