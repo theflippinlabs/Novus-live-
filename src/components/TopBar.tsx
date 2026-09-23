@@ -23,6 +23,7 @@ export function TopBar() {
   const ai = useStore((s) => s.ai);
   const connection = useStore((s) => s.connection);
   const live = session?.status === "live";
+  const waiting = useStore((s) => s.tiktok?.source === "unofficial_live_connector" && Boolean(s.tiktok.username));
   const aiLabel = ai.state === "active" ? t("aiActive") : ai.state === "degraded" ? t("aiDegraded") : ai.state === "disabled" ? t("aiDisabled") : t("aiLocal");
 
   return (
@@ -32,9 +33,9 @@ export function TopBar() {
           <span className="chrome-text">NOVUS</span>
           <span className="live-word">LIVE</span>
         </div>
-        <span className={`status-pill ${live ? "on" : ""}`} aria-live="polite">
+        <span className={`status-pill ${live ? "on" : waiting ? "wait" : ""}`} aria-live="polite">
           <span className="dot" />
-          {live ? t("statusLive") : session?.status === "ended" ? t("statusEnded") : t("statusIdle")}
+          {live ? t("statusLive") : waiting ? t("statusWaiting") : session?.status === "ended" ? t("statusEnded") : t("statusIdle")}
         </span>
         <span className="spacer" />
         <span className={`ai-chip ${ai.state}`} title={ai.model ? `${ai.provider} · ${ai.model}${ai.lastError ? ` · ${ai.lastError}` : ""}` : "Deterministic local moderation"}>

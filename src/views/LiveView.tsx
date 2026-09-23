@@ -14,10 +14,8 @@ const SPEEDS: { value: DemoSpeed; label: string }[] = [
   { value: 20, label: "20x" },
 ];
 
-function StartPanel() {
+function DemoCard({ secondary }: { secondary: boolean }) {
   const t = useT();
-  const session = useStore((s) => s.session);
-  const tiktok = useStore((s) => s.tiktok);
   const [speed, setSpeed] = useState<DemoSpeed>(1);
   const [busy, setBusy] = useState(false);
   const start = async () => {
@@ -31,44 +29,90 @@ function StartPanel() {
     }
   };
   return (
-    <div className="scroll">
-      <div className="narrow stack">
-        <div className="hero">
+    <div className={secondary ? "card" : "hero"}>
+      {secondary ? (
+        <div className="card-title">{t("demoTitle")}</div>
+      ) : (
+        <>
           <div className="logo">
             <Logo size={64} />
           </div>
           <h2 className="chrome-text">NOVUS LIVE</h2>
-          <p>{t("startDemoHint")}</p>
-          <div style={{ maxWidth: 320, margin: "0 auto 12px" }}>
-            <div className="small muted" style={{ marginBottom: 6 }}>
-              {t("speed")}
-            </div>
-            <Segmented label={t("speed")} value={speed} options={SPEEDS} onChange={setSpeed} gold />
-          </div>
-          <button className="btn gold lg block" style={{ maxWidth: 360 }} onClick={start} disabled={busy}>
-            ▶ {t("startDemo")}
-          </button>
+        </>
+      )}
+      <p className={secondary ? "small muted" : undefined} style={secondary ? { marginTop: 0 } : undefined}>
+        {t("startDemoHint")}
+      </p>
+      <div style={{ maxWidth: 320, margin: secondary ? "0 0 10px" : "0 auto 12px" }}>
+        <div className="small muted" style={{ marginBottom: 6 }}>
+          {t("speed")}
         </div>
+        <Segmented label={t("speed")} value={speed} options={SPEEDS} onChange={setSpeed} gold={!secondary} />
+      </div>
+      <button className={secondary ? "btn block" : "btn gold lg block"} style={{ maxWidth: 360, margin: secondary ? undefined : "0 auto" }} onClick={start} disabled={busy}>
+        ▶ {t("startDemo")}
+      </button>
+    </div>
+  );
+}
+
+function WaitingForLive({ username }: { username: string }) {
+  const t = useT();
+  const tiktok = useStore((s) => s.tiktok);
+  const failing = tiktok?.state === "ERROR";
+  return (
+    <div className="hero">
+      <div className="logo">
+        <Logo size={64} />
+      </div>
+      <div className={`waiting-pill ${failing ? "bad" : ""}`}>
+        <span className="dot" />
+        {failing ? t("tiktokRetrying") : t("waitingForLive")}
+      </div>
+      <h2 className="chrome-text" style={{ letterSpacing: "0.06em", textTransform: "none" }}>
+        @{username}
+      </h2>
+      <p>{failing ? `${t("tiktokRetryingHint")}${tiktok?.error ? ` (${tiktok.error})` : ""}` : t("waitingForLiveHint")}</p>
+      <button className="btn sm" onClick={() => navigate("settings")}>
+        {t("tiktokIntegration")} →
+      </button>
+    </div>
+  );
+}
+
+function StartPanel() {
+  const t = useT();
+  const session = useStore((s) => s.session);
+  const tiktok = useStore((s) => s.tiktok);
+  const followed = tiktok?.source === "unofficial_live_connector" ? tiktok.username : undefined;
+  return (
+    <div className="scroll">
+      <div className="narrow stack">
+        {followed ? <WaitingForLive username={followed} /> : <DemoCard secondary={false} />}
         {session?.status === "ended" ? (
           <button className="btn block" onClick={() => navigate("analytics")}>
             {t("report")} →
           </button>
         ) : null}
-        <div className="card">
-          <div className="card-title">{t("tiktokIntegration")}</div>
-          <div className="row">
-            <span className={`state-badge ${tiktok?.state === "LIVE_DETECTED" || tiktok?.state === "CONNECTED" ? "good" : tiktok?.state === "ERROR" ? "bad" : ""}`}>
-              {tiktok?.state.replace("_", " ") ?? "NOT CONNECTED"}
-            </span>
-            <span className="spacer" />
-            <button className="btn sm" onClick={() => navigate("settings")}>
-              {t("settings")} →
-            </button>
+        {followed ? (
+          <DemoCard secondary />
+        ) : (
+          <div className="card">
+            <div className="card-title">{t("tiktokIntegration")}</div>
+            <div className="row">
+              <span className={`state-badge ${tiktok?.state === "LIVE_DETECTED" || tiktok?.state === "CONNECTED" ? "good" : tiktok?.state === "ERROR" ? "bad" : ""}`}>
+                {tiktok?.state.replace("_", " ") ?? "NOT CONNECTED"}
+              </span>
+              <span className="spacer" />
+              <button className="btn sm" onClick={() => navigate("settings")}>
+                {t("settings")} →
+              </button>
+            </div>
+            <p className="small muted" style={{ marginBottom: 0 }}>
+              {tiktok?.source === "unofficial_live_connector" ? t("followAccountHint") : t("waitingConnector")}
+            </p>
           </div>
-          <p className="small muted" style={{ marginBottom: 0 }}>
-            {t("waitingConnector")}
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );
