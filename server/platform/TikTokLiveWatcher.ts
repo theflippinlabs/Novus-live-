@@ -49,6 +49,18 @@ const isOffline = (err: unknown): boolean => {
   return text.includes("offline") || text.includes("not live") || text.includes("isn't online") || text.includes("not online");
 };
 
+/** The library emits `{ info, exception }` objects as well as plain Errors. */
+const describeError = (e: unknown): string => {
+  const o = e as { message?: string; info?: unknown; exception?: { message?: string } };
+  const text = o?.message ?? (typeof o?.info === "string" ? o.info : undefined) ?? o?.exception?.message;
+  if (text) return text.slice(0, 200);
+  try {
+    return JSON.stringify(e).slice(0, 200);
+  } catch {
+    return String(e);
+  }
+};
+
 export class TikTokLiveWatcher {
   private username: string | null = null;
   private conn: LiveConnectionLike | null = null;
@@ -142,7 +154,7 @@ export class TikTokLiveWatcher {
     };
     conn.on("streamEnd", ended);
     conn.on("disconnected", ended);
-    conn.on("error", (e) => this.opts.log?.(`[tiktok] connection error: ${(e as Error)?.message ?? String(e)}`));
+    conn.on("error", (e) => this.opts.log?.(`[tiktok] connection error: ${describeError(e)}`));
 
     try {
       await conn.connect();
