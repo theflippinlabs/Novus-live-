@@ -1,0 +1,428 @@
+// Platform-independent domain model shared by the server and the client.
+// Nothing in this file knows about TikTok or any other platform.
+
+export type PlatformId = "mock" | "tiktok" | "external";
+
+export type Severity = "normal" | "watch" | "warning" | "critical";
+export const SEVERITIES: Severity[] = ["normal", "watch", "warning", "critical"];
+
+export type RecommendedAction = "none" | "watch" | "warn" | "mute" | "block" | "report";
+
+export const CATEGORIES = [
+  "spam",
+  "flooding",
+  "repetition",
+  "insult",
+  "harassment",
+  "threat",
+  "hate",
+  "sexual_harassment",
+  "scam",
+  "suspicious_link",
+  "impersonation",
+  "doxxing",
+  "coordinated_attack",
+  "escalation",
+  "banned_phrase",
+] as const;
+export type Category = (typeof CATEGORIES)[number];
+
+export interface ViewerRef {
+  id: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+}
+
+interface BaseEvent {
+  id: string;
+  sessionId: string;
+  platform: PlatformId;
+  timestamp: number;
+}
+
+export interface LiveComment extends BaseEvent {
+  type: "comment";
+  viewer: ViewerRef;
+  text: string;
+  language?: string;
+}
+
+export interface LiveViewer extends BaseEvent {
+  type: "viewer_count";
+  count: number;
+}
+
+export interface LiveGift extends BaseEvent {
+  type: "gift";
+  viewer: ViewerRef;
+  giftName: string;
+  count: number;
+  value?: number;
+}
+
+export interface LiveFollow extends BaseEvent {
+  type: "follow";
+  viewer: ViewerRef;
+}
+
+export interface LiveJoin extends BaseEvent {
+  type: "join";
+  viewer: ViewerRef;
+}
+
+/** A moderation action that happened on the platform itself (e.g. reported by a connector). */
+export interface LiveModerationEvent extends BaseEvent {
+  type: "moderation";
+  viewer?: ViewerRef;
+  action: string;
+  detail?: string;
+}
+
+export interface LiveStreamStatusEvent extends BaseEvent {
+  type: "stream_status";
+  status: "started" | "ended";
+  title?: string;
+}
+
+export type LiveEvent =
+  | LiveComment
+  | LiveViewer
+  | LiveGift
+  | LiveFollow
+  | LiveJoin
+  | LiveModerationEvent
+  | LiveStreamStatusEvent;
+
+export interface ModerationAnalysis {
+  riskScore: number;
+  severity: Severity;
+  categories: Category[];
+  explanation: string;
+  recommendedAction: RecommendedAction;
+  confidence: number;
+  /** Human readable, compact reason indicators ("Targeted threat", "Repeated 4x"). */
+  reasons: string[];
+  stage: "heuristic" | "ai";
+  /** True when stage 1 queued the message for contextual AI review. */
+  aiPending?: boolean;
+}
+
+export interface AnalyzedComment extends LiveComment {
+  analysis: ModerationAnalysis;
+}
+
+export type AlertStatus = "open" | "watching" | "resolved" | "dismissed";
+
+export interface ModerationAlert {
+  id: string;
+  sessionId: string;
+  viewer: ViewerRef;
+  commentId: string;
+  text: string;
+  riskScore: number;
+  severity: Severity;
+  categories: Category[];
+  reasons: string[];
+  explanation: string;
+  recommendedAction: RecommendedAction;
+  confidence: number;
+  stage: "heuristic" | "ai";
+  createdAt: number;
+  updatedAt: number;
+  status: AlertStatus;
+  /** Number of messages merged into this alert (same viewer, still open). */
+  occurrences: number;
+  relatedCommentIds: string[];
+  /** Other accounts taking part in the same coordinated burst (grouped into one alert). */
+  accounts?: ViewerRef[];
+  resolution?: ActionRecord;
+}
+
+export type ActionType = "watch" | "warn" | "mute" | "block" | "report" | "dismiss";
+export const ACTION_TYPES: ActionType[] = ["watch", "warn", "mute", "block", "report", "dismiss"];
+
+/**
+ * executed         — the adapter performed the action through an authorized API.
+ * simulated        — demo mode: applied to the mock platform only.
+ * manual_required  — no authorized API: the moderator must do it inside the platform app.
+ * recorded         — local-only bookkeeping action (watch / dismiss).
+ * failed           — the adapter tried and failed.
+ */
+export type ActionStatus = "executed" | "simulated" | "manual_required" | "recorded" | "failed";
+
+export interface ActionRecord {
+  id: string;
+  sessionId: string;
+  alertId?: string;
+  viewer: ViewerRef;
+  action: ActionType;
+  status: ActionStatus;
+  adapter: string;
+  message: string;
+  /** Exact steps for the moderator when status is manual_required. */
+  instructions?: string[];
+  /** Suggested chat text (e.g. for a warning) the moderator can paste. */
+  suggestedMessage?: string;
+  note?: string;
+  performedAt: number;
+  /** ms between alert creation and this action. */
+  responseTimeMs?: number;
+  /** Set when the moderator confirms a manual action was done in-app. */
+  confirmedAt?: number;
+}
+
+export type ViewerFlag = "trusted" | "watchlist" | "ignored";
+
+export interface RiskPoint {
+  t: number;
+  score: number;
+}
+
+export interface ViewerCommentSummary {
+  id: string;
+  text: string;
+  t: number;
+  riskScore: number;
+  severity: Severity;
+}
+
+export interface ViewerProfile {
+  viewer: ViewerRef;
+  firstSeen: number;
+  lastSeen: number;
+  messageCount: number;
+  messagesPerMinute: number;
+  warnings: number;
+  alertIds: string[];
+  riskTrend: RiskPoint[];
+  recentComments: ViewerCommentSummary[];
+  categories: Partial<Record<Category, number>>;
+  flag: ViewerFlag | null;
+  assessment: ModerationAnalysis | null;
+  actions: ActionRecord[];
+  gifts: number;
+  maxRisk: number;
+  language?: string;
+}
+
+export type ViewerListItem = Omit<ViewerProfile, "recentComments" | "riskTrend" | "actions"> & {
+  lastRisk: number;
+};
+
+export type Sensitivity = "low" | "balanced" | "strict" | "custom";
+
+export interface Thresholds {
+  watch: number;
+  warning: number;
+  critical: number;
+}
+
+export interface Settings {
+  sensitivity: Sensitivity;
+  customThresholds: Thresholds;
+  categories: Record<Category, boolean>;
+  bannedPhrases: string[];
+  trustedUsers: string[];
+  watchlist: string[];
+  language: "en" | "fr";
+  streamerName: string;
+  aiEnabled: boolean;
+}
+
+export type SessionStatus = "idle" | "live" | "ended";
+
+export interface LiveSessionInfo {
+  id: string;
+  platform: PlatformId;
+  source: "demo" | "tiktok" | "external";
+  title: string;
+  status: SessionStatus;
+  startedAt: number;
+  endedAt?: number;
+}
+
+export interface LiveStats {
+  messagesTotal: number;
+  messagesPerMinute: number;
+  viewerCount: number;
+  activeChatters: number;
+  uniqueChatters: number;
+  openAlerts: number;
+  criticalAlerts: number;
+  gifts: number;
+  follows: number;
+  joins: number;
+}
+
+export type AIStatusState = "active" | "local_only" | "disabled" | "degraded";
+
+export interface AIStatus {
+  state: AIStatusState;
+  provider: string;
+  model?: string;
+  queued: number;
+  analyzed: number;
+  lastError?: string;
+}
+
+export type TikTokIntegrationState =
+  | "NOT_CONNECTED"
+  | "CONNECTOR_AVAILABLE"
+  | "CONNECTED"
+  | "LIVE_DETECTED"
+  | "LIVE_ENDED"
+  | "ERROR";
+
+export interface CapabilityInfo {
+  capability: string;
+  status: "implemented" | "requires_authorized_connector" | "manual_only" | "not_available";
+  detail: string;
+}
+
+export interface TikTokIntegrationStatus {
+  state: TikTokIntegrationState;
+  username?: string;
+  connectorConfigured: boolean;
+  lastEventAt?: number;
+  error?: string;
+  capabilities: CapabilityInfo[];
+}
+
+export type DemoSpeed = 1 | 5 | 20;
+
+export interface DemoStatus {
+  running: boolean;
+  speed: DemoSpeed;
+  demoSecond: number;
+}
+
+export interface QuestionCluster {
+  id: string;
+  question: string;
+  count: number;
+  askers: string[];
+  firstAskedAt: number;
+  lastAskedAt: number;
+  answered: boolean;
+}
+
+export interface TopicTrend {
+  topic: string;
+  count: number;
+  growth: number;
+}
+
+export interface ImportantMessage {
+  commentId: string;
+  viewer: ViewerRef;
+  text: string;
+  reason: string;
+  t: number;
+}
+
+export interface SentimentPoint {
+  t: number;
+  value: number;
+}
+
+export interface ChatPulse {
+  generatedAt: number;
+  messagesTotal: number;
+  activeViewers: number;
+  viewerCount: number;
+  messagesPerMinute: number;
+  activityChangePct: number;
+  trending: TopicTrend[];
+  topQuestions: QuestionCluster[];
+  topUnanswered: QuestionCluster | null;
+  repeatedRequests: QuestionCluster[];
+  sentiment: { current: number; label: string; change: number; shift: string | null };
+  sentimentSeries: SentimentPoint[];
+  importantMessages: ImportantMessage[];
+  spikes: { t: number; messages: number }[];
+  viewersNeedingAttention: number;
+}
+
+export interface CatchUpSection {
+  title: string;
+  items: string[];
+}
+
+export interface CatchUp {
+  since: number;
+  until: number;
+  headline: string;
+  sections: CatchUpSection[];
+  narrative?: string;
+  source: "local" | "ai";
+}
+
+export interface MinuteBucket {
+  t: number;
+  messages: number;
+  alerts: number;
+  toxicity: number;
+  avgRisk: number;
+  sentiment: number;
+}
+
+export interface AnalyticsSummary {
+  session: LiveSessionInfo | null;
+  totals: {
+    messages: number;
+    uniqueChatters: number;
+    alerts: number;
+    critical: number;
+    warnings: number;
+    muteRecommendations: number;
+    blockRecommendations: number;
+    reportRecommendations: number;
+    actions: number;
+    manualActions: number;
+    gifts: number;
+    follows: number;
+  };
+  peak: { t: number; messages: number } | null;
+  buckets: MinuteBucket[];
+  topParticipants: { viewer: ViewerRef; messages: number; maxRisk: number }[];
+  topQuestions: QuestionCluster[];
+  topTopics: TopicTrend[];
+  categoryCounts: Partial<Record<Category, number>>;
+  avgResponseTimeMs: number | null;
+  durationMs: number;
+}
+
+export interface StreamReport {
+  sessionId: string;
+  generatedAt: number;
+  analytics: AnalyticsSummary;
+  markdown: string;
+}
+
+export interface Snapshot {
+  session: LiveSessionInfo | null;
+  stats: LiveStats;
+  comments: AnalyzedComment[];
+  alerts: ModerationAlert[];
+  settings: Settings;
+  ai: AIStatus;
+  demo: DemoStatus;
+  tiktok: TikTokIntegrationStatus;
+  serverTime: number;
+}
+
+/** A batched realtime update pushed to clients (one per flush interval). */
+export interface RealtimeBatch {
+  comments: AnalyzedComment[];
+  commentUpdates: AnalyzedComment[];
+  alerts: ModerationAlert[];
+  actions: ActionRecord[];
+  stats?: LiveStats;
+  session?: LiveSessionInfo | null;
+  ai?: AIStatus;
+  demo?: DemoStatus;
+  tiktok?: TikTokIntegrationStatus;
+  settings?: Settings;
+  reset?: boolean;
+}
