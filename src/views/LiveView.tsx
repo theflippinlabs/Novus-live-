@@ -4,10 +4,9 @@ import { api } from "../api";
 import { runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
-import { ProfileSwitcher } from "../components/TikTokProfiles";
 import { Avatar, Logo, Segmented, SeverityBadge } from "../components/ui";
 import { useLang, useT } from "../i18n";
-import { navigate, openViewer, toast, useStore } from "../store";
+import { navigate, openViewer, switchRoom, toast, useStore } from "../store";
 
 const SPEEDS: { value: DemoSpeed; label: string }[] = [
   { value: 1, label: "1x" },
@@ -77,7 +76,34 @@ function WaitingForLive({ username }: { username: string }) {
       <button className="btn sm" onClick={() => navigate("settings")}>
         {t("tiktokIntegration")} →
       </button>
-      <ProfileSwitcher />
+    </div>
+  );
+}
+
+function FollowedAccounts() {
+  const t = useT();
+  const lang = useLang();
+  const allRooms = useStore((s) => s.rooms);
+  const rooms = useMemo(() => allRooms.filter((r) => r.kind === "tiktok"), [allRooms]);
+  return (
+    <div className="card">
+      <div className="card-title">{lang === "fr" ? "Comptes TikTok suivis" : "Followed TikTok accounts"}</div>
+      {rooms.length ? (
+        <div className="chips">
+          {rooms.map((r) => (
+            <button key={r.id} className={`chip ${r.live ? "on" : ""}`} onClick={() => switchRoom(r.id)}>
+              {r.live ? "● " : ""}@{r.username}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="small muted" style={{ marginTop: 0 }}>
+          {t("followAccountHint")}
+        </p>
+      )}
+      <button className="btn sm" style={{ marginTop: 10 }} onClick={() => navigate("settings")}>
+        {t("tiktokIntegration")} →
+      </button>
     </div>
   );
 }
@@ -85,8 +111,9 @@ function WaitingForLive({ username }: { username: string }) {
 function StartPanel() {
   const t = useT();
   const session = useStore((s) => s.session);
+  const room = useStore((s) => s.room);
   const tiktok = useStore((s) => s.tiktok);
-  const followed = tiktok?.source === "unofficial_live_connector" ? tiktok.username : undefined;
+  const followed = room !== "main" && tiktok?.username ? tiktok.username : undefined;
   return (
     <div className="scroll">
       <div className="narrow stack">
@@ -96,25 +123,7 @@ function StartPanel() {
             {t("report")} →
           </button>
         ) : null}
-        {followed ? (
-          <DemoCard secondary />
-        ) : (
-          <div className="card">
-            <div className="card-title">{t("tiktokIntegration")}</div>
-            <div className="row">
-              <span className={`state-badge ${tiktok?.state === "LIVE_DETECTED" || tiktok?.state === "CONNECTED" ? "good" : tiktok?.state === "ERROR" ? "bad" : ""}`}>
-                {tiktok?.state.replace("_", " ") ?? "NOT CONNECTED"}
-              </span>
-              <span className="spacer" />
-              <button className="btn sm" onClick={() => navigate("settings")}>
-                {t("settings")} →
-              </button>
-            </div>
-            <p className="small muted" style={{ marginBottom: 0 }}>
-              {tiktok?.source === "unofficial_live_connector" ? t("followAccountHint") : t("waitingConnector")}
-            </p>
-          </div>
-        )}
+        {followed ? null : <FollowedAccounts />}
       </div>
     </div>
   );

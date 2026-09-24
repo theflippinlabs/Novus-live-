@@ -408,7 +408,22 @@ export interface StreamReport {
   markdown: string;
 }
 
+/** One moderation space: the demo/connector room, or one followed TikTok account. */
+export interface RoomSummary {
+  id: string;
+  kind: "main" | "tiktok";
+  /** TikTok handle (without "@") for TikTok rooms. */
+  username?: string;
+  live: boolean;
+  state: TikTokIntegrationState;
+  openAlerts: number;
+  criticalAlerts: number;
+  viewerCount: number;
+}
+
 export interface Snapshot {
+  room: string;
+  rooms: RoomSummary[];
   session: LiveSessionInfo | null;
   stats: LiveStats;
   comments: AnalyzedComment[];
@@ -432,5 +447,6 @@ export interface RealtimeBatch {
   demo?: DemoStatus;
   tiktok?: TikTokIntegrationStatus;
   settings?: Settings;
+  rooms?: RoomSummary[];
   reset?: boolean;
 }

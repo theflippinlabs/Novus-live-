@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { compact, duration } from "../format";
 import { navigate, serverNow, useStore } from "../store";
+import { RoomBar } from "./RoomBar";
 
 function Duration() {
   const session = useStore((s) => s.session);
@@ -23,7 +24,7 @@ export function TopBar() {
   const ai = useStore((s) => s.ai);
   const connection = useStore((s) => s.connection);
   const live = session?.status === "live";
-  const waiting = useStore((s) => s.tiktok?.source === "unofficial_live_connector" && Boolean(s.tiktok.username));
+  const waiting = useStore((s) => s.room !== "main" && Boolean(s.tiktok?.username));
   const aiLabel = ai.state === "active" ? t("aiActive") : ai.state === "degraded" ? t("aiDegraded") : ai.state === "disabled" ? t("aiDisabled") : t("aiLocal");
 
   return (
@@ -44,6 +45,7 @@ export function TopBar() {
           {ai.queued > 0 ? <span className="mono muted">·{ai.queued}</span> : null}
         </span>
       </div>
+      <RoomBar />
       <div className="metrics">
         <div className="metric">
           <div className="v">

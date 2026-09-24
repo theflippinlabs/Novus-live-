@@ -26,8 +26,12 @@ export class MemoryRepository implements Repository {
     return this.dataDir ? join(this.dataDir, "novus-state.json") : null;
   }
 
+  private loaded = false;
+
   async init(): Promise<void> {
-    if (!this.file) return;
+    // Several room runtimes share this repository; only the first init reads the file.
+    if (this.loaded || !this.file) return;
+    this.loaded = true;
     try {
       const raw = await readFile(this.file, "utf8");
       const parsed = JSON.parse(raw) as Partial<FileState>;

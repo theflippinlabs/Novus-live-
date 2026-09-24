@@ -180,8 +180,14 @@ server's service role writes. If Supabase is unreachable at boot, Novus logs it 
 ## TikTok integration status
 
 **Live TikTok data:** by the owner's choice, an optional **unofficial, read-only** connector
-(`tiktok-live-connector`) follows the account set in Settings and streams its LIVE into Novus
+(`tiktok-live-connector`) follows the accounts listed in Settings and streams each LIVE into Novus
 automatically. It is not authorized by TikTok and can break; disable with `TIKTOK_LIVE_CONNECTOR=off`.
+
+**Several accounts at once:** every followed account gets its own *room* (`server/core/Rooms.ts`) —
+an independent runtime with its own session, chat, alerts, viewers and post-LIVE report — and all
+of them are watched at the same time. The app switches rooms with the account bar at the top; API
+calls carry an `X-Novus-Room` header (`?room=` for the realtime stream). The `main` room hosts Demo
+LIVE and connector ingestion. Settings are shared by all rooms.
 
 Also implemented: normalized event model, `TikTokAdapter` with the full state machine
 (NOT CONNECTED · CONNECTOR AVAILABLE · CONNECTED · LIVE DETECTED · LIVE ENDED · ERROR), a token‑protected

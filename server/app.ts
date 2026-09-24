@@ -16,18 +16,12 @@ import {
 } from "../shared/schemas";
 import type { ActionType, DemoSpeed, LiveEvent, Settings, ViewerFlag } from "../shared/types";
 import type { Config } from "./config";
-import type { NovusRuntime } from "./core/NovusRuntime";
+import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
 import { AUTH_COOKIE, isAuthenticated, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
-import type { TikTokAdapter } from "./platform/TikTokAdapter";
-import type { RealtimeHub } from "./realtime/RealtimeHub";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute">;
-  runtime: NovusRuntime;
-  hub: RealtimeHub;
-  tiktok: TikTokAdapter;
-  /** Called after the moderator sets / clears the TikTok account (starts/stops the live connector). */
-  onTikTokAccount?: (username: string | null) => Promise<void> | void;
+  rooms: RoomRegistry;
 }
 
 class HttpError extends Error {
@@ -61,7 +55,23 @@ const param = (req: Request, name: string): string => {
   return v;
 };
 
-export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: AppDeps) {
+/** Which room a request targets: `X-Novus-Room` header (API) or `?room=` (EventSource). */
+function roomOf(rooms: RoomRegistry, req: Request): Room {
+  const raw = req.headers["x-novus-room"] ?? req.query.room;
+  const id = typeof raw === "string" && raw.length <= 80 ? raw : MAIN_ROOM;
+  const room = rooms.get(id);
+  if (!room) throw new HttpError(404, "room_not_found");
+  return room;
+}
+
+const mainOnly = (room: Room): Room => {
+  if (room.kind !== "main") throw new HttpError(409, "demo_main_room_only");
+  return room;
+};
+
+export function createApp({ config, rooms }: AppDeps) {
+  const snapshotOf = (room: Room) => ({ ...room.runtime.snapshot(), room: room.id, rooms: rooms.summaries() });
+  const { runtime, tiktok } = rooms.main;
   const app = express();
   app.disable("x-powered-by");
   if (config.trustProxy) app.set("trust proxy", 1);
@@ -151,17 +161,22 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
     next();
   });
 
-  api.get("/state", h(() => runtime.snapshot()));
+  api.get("/state", h((req) => snapshotOf(roomOf(rooms, req))));
 
-  api.get("/stream", (_req, res) => {
-    hub.addClient(res, runtime.snapshot());
+  api.get("/stream", (req, res, next) => {
+    try {
+      const room = roomOf(rooms, req);
+      room.hub.addClient(res, snapshotOf(room));
+    } catch (err) {
+      next(err);
+    }
   });
 
   api.post(
     "/demo/start",
     h(async (req) => {
       const { speed } = parse(demoStartSchema, req.body);
-      const session = await runtime.startDemo((speed ?? 1) as DemoSpeed);
+      const session = await mainOnly(roomOf(rooms, req)).runtime.startDemo((speed ?? 1) as DemoSpeed);
       return { session };
     }),
   );
@@ -169,13 +184,14 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
     "/demo/speed",
     h((req) => {
       const { speed } = parse(demoSpeedSchema, req.body);
-      runtime.setDemoSpeed(speed as DemoSpeed);
+      mainOnly(roomOf(rooms, req)).runtime.setDemoSpeed(speed as DemoSpeed);
       return { ok: true };
     }),
   );
   api.post(
     "/session/end",
-    h(async () => {
+    h(async (req) => {
+      const { runtime } = roomOf(rooms, req);
       const report = await runtime.endSession();
       return { session: runtime.session, report };
     }),
@@ -183,11 +199,12 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
 
   api.get(
     "/alerts",
-    h(() => ({ alerts: runtime.sortedAlerts() })),
+    h((req) => ({ alerts: roomOf(rooms, req).runtime.sortedAlerts() })),
   );
   api.post(
     "/alerts/:id/action",
     h(async (req) => {
+      const { runtime } = roomOf(rooms, req);
       const { action, note } = parse(actionRequestSchema, req.body);
       const out = await runtime.actOnAlert(param(req, "id"), action as ActionType, note);
       if (!out) throw new HttpError(404, "alert_not_found");
@@ -197,7 +214,7 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
   api.post(
     "/actions/:id/confirm",
     h((req) => {
-      const record = runtime.confirmManualAction(param(req, "id"));
+      const record = roomOf(rooms, req).runtime.confirmManualAction(param(req, "id"));
       if (!record) throw new HttpError(404, "manual_action_not_found");
       return { record };
     }),
@@ -209,12 +226,13 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
       const q = typeof req.query.q === "string" ? req.query.q.slice(0, 64) : undefined;
       const sort = ["risk", "messages", "recent"].includes(String(req.query.sort)) ? (req.query.sort as "risk") : "risk";
       const filter = ["trusted", "watchlist", "ignored", "flagged", "all"].includes(String(req.query.filter)) ? (req.query.filter as "all") : "all";
-      return { viewers: runtime.viewerList({ q, sort, filter }) };
+      return { viewers: roomOf(rooms, req).runtime.viewerList({ q, sort, filter }) };
     }),
   );
   api.get(
     "/viewers/:id",
     h((req) => {
+      const { runtime } = roomOf(rooms, req);
       const id = param(req, "id");
       const profile = runtime.viewerProfile(id);
       if (!profile) throw new HttpError(404, "viewer_not_found");
@@ -225,7 +243,7 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
     "/viewers/:id/flag",
     h(async (req) => {
       const { flag } = parse(flagRequestSchema, req.body);
-      const profile = await runtime.setViewerFlag(param(req, "id"), flag as ViewerFlag | null);
+      const profile = await roomOf(rooms, req).runtime.setViewerFlag(param(req, "id"), flag as ViewerFlag | null);
       if (!profile) throw new HttpError(404, "viewer_not_found");
       return { profile };
     }),
@@ -233,6 +251,7 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
   api.post(
     "/viewers/:id/action",
     h(async (req) => {
+      const { runtime } = roomOf(rooms, req);
       const { action, note } = parse(actionRequestSchema, req.body);
       const record = await runtime.actOnViewer(param(req, "id"), action as ActionType, note);
       if (!record) throw new HttpError(404, "viewer_not_found");
@@ -240,10 +259,11 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
     }),
   );
 
-  api.get("/assistant/pulse", h(() => runtime.pulse()));
+  api.get("/assistant/pulse", h((req) => roomOf(rooms, req).runtime.pulse()));
   api.post(
     "/assistant/catchup",
     h(async (req) => {
+      const { runtime } = roomOf(rooms, req);
       const { since } = parse(catchUpRequestSchema, req.body);
       const fallback = runtime.session?.startedAt ?? Date.now() - 10 * 60_000;
       return runtime.catchUp(since ?? fallback);
@@ -253,41 +273,53 @@ export function createApp({ config, runtime, hub, tiktok, onTikTokAccount }: App
     "/assistant/questions/:id/answered",
     h((req) => {
       const answered = req.body?.answered !== false;
-      if (!runtime.markQuestionAnswered(param(req, "id"), answered)) throw new HttpError(404, "question_not_found");
+      if (!roomOf(rooms, req).runtime.markQuestionAnswered(param(req, "id"), answered)) throw new HttpError(404, "question_not_found");
       return { ok: true };
     }),
   );
 
-  api.get("/analytics", h(() => runtime.analyticsSummary()));
-  api.get("/report", h(() => runtime.report()));
+  api.get("/analytics", h((req) => roomOf(rooms, req).runtime.analyticsSummary()));
+  api.get("/report", h((req) => roomOf(rooms, req).runtime.report()));
 
-  api.get("/settings", h(() => runtime.settings));
+  api.get("/settings", h(() => rooms.settings));
   api.put(
     "/settings",
     h(async (req) => {
       const patch = parse(settingsPatchSchema, req.body) as Partial<Settings>;
-      return runtime.updateSettings(patch);
+      return rooms.updateSettings(patch);
     }),
   );
 
-  api.get("/integrations/tiktok", h(() => tiktok.status()));
+  api.get("/rooms", h(() => ({ rooms: rooms.summaries() })));
+
+  api.get("/integrations/tiktok", h((req) => roomOf(rooms, req).tiktok.status()));
   api.post(
     "/integrations/tiktok/connect",
     h(async (req) => {
-      const { username } = parse(tiktokConnectSchema, req.body);
+      // Adds the account to the followed profiles; it gets its own room, watched alongside the others.
+      const username = parse(tiktokConnectSchema, req.body).username.replace(/^@/, "");
+      const profiles = rooms.settings.tiktokProfiles ?? [];
+      if (!profiles.some((p) => p.toLowerCase() === username.toLowerCase())) await rooms.updateSettings({ tiktokProfiles: [...profiles, username].slice(-20) });
+      const room = rooms.get(tiktokRoomId(username));
+      if (room) return { ...room.tiktok.status(), room: room.id };
+      // No live connector configured: the main room's connector follows this account instead.
       await tiktok.connect(username);
-      await onTikTokAccount?.(username.replace(/^@/, ""));
-      hub.pushExtras({ tiktok: tiktok.status() });
-      return tiktok.status();
+      rooms.main.hub.pushExtras({ tiktok: tiktok.status() });
+      return { ...tiktok.status(), room: MAIN_ROOM };
     }),
   );
   api.post(
     "/integrations/tiktok/disconnect",
-    h(async () => {
+    h(async (req) => {
+      const room = roomOf(rooms, req);
+      if (room.kind === "tiktok" && room.username) {
+        const name = room.username.toLowerCase();
+        await rooms.updateSettings({ tiktokProfiles: (rooms.settings.tiktokProfiles ?? []).filter((p) => p.toLowerCase() !== name) });
+        return { ...tiktok.status(), room: MAIN_ROOM };
+      }
       await tiktok.disconnect();
-      await onTikTokAccount?.(null);
-      hub.pushExtras({ tiktok: tiktok.status() });
-      return tiktok.status();
+      rooms.main.hub.pushExtras({ tiktok: tiktok.status() });
+      return { ...tiktok.status(), room: MAIN_ROOM };
     }),
   );
 

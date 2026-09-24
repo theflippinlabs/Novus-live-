@@ -7,6 +7,7 @@ import type {
   DemoSpeed,
   LiveSessionInfo,
   ModerationAlert,
+  RoomSummary,
   Settings,
   StreamReport,
   TikTokIntegrationStatus,
@@ -14,6 +15,7 @@ import type {
   ViewerListItem,
   ViewerProfile,
 } from "../shared/types";
+import { getState } from "./store";
 
 // Thin typed client. The browser only ever talks to the Novus server —
 // never to Anthropic, Supabase or TikTok, and never holds a secret.
@@ -31,7 +33,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const res = await fetch(`/api${path}`, {
     method,
     credentials: "same-origin",
-    headers: body !== undefined || method !== "GET" ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      "X-Novus-Room": getState().room,
+      ...(body !== undefined || method !== "GET" ? { "Content-Type": "application/json" } : {}),
+    },
     body: method === "GET" ? undefined : JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
@@ -78,7 +83,8 @@ export const api = {
   settings: () => request<Settings>("GET", "/settings"),
   saveSettings: (patch: Partial<Settings>) => request<Settings>("PUT", "/settings", patch),
 
+  rooms: () => request<{ rooms: RoomSummary[] }>("GET", "/rooms"),
   tiktok: () => request<TikTokIntegrationStatus>("GET", "/integrations/tiktok"),
-  tiktokConnect: (username: string) => request<TikTokIntegrationStatus>("POST", "/integrations/tiktok/connect", { username }),
+  tiktokConnect: (username: string) => request<TikTokIntegrationStatus & { room: string }>("POST", "/integrations/tiktok/connect", { username }),
   tiktokDisconnect: () => request<TikTokIntegrationStatus>("POST", "/integrations/tiktok/disconnect"),
 };

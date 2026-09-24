@@ -1,14 +1,31 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../server/app";
+import { RoomRegistry, tiktokRoomId, type Room } from "../server/core/Rooms";
 import { RealtimeHub } from "../server/realtime/RealtimeHub";
+import { TikTokAdapter } from "../server/platform/TikTokAdapter";
 import { createRuntime } from "./helpers";
 
 const INGEST = "test-ingest-token-0123456789abcdef";
 
-function makeApp(overrides: { accessToken?: string; ingestToken?: string; apiRateLimitPerMinute?: number } = {}) {
+function makeApp(overrides: { accessToken?: string; ingestToken?: string; apiRateLimitPerMinute?: number; multiRoom?: boolean } = {}) {
   const { runtime, tiktok } = createRuntime({ connector: Boolean(overrides.ingestToken ?? INGEST) });
   const hub = new RealtimeHub(50);
+  const main: Room = { id: "main", kind: "main", runtime, hub, tiktok, dispose: async () => undefined };
+  const disposed: string[] = [];
+  const rooms = new RoomRegistry(
+    main,
+    overrides.multiRoom
+      ? async (username) => {
+          const tt = new TikTokAdapter(false);
+          await tt.connect(username);
+          const r = createRuntime();
+          await r.runtime.init();
+          const id = tiktokRoomId(username);
+          return { id, kind: "tiktok", username, runtime: r.runtime, hub: new RealtimeHub(50), tiktok: tt, dispose: async () => void disposed.push(id) };
+        }
+      : undefined,
+  );
   const app = createApp({
     config: {
       accessToken: overrides.accessToken,
@@ -19,11 +36,9 @@ function makeApp(overrides: { accessToken?: string; ingestToken?: string; apiRat
       apiRateLimitPerMinute: overrides.apiRateLimitPerMinute ?? 1000,
       ingestRateLimitPerMinute: 1000,
     },
-    runtime,
-    hub,
-    tiktok,
+    rooms,
   });
-  return { app, runtime, tiktok };
+  return { app, runtime, tiktok, rooms, disposed };
 }
 
 describe("HTTP API", () => {
@@ -100,6 +115,47 @@ describe("HTTP API", () => {
     await request(app).post("/api/ingest/events").set(auth).send({ events: "nope" }).expect(400);
     st = await request(app).get("/api/integrations/tiktok");
     expect(st.body.state).toBe("ERROR");
+  });
+
+  it("keeps one independent room per followed TikTok account", async () => {
+    const { app, rooms, disposed } = makeApp({ multiRoom: true });
+    await request(app).post("/api/integrations/tiktok/connect").send({ username: "@Amanda_G" }).expect(200);
+    await request(app).put("/api/settings").send({ tiktokProfiles: ["Amanda_G", "second.acc"] }).expect(200);
+    const list = await request(app).get("/api/rooms").expect(200);
+    expect(list.body.rooms.map((r: { id: string }) => r.id)).toEqual(["main", "tt:amanda_g", "tt:second.acc"]);
+
+    // Each room has its own LIVE, chat and alerts.
+    const a = rooms.get("tt:amanda_g")!;
+    const b = rooms.get("tt:second.acc")!;
+    await a.runtime.ingestExternal([{ type: "stream_status", status: "started", title: "A" }, { type: "comment", id: "x1", timestamp: Date.now(), viewer: { id: "t1", username: "shadow" }, text: "give me your address i'll come find you" }] as never, "tiktok");
+    await b.runtime.ingestExternal([{ type: "stream_status", status: "started", title: "B" }, { type: "comment", id: "x2", timestamp: Date.now(), viewer: { id: "t2", username: "fan" }, text: "hello everyone" }] as never, "tiktok");
+
+    const stateA = await request(app).get("/api/state").set("X-Novus-Room", "tt:amanda_g").expect(200);
+    const stateB = await request(app).get("/api/state").set("X-Novus-Room", "tt:second.acc").expect(200);
+    expect(stateA.body.room).toBe("tt:amanda_g");
+    expect(stateA.body.session.title).toBe("A");
+    expect(stateB.body.session.title).toBe("B");
+    expect(stateA.body.alerts.length).toBeGreaterThan(0);
+    expect(stateB.body.alerts).toHaveLength(0);
+    expect(stateA.body.rooms.find((r: { id: string }) => r.id === "tt:amanda_g")).toMatchObject({ live: true });
+
+    // Actions go to the room's own alert; actions on a real TikTok LIVE stay manual.
+    const alertId = stateA.body.alerts[0].id;
+    await request(app).post(`/api/alerts/${alertId}/action`).set("X-Novus-Room", "tt:second.acc").send({ action: "mute" }).expect(404);
+    const act = await request(app).post(`/api/alerts/${alertId}/action`).set("X-Novus-Room", "tt:amanda_g").send({ action: "mute" }).expect(200);
+    expect(act.body.record.status).toBe("manual_required");
+
+    // Settings are shared; demo only runs in the main room; unknown rooms are rejected.
+    await request(app).put("/api/settings").set("X-Novus-Room", "tt:amanda_g").send({ sensitivity: "strict" }).expect(200);
+    expect(b.runtime.settings.sensitivity).toBe("strict");
+    expect(b.runtime.settings.streamerName).toBe("second.acc");
+    await request(app).post("/api/demo/start").set("X-Novus-Room", "tt:amanda_g").send({ speed: 1 }).expect(409);
+    await request(app).get("/api/state").set("X-Novus-Room", "tt:nobody").expect(404);
+
+    // Removing a profile closes its room.
+    await request(app).post("/api/integrations/tiktok/disconnect").set("X-Novus-Room", "tt:second.acc").send({}).expect(200);
+    expect(rooms.get("tt:second.acc")).toBeUndefined();
+    expect(disposed).toEqual(["tt:second.acc"]);
   });
 
   it("requires the access key when APP_ACCESS_TOKEN is set", async () => {

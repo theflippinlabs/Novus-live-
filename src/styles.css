@@ -226,6 +226,81 @@ button {
   flex: 1;
 }
 
+.room-bar {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.room-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.room-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  max-width: 180px;
+  padding: 0 11px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.room-chip .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-chip.on {
+  color: var(--text);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.room-chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  flex: none;
+}
+
+.room-chip .dot.on {
+  background: var(--r-critical);
+  animation: pulse 1.6s infinite;
+}
+
+.room-chip .dot.bad {
+  background: var(--text-3);
+}
+
+.room-chip .count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.room-chip .count.crit {
+  background: var(--r-critical);
+  color: #fff;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

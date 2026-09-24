@@ -9,6 +9,7 @@ import type {
   LiveStats,
   ModerationAlert,
   RealtimeBatch,
+  RoomSummary,
   Settings,
   Snapshot,
   TikTokIntegrationStatus,
@@ -25,6 +26,9 @@ const MAX_CHAT = 1500;
 
 export interface AppState {
   connection: Connection;
+  /** The moderation room on screen: "main" (demo/connector) or "tt:<handle>". */
+  room: string;
+  rooms: RoomSummary[];
   view: View;
   session: LiveSessionInfo | null;
   stats: LiveStats;
@@ -55,6 +59,8 @@ const emptyStats: LiveStats = {
 
 let state: AppState = {
   connection: "connecting",
+  room: localGet("novus:room") ?? "main",
+  rooms: [],
   view: (sessionStorageGet("novus:view") as View) ?? "live",
   session: null,
   stats: emptyStats,
@@ -69,6 +75,14 @@ let state: AppState = {
   toast: null,
   serverOffset: 0,
 };
+
+function localGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
 
 function sessionStorageGet(key: string): string | null {
   try {
@@ -135,6 +149,8 @@ export function sortAlerts(list: ModerationAlert[]): ModerationAlert[] {
 
 function applySnapshot(s: Snapshot): void {
   setState({
+    room: s.room,
+    rooms: s.rooms,
     session: s.session,
     stats: s.stats,
     comments: s.comments,
@@ -177,14 +193,29 @@ function applyBatch(b: RealtimeBatch): void {
   if (b.demo) patch.demo = b.demo;
   if (b.tiktok) patch.tiktok = b.tiktok;
   if (b.settings) patch.settings = b.settings;
+  if (b.rooms) patch.rooms = b.rooms;
   if (Object.keys(patch).length) setState(patch);
 }
 
 let source: EventSource | null = null;
+let unauthorizedHandler: () => void = () => undefined;
+
+/** Show another room: clear the previous room's live data and resubscribe to its stream. */
+export function switchRoom(id: string): void {
+  if (id === state.room && source) return;
+  try {
+    localStorage.setItem("novus:room", id);
+  } catch {
+    /* ignore */
+  }
+  setState({ room: id, session: null, stats: emptyStats, comments: [], alerts: [], lastActions: [], selectedViewerId: null, connection: "connecting" });
+  if (source) connectRealtime(unauthorizedHandler);
+}
 
 export function connectRealtime(onUnauthorized: () => void): () => void {
+  unauthorizedHandler = onUnauthorized;
   source?.close();
-  const es = new EventSource("/api/stream");
+  const es = new EventSource(`/api/stream?room=${encodeURIComponent(state.room)}`);
   source = es;
   es.addEventListener("snapshot", (e) => {
     applySnapshot(JSON.parse((e as MessageEvent<string>).data) as Snapshot);
@@ -194,9 +225,17 @@ export function connectRealtime(onUnauthorized: () => void): () => void {
   es.onerror = () => {
     setState({ connection: "reconnecting" });
     // EventSource cannot see status codes; check whether we were logged out.
+    const room = state.room;
     fetch("/api/auth/status", { credentials: "same-origin" })
       .then((r) => r.json())
-      .then((s: { required: boolean; authenticated: boolean }) => {
+      .then(async (s: { required: boolean; authenticated: boolean }) => {
+        // The followed account was removed: fall back to the main room.
+        if (room !== "main" && !(s.required && !s.authenticated)) {
+          const r = await fetch("/api/rooms", { credentials: "same-origin" });
+          const { rooms } = (await r.json()) as { rooms: RoomSummary[] };
+          if (!rooms.some((x) => x.id === room)) switchRoom("main");
+          return;
+        }
         if (s.required && !s.authenticated) {
           es.close();
           setState({ connection: "unauthorized" });
@@ -205,7 +244,10 @@ export function connectRealtime(onUnauthorized: () => void): () => void {
       })
       .catch(() => undefined);
   };
-  return () => es.close();
+  return () => {
+    es.close();
+    if (source === es) source = null;
+  };
 }
 
 /** Merge a single alert returned by an API call (the SSE batch will also confirm it). */

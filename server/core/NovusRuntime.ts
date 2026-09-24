@@ -738,6 +738,13 @@ export class NovusRuntime {
     return this.settings;
   }
 
+  /** Take settings saved by another room (shared across rooms) without re-saving them. */
+  adoptSettings(settings: Settings): void {
+    this.settings = settings;
+    this.applySettingsSideEffects();
+    this.deps.hub?.pushExtras({ settings: this.settings });
+  }
+
   private applySettingsSideEffects(): void {
     this.aiQueue.enabled = this.settings.aiEnabled;
     this.insights.streamerName = this.settings.streamerName;
@@ -794,7 +801,7 @@ export class NovusRuntime {
     return this.comments.slice(-limit);
   }
 
-  snapshot(): Snapshot {
+  snapshot(): Omit<Snapshot, "room" | "rooms"> {
     return {
       session: this.session,
       stats: this.stats(),
