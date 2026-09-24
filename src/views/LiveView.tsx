@@ -4,7 +4,7 @@ import { api } from "../api";
 import { runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
-import { Avatar, Logo, Segmented, SeverityBadge } from "../components/ui";
+import { Avatar, BrandLogo, Logo, Segmented, SeverityBadge } from "../components/ui";
 import { useLang, useT } from "../i18n";
 import { navigate, openViewer, switchRoom, toast, useStore } from "../store";
 
@@ -34,10 +34,7 @@ function DemoCard({ secondary }: { secondary: boolean }) {
         <div className="card-title">{t("demoTitle")}</div>
       ) : (
         <>
-          <div className="logo">
-            <Logo size={64} />
-          </div>
-          <h2 className="chrome-text">NOVUS LIVE</h2>
+          <BrandLogo size={170} />
         </>
       )}
       <p className={secondary ? "small muted" : undefined} style={secondary ? { marginTop: 0 } : undefined}>

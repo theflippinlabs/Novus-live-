@@ -1,21 +1,23 @@
-/* NOVUS LIVE — obsidian command center. Platinum type, restrained gold, no blue. */
+/* NOVUS LIVE — brand: deep black, warm champagne-gold metal with a soft glow (from the app logo). No blue. */
 
 :root {
-  --bg: #0a0a0c;
-  --bg-2: #0e0e11;
-  --surface: #121215;
-  --surface-2: #18181c;
-  --surface-3: #1f1f24;
-  --border: #26262d;
-  --border-strong: #34343c;
-  --text: #ececf0;
-  --text-2: #a8a8b2;
-  --text-3: #74747e;
-  --platinum: #d9d9e0;
-  --chrome: linear-gradient(135deg, #f6f6f9 0%, #a3a3ad 42%, #ecedf1 62%, #8a8a94 100%);
-  --gold: #c9a55a;
-  --gold-soft: rgba(201, 165, 90, 0.14);
-  --gold-line: rgba(201, 165, 90, 0.45);
+  --bg: #070708;
+  --bg-2: #0c0b0d;
+  --surface: #111013;
+  --surface-2: #17161a;
+  --surface-3: #1e1d22;
+  --border: #29262b;
+  --border-strong: #3a3530;
+  --text: #f1ece4;
+  --text-2: #b2aaa0;
+  --text-3: #7d766d;
+  --platinum: #e8dcc6;
+  /* Metallic champagne gold of the NOVUS wordmark */
+  --chrome: linear-gradient(135deg, #fbe9c4 0%, #e0b877 30%, #a8743b 58%, #f1d39c 82%, #c08d4f 100%);
+  --gold: #d9ae6a;
+  --gold-soft: rgba(217, 174, 106, 0.14);
+  --gold-line: rgba(217, 174, 106, 0.48);
+  --gold-glow: 0 0 18px rgba(240, 190, 110, 0.35);
 
   /* risk / status (validated: CVD + contrast on #121215; always paired with label + icon) */
   --r-normal: #9a9aa6;
@@ -133,10 +135,23 @@ button {
   color: transparent;
 }
 
+.brand .chrome-text {
+  font-weight: 800;
+  filter: drop-shadow(0 0 6px rgba(240, 190, 110, 0.28));
+}
+
 .brand .live-word {
-  color: var(--gold);
-  letter-spacing: 0.26em;
-  font-weight: 700;
+  color: var(--platinum);
+  letter-spacing: 0.34em;
+  font-weight: 400;
+  font-size: 0.82em;
+}
+
+.brand-logo {
+  display: block;
+  margin: 0 auto;
+  border-radius: 22%;
+  filter: drop-shadow(0 10px 30px rgba(240, 190, 110, 0.18));
 }
 
 .status-pill {
@@ -185,7 +200,7 @@ button {
   margin: 0 auto 8px;
   padding: 6px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(201, 165, 90, 0.4);
+  border: 1px solid rgba(217, 174, 106, 0.4);
   color: var(--gold);
   font-size: 11.5px;
   font-weight: 700;
@@ -211,9 +226,9 @@ button {
 }
 
 @keyframes pulse-gold {
-  0% { box-shadow: 0 0 0 0 rgba(201, 165, 90, 0.55); }
-  70% { box-shadow: 0 0 0 8px rgba(201, 165, 90, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(201, 165, 90, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(217, 174, 106, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(217, 174, 106, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 174, 106, 0); }
 }
 
 @keyframes pulse {
@@ -549,9 +564,10 @@ main.view {
 }
 
 .btn.gold {
-  background: linear-gradient(180deg, #d8b870, #a88540);
-  color: #140f05;
-  border-color: #dcc083;
+  background: linear-gradient(180deg, #f0cf92 0%, #d9ae6a 45%, #a8743b 100%);
+  color: #1a1107;
+  border-color: #f0d39f;
+  box-shadow: var(--gold-glow);
 }
 
 .btn.ghost {
@@ -1293,7 +1309,7 @@ main.view {
 
 .catchup-card {
   border-color: var(--gold-line);
-  background: linear-gradient(180deg, rgba(201, 165, 90, 0.08), var(--surface) 60%);
+  background: linear-gradient(180deg, rgba(217, 174, 106, 0.08), var(--surface) 60%);
 }
 
 .catchup-card h3 {
@@ -1390,7 +1406,7 @@ main.view {
   text-align: center;
   border-radius: 18px;
   border: 1px solid var(--border);
-  background: radial-gradient(90% 80% at 50% 0%, rgba(201, 165, 90, 0.12), transparent 70%), var(--surface);
+  background: radial-gradient(90% 80% at 50% 0%, rgba(217, 174, 106, 0.12), transparent 70%), var(--surface);
 }
 
 .hero .logo {

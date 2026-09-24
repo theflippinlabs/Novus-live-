@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "./api";
 import { BottomNav } from "./components/BottomNav";
 import { TopBar } from "./components/TopBar";
-import { Logo } from "./components/ui";
+import { BrandLogo } from "./components/ui";
 import { ViewerSheet } from "./components/ViewerSheet";
 import { useT } from "./i18n";
 import { connectRealtime, useStore } from "./store";
@@ -29,10 +29,7 @@ function Login({ onDone }: { onDone: () => void }) {
   return (
     <div className="login">
       <div style={{ textAlign: "center", marginBottom: 20 }}>
-        <Logo size={64} />
-        <h1 className="chrome-text" style={{ letterSpacing: "0.22em", fontSize: 22 }}>
-          NOVUS LIVE
-        </h1>
+        <BrandLogo size={200} />
       </div>
       <div className="card">
         <div className="card-title">{t("loginTitle")}</div>

@@ -80,6 +80,12 @@ export function Segmented<T extends string | number>({
   );
 }
 
+/** The Novus mascot mark (cropped from the app logo). */
 export function Logo({ size = 28 }: { size?: number }) {
-  return <img src="/icons/icon.svg" width={size} height={size} alt="" style={{ borderRadius: size * 0.22 }} />;
+  return <img src="/icons/logo-mark.webp" width={size} height={size} alt="" style={{ borderRadius: size * 0.22 }} />;
+}
+
+/** The full NOVUS LIVE logo (mascot + wordmark). */
+export function BrandLogo({ size = 180 }: { size?: number }) {
+  return <img className="brand-logo" src="/icons/logo-full.webp" width={size} height={size} alt="NOVUS LIVE" />;
 }
