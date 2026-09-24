@@ -147,11 +147,12 @@ button {
   font-size: 0.82em;
 }
 
+/* The logo image has soft transparent edges baked in, so it blends into any dark surface. */
 .brand-logo {
   display: block;
-  margin: 0 auto;
-  border-radius: 22%;
-  filter: drop-shadow(0 10px 30px rgba(240, 190, 110, 0.18));
+  margin: -6px auto 2px;
+  max-width: 100%;
+  height: auto;
 }
 
 .status-pill {
