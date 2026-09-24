@@ -29,7 +29,7 @@ function Login({ onDone }: { onDone: () => void }) {
   return (
     <div className="login">
       <div style={{ textAlign: "center", marginBottom: 20 }}>
-        <BrandLogo size={200} />
+        <BrandLogo />
       </div>
       <div className="card">
         <div className="card-title">{t("loginTitle")}</div>

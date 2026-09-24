@@ -34,7 +34,7 @@ function DemoCard({ secondary }: { secondary: boolean }) {
         <div className="card-title">{t("demoTitle")}</div>
       ) : (
         <>
-          <BrandLogo size={170} />
+          <BrandLogo />
         </>
       )}
       <p className={secondary ? "small muted" : undefined} style={secondary ? { marginTop: 0 } : undefined}>

@@ -150,9 +150,9 @@ button {
 /* The logo image has soft transparent edges baked in, so it blends into any dark surface. */
 .brand-logo {
   display: block;
-  margin: -6px auto 2px;
-  max-width: 100%;
+  width: 100%;
   height: auto;
+  margin: -8px auto 10px;
 }
 
 .status-pill {

@@ -85,7 +85,7 @@ export function Logo({ size = 28 }: { size?: number }) {
   return <img src="/icons/logo-mark.webp" width={size} height={size} alt="" style={{ borderRadius: size * 0.22 }} />;
 }
 
-/** The full NOVUS LIVE logo (mascot + wordmark). */
-export function BrandLogo({ size = 180 }: { size?: number }) {
-  return <img className="brand-logo" src="/icons/logo-full.webp" width={size} height={size} alt="NOVUS LIVE" />;
+/** The NOVUS LIVE banner (mascot, wordmark and LIVE dashboards), full width of its container. */
+export function BrandLogo({ maxWidth = 480 }: { maxWidth?: number }) {
+  return <img className="brand-logo" src="/icons/logo-banner.webp" width={960} height={508} alt="NOVUS LIVE" style={{ maxWidth }} />;
 }
