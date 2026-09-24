@@ -79,7 +79,7 @@ export const describeError = (e: unknown): string => {
   const o = e as { name?: string; message?: string; info?: string; exception?: unknown };
   if (o && typeof o === "object" && "exception" in o) return `${o.info ?? "error"}: ${describeError(o.exception)}`;
   if (e instanceof Error) {
-    const nested = (e as { requestErrs?: unknown[] }).requestErrs;
+    const nested = (e as { config?: { requestErrs?: unknown[] } }).config?.requestErrs;
     const extra = Array.isArray(nested) && nested.length ? ` [${nested.map((n) => (n instanceof Error ? n.message : String(n)).slice(0, 120)).join(" | ")}]` : "";
     return `${e.name}: ${e.message}${extra}`.slice(0, 400);
   }
