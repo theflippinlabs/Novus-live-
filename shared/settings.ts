@@ -23,6 +23,7 @@ export function defaultSettings(): Settings {
     aiEnabled: true,
     tiktokUsername: "",
     tiktokProfiles: [],
+    tiktokGroups: [],
   };
 }
 

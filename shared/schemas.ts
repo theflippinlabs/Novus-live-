@@ -70,6 +70,9 @@ const handle = z
   .max(64)
   .transform((s) => s.replace(/^@/, "").toLowerCase());
 
+/** Followed TikTok accounts per space (each one is watched continuously). */
+export const MAX_PROFILES = 50;
+
 const tiktokHandle = z
   .string()
   .trim()
@@ -91,8 +94,27 @@ export const settingsPatchSchema = z
     tiktokUsername: tiktokHandle,
     tiktokProfiles: z
       .array(tiktokHandle.pipe(z.string().min(2)))
-      .max(20)
+      .max(MAX_PROFILES)
       .transform((list) => [...new Set(list)]),
+    tiktokGroups: z
+      .array(
+        z
+          .object({
+            id: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/),
+            name: z.string().trim().min(1).max(40),
+            members: z
+              .array(tiktokHandle.pipe(z.string().min(2)))
+              .max(MAX_PROFILES)
+              .transform((list) => [...new Set(list.map((u) => u.toLowerCase()))]),
+          })
+          .strict(),
+      )
+      .max(30)
+      .transform((groups) => {
+        // An account sits in one group only: the first group listing it keeps it.
+        const seen = new Set<string>();
+        return groups.map((g) => ({ ...g, members: g.members.filter((u) => !seen.has(u) && seen.add(u)) }));
+      }),
   })
   .partial()
   .strict();

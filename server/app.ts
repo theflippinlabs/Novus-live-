@@ -11,6 +11,7 @@ import {
   flagRequestSchema,
   ingestBatchSchema,
   loginSchema,
+  MAX_PROFILES,
   sendChatSchema,
   settingsPatchSchema,
   tiktokConnectSchema,
@@ -514,7 +515,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const { tiktok } = rooms.main;
       const username = parse(tiktokConnectSchema, req.body).username.replace(/^@/, "");
       const profiles = rooms.settings.tiktokProfiles ?? [];
-      if (!profiles.some((p) => p.toLowerCase() === username.toLowerCase())) await rooms.updateSettings({ tiktokProfiles: [...profiles, username].slice(-20) });
+      if (!profiles.some((p) => p.toLowerCase() === username.toLowerCase())) await rooms.updateSettings({ tiktokProfiles: [...profiles, username].slice(-MAX_PROFILES) });
       const room = rooms.get(tiktokRoomId(username));
       if (room) return { ...room.tiktok.status(), room: room.id };
       // No live connector configured: the main room's connector follows this account instead.

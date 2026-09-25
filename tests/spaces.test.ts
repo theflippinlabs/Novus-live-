@@ -93,6 +93,33 @@ describe("Separate spaces per access key", () => {
     await ownerRuntime.shutdown();
   });
 
+  it("organizes followed accounts into groups", async () => {
+    const base = new MemoryRepository();
+    const one = await space(base, "owner");
+    const app = createApp({ config: { production: false, webDir: "x", trustProxy: false, apiRateLimitPerMinute: 1000, ingestRateLimitPerMinute: 1000 }, spaces: [one] });
+    await request(app).put("/api/settings").send({ tiktokProfiles: ["w_amanda_g", "Odwnzcte", "myiort"] }).expect(200);
+    const saved = await request(app)
+      .put("/api/settings")
+      .send({
+        tiktokGroups: [
+          { id: "agency", name: "Agence", members: ["w_amanda_g", "@Odwnzcte"] },
+          // An account sits in one group only: the first group listing it keeps it.
+          { id: "vip", name: "VIP", members: ["odwnzcte", "myiort"] },
+        ],
+      })
+      .expect(200);
+    expect(saved.body.tiktokGroups).toEqual([
+      { id: "agency", name: "Agence", members: ["w_amanda_g", "odwnzcte"] },
+      { id: "vip", name: "VIP", members: ["myiort"] },
+    ]);
+    // Unfollowing an account removes it from its group.
+    const after = await request(app).put("/api/settings").send({ tiktokProfiles: ["w_amanda_g", "myiort"] }).expect(200);
+    expect(after.body.tiktokGroups[0].members).toEqual(["w_amanda_g"]);
+    // Invalid groups are refused.
+    await request(app).put("/api/settings").send({ tiktokGroups: [{ id: "x y", name: "Bad id", members: [] }] }).expect(400);
+    await request(app).put("/api/settings").send({ tiktokGroups: [{ id: "ok", name: "", members: [] }] }).expect(400);
+  });
+
   it("keeps each space's 'Send in chat' connection separate", async () => {
     const base = new MemoryRepository();
     await base.saveSecret("euler_chat_oauth", { accessToken: "owner-token", connectedAt: 1 });

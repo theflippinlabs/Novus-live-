@@ -245,6 +245,15 @@ export interface Settings {
   tiktokUsername: string;
   /** Saved TikTok accounts the owner can switch between (without "@"). */
   tiktokProfiles: string[];
+  /** Folders to organize followed accounts; an account belongs to at most one group. */
+  tiktokGroups: TikTokGroup[];
+}
+
+export interface TikTokGroup {
+  id: string;
+  name: string;
+  /** Followed accounts in this group (lowercase, without "@"). */
+  members: string[];
 }
 
 export type SessionStatus = "idle" | "live" | "ended";
