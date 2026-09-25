@@ -81,7 +81,6 @@ export const api = {
   analytics: () => request<AnalyticsSummary>("GET", "/analytics"),
   history: () => request<{ entries: HistoryEntry[] }>("GET", "/history"),
   historyDetail: (id: string) => request<{ entry: HistoryEntry; analytics: AnalyticsSummary }>("GET", `/history/${encodeURIComponent(id)}`),
-  report: () => request<StreamReport>("GET", "/report"),
 
   settings: () => request<Settings>("GET", "/settings"),
   saveSettings: (patch: Partial<Settings>) => request<Settings>("PUT", "/settings", patch),

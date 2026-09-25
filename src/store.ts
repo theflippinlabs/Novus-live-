@@ -161,7 +161,26 @@ function withDeviceLanguage(settings: Settings): Settings {
   return { ...settings, language: device };
 }
 
+/**
+ * An installed iPhone app can stay suspended in memory for days and keep running an old
+ * version. Each (re)connection tells us which bundle the server ships: reload onto it.
+ */
+function reloadIfOutdated(build: string | undefined): void {
+  const bundles = [...document.scripts].map((s) => s.src).filter((src) => src.includes("/assets/"));
+  // Dev server (no built bundle) or already on the shipped version: nothing to do.
+  if (!build || !bundles.length || bundles.some((src) => src.includes(`/assets/${build}`))) return;
+  try {
+    // Never loop: one reload attempt per new version.
+    if (sessionStorage.getItem("novus:reloadedFor") === build) return;
+    sessionStorage.setItem("novus:reloadedFor", build);
+  } catch {
+    return;
+  }
+  location.reload();
+}
+
 function applySnapshot(s: Snapshot): void {
+  reloadIfOutdated(s.build);
   setState({
     room: s.room,
     rooms: s.rooms,

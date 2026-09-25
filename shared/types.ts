@@ -515,6 +515,8 @@ export interface Snapshot {
   demo: DemoStatus;
   tiktok: TikTokIntegrationStatus;
   serverTime: number;
+  /** Script bundle the server currently ships; an app running an older one reloads itself. */
+  build?: string;
 }
 
 /** A batched realtime update pushed to clients (one per flush interval). */

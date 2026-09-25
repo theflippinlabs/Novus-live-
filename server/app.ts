@@ -73,7 +73,15 @@ const mainOnly = (room: Room): Room => {
 };
 
 export function createApp({ config, rooms }: AppDeps) {
-  const snapshotOf = (room: Room) => ({ ...room.runtime.snapshot(), room: room.id, rooms: rooms.summaries() });
+  // The hashed app bundle currently served (e.g. "index-0YX36Sc8.js"): lets installed apps notice a new version.
+  const build = (() => {
+    try {
+      return /\/assets\/(index-[\w-]+\.js)/.exec(readFileSync(join(resolve(config.webDir), "index.html"), "utf8"))?.[1];
+    } catch {
+      return undefined;
+    }
+  })();
+  const snapshotOf = (room: Room) => ({ ...room.runtime.snapshot(), room: room.id, rooms: rooms.summaries(), build });
   const { runtime, tiktok } = rooms.main;
   const history = new HistoryService(runtime.repository, rooms);
   const timeZone = config.reportTimeZone ?? "Europe/Paris";
@@ -103,7 +111,7 @@ export function createApp({ config, rooms }: AppDeps) {
   api.use(express.json({ limit: "64kb", strict: true }));
 
   // ---------------------------------------------------------------- public
-  api.get("/health", h(() => ({ ok: true, session: runtime.session?.status ?? "idle", ai: runtime.aiQueue.status().state })));
+  api.get("/health", h(() => ({ ok: true, build, session: runtime.session?.status ?? "idle", ai: runtime.aiQueue.status().state })));
 
   api.get("/auth/status", h((req) => ({ required: Boolean(config.accessToken), authenticated: isAuthenticated(req, config.accessToken) })));
 
