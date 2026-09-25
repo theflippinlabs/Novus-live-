@@ -15,7 +15,8 @@ export interface HistoryDetail {
   analytics: AnalyticsSummary;
 }
 
-const CHAT_EXPORT_LIMIT = 20_000;
+/** Upper bound for one LIVE's chat in an export (far above a normal LIVE). */
+const CHAT_EXPORT_LIMIT = 100_000;
 
 export class HistoryService {
   constructor(
@@ -97,4 +98,28 @@ export function chatCsv(lines: ChatLine[], timeZone: string, lang: "en" | "fr" =
   const rows = [header.join(sep)];
   for (const l of lines) rows.push([q(fmt.format(l.t)), q(l.username), q(l.text), word(l.severity, lang), String(l.riskScore)].join(sep));
   return "\uFEFF" + rows.join("\r\n") + "\r\n";
+}
+
+/**
+ * The whole conversation as plain text (UTF-8: emoji and every script kept), one message
+ * per line in order. Flagged messages are marked so they stand out when reading.
+ */
+export function chatTxt(entry: HistoryEntry, lines: ChatLine[], timeZone: string, lang: "en" | "fr" = "en"): string {
+  const locale = lang === "fr" ? "fr-FR" : "en-GB";
+  const date = new Intl.DateTimeFormat(locale, { timeZone, dateStyle: "full", timeStyle: "short" });
+  const clock = new Intl.DateTimeFormat(locale, { timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const chatters = new Set(lines.map((l) => l.username.toLowerCase())).size;
+  const fr = lang === "fr";
+  const head = [
+    `NOVUS LIVE — ${fr ? "Conversation" : "Chat transcript"} — ${entry.title}`,
+    `${fr ? "Début" : "Start"} : ${date.format(entry.startedAt)}${entry.endedAt ? `  ·  ${fr ? "Fin" : "End"} : ${date.format(entry.endedAt)}` : ""}`,
+    fr ? `${lines.length} messages de ${chatters} participants` : `${lines.length} messages from ${chatters} chatters`,
+    fr ? "[!] = message signalé (avertissement)   [!!] = message critique" : "[!] = flagged message (warning)   [!!] = critical message",
+    "",
+  ];
+  const body = lines.map((l) => {
+    const mark = l.severity === "critical" ? "[!!] " : l.severity === "warning" ? "[!] " : "";
+    return `${clock.format(l.t)}  ${mark}@${l.username}: ${l.text.replace(/[\r\n]+/g, " ")}`;
+  });
+  return "\uFEFF" + head.concat(body).join("\r\n") + "\r\n";
 }

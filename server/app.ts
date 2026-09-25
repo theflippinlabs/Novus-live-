@@ -19,7 +19,7 @@ import type { ActionType, DemoSpeed, LiveEvent, Settings, ViewerFlag } from "../
 import type { Config } from "./config";
 import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
 import { ChatSendError, EulerChatSender } from "./chat/EulerChat";
-import { chatCsv, HistoryService } from "./history/History";
+import { chatCsv, chatTxt, HistoryService } from "./history/History";
 import { buildReportPdf } from "./reports/pdf";
 import { OWNER_TENANT } from "./persistence/Repository";
 import { accessKeys, AUTH_COOKIE, authKey, isAuthenticated, matchKey, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
@@ -445,6 +445,42 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       res.setHeader("Content-Disposition", `attachment; filename="${fileName(detail.entry.title, detail.entry.startedAt, "csv")}"`);
       res.setHeader("Cache-Control", "no-store");
       res.send(csv);
+    }),
+  );
+  // The whole conversation of a LIVE: plain text (keeps emoji) or PDF.
+  api.get(
+    "/history/:id/chat.txt",
+    h(async (req, res) => {
+      const id = param(req, "id");
+      const detail = await sp(req).history.detail(id);
+      if (!detail) throw new HttpError(404, "session_not_found");
+      const txt = chatTxt(detail.entry, await sp(req).history.chat(id), timeZone, langOf(req));
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName(`${detail.entry.title}-chat`, detail.entry.startedAt, "txt")}"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send(txt);
+    }),
+  );
+  api.get(
+    "/history/:id/chat.pdf",
+    rateLimit("pdf-chat", 20),
+    h(async (req, res) => {
+      const id = param(req, "id");
+      const detail = await sp(req).history.detail(id);
+      if (!detail) throw new HttpError(404, "session_not_found");
+      const pdf = await buildReportPdf({
+        entry: detail.entry,
+        analytics: detail.analytics,
+        chat: await sp(req).history.chat(id),
+        lang: langOf(req),
+        timeZone,
+        logo: reportLogo(),
+        kind: "transcript",
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName(`${detail.entry.title}-chat`, detail.entry.startedAt, "pdf")}"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send(pdf);
     }),
   );
   api.get(

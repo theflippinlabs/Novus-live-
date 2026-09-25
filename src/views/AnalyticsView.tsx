@@ -27,6 +27,10 @@ const TX = {
     export: "Export",
     pdf: "PDF report",
     csv: "Messages (CSV)",
+    chat: "Conversation",
+    chatPdf: "PDF",
+    chatTxt: "Text (emoji)",
+    chatHint: "The whole chat of this LIVE, every message in order.",
     preparing: "Preparing…",
     ready: "Ready — tap to save",
     noHistory: "No LIVE recorded yet. Every LIVE Novus follows (and every demo) is saved here automatically.",
@@ -58,6 +62,10 @@ const TX = {
     export: "Exporter",
     pdf: "Rapport PDF",
     csv: "Messages (CSV)",
+    chat: "Conversation",
+    chatPdf: "PDF",
+    chatTxt: "Texte (emojis)",
+    chatHint: "Tout le chat de ce LIVE, chaque message dans l'ordre.",
     preparing: "Préparation…",
     ready: "Prêt — touche pour enregistrer",
     noHistory: "Aucun LIVE enregistré pour l'instant. Chaque LIVE suivi par Novus (et chaque démo) est sauvegardé ici automatiquement.",
@@ -90,18 +98,21 @@ function Kpi({ v, l }: { v: string | number; l: string }) {
 }
 
 /** PDF / CSV export. Keeps the file when the phone asks for a fresh tap before sharing. */
+const EXPORTS = { pdf: "report.pdf", csv: "messages.csv", chatPdf: "chat.pdf", chatTxt: "chat.txt" } as const;
+type Kind = keyof typeof EXPORTS;
+
 function ExportCard({ sessionId }: { sessionId: string }) {
   const lang = useLang();
   const tx = TX[lang];
-  const [busy, setBusy] = useState<"pdf" | "csv" | null>(null);
+  const [busy, setBusy] = useState<Kind | null>(null);
   const [ready, setReady] = useState<File | null>(null);
 
-  const run = async (kind: "pdf" | "csv") => {
+  const run = async (kind: Kind) => {
     setBusy(kind);
     setReady(null);
     try {
-      const path = `/history/${encodeURIComponent(sessionId)}/${kind === "pdf" ? "report.pdf" : "messages.csv"}?lang=${lang}`;
-      const file = await fetchExport(path, `novus-live.${kind}`);
+      const path = `/history/${encodeURIComponent(sessionId)}/${EXPORTS[kind]}?lang=${lang}`;
+      const file = await fetchExport(path, `novus-live-${EXPORTS[kind]}`);
       try {
         await saveFile(file);
       } catch {
@@ -125,6 +136,20 @@ function ExportCard({ sessionId }: { sessionId: string }) {
         </button>
         <button className="btn" onClick={() => run("csv")} disabled={busy !== null}>
           {busy === "csv" ? tx.preparing : `⤓ ${tx.csv}`}
+        </button>
+      </div>
+      <div className="card-title" style={{ marginTop: 14 }}>
+        {tx.chat}
+      </div>
+      <div className="small muted" style={{ marginBottom: 8 }}>
+        {tx.chatHint}
+      </div>
+      <div className="grid-2">
+        <button className="btn gold" onClick={() => run("chatPdf")} disabled={busy !== null}>
+          {busy === "chatPdf" ? tx.preparing : `⤓ ${tx.chatPdf}`}
+        </button>
+        <button className="btn" onClick={() => run("chatTxt")} disabled={busy !== null}>
+          {busy === "chatTxt" ? tx.preparing : `⤓ ${tx.chatTxt}`}
         </button>
       </div>
       {ready ? (

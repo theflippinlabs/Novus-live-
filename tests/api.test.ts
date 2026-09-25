@@ -225,8 +225,25 @@ describe("HTTP API", () => {
     expect(csv.text).toContain("coucou Amanda ❤️ trop belle la déco");
     expect(csv.text).toContain(`"'=HYPERLINK(""x"")"`);
 
+    // The whole conversation: text keeps emoji and marks flagged messages; PDF has every message.
+    const txt = await request(app).get(`/api/history/${sessionId}/chat.txt?lang=fr`).expect(200);
+    expect(txt.headers["content-type"]).toMatch(/text\/plain; charset=utf-8/);
+    expect(txt.headers["content-disposition"]).toMatch(/novus-live-amanda-LIVE-chat-\d{4}-\d{2}-\d{2}\.txt/);
+    expect(txt.text).toContain("3 messages de 3 participants");
+    expect(txt.text).toContain("@fan: coucou Amanda ❤️ trop belle la déco");
+    expect(txt.text).toMatch(/\[!!\] @shadow: give me your address/);
+    expect(txt.text.indexOf("@fan:")).toBeLessThan(txt.text.indexOf("@shadow:"));
+    const chatPdf = await request(app).get(`/api/history/${sessionId}/chat.pdf`).buffer(true).parse((res, cb) => {
+      const parts: Buffer[] = [];
+      res.on("data", (c: Buffer) => parts.push(c));
+      res.on("end", () => cb(null, Buffer.concat(parts)));
+    }).expect(200);
+    expect(chatPdf.headers["content-disposition"]).toMatch(/-chat-\d{4}-\d{2}-\d{2}\.pdf/);
+    expect((chatPdf.body as Buffer).subarray(0, 5).toString()).toBe("%PDF-");
+
     await request(app).get("/api/history/ses_unknown").expect(404);
     await request(app).get("/api/history/ses_unknown/report.pdf").expect(404);
+    await request(app).get("/api/history/ses_unknown/chat.txt").expect(404);
     await runtime.shutdown();
   });
 

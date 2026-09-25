@@ -59,6 +59,9 @@ const T = {
     incidents: "Most serious incidents",
     log: "Moderation log",
     transcript: "Appendix — chat transcript",
+    conversationTitle: "LIVE chat transcript",
+    conversation: "Conversation",
+    transcriptSummary: (messages: string, chatters: string) => `${messages} messages from ${chatters} chatters, in order. Flagged messages are in orange (warning) or red (critical). Emoji the PDF font cannot print are left out — the .txt file keeps them.`,
     transcriptNote: (shown: number, total: number) => (shown < total ? `${shown} of ${total} messages (most recent).` : `${total} messages.`),
     none: "—",
     seen: (n: number) => `Individually seen viewers: ${n} (TikTok only reports viewers who chat, gift, follow, or part of the joins).`,
@@ -106,6 +109,9 @@ const T = {
     incidents: "Incidents les plus graves",
     log: "Journal de modération",
     transcript: "Annexe — transcription du chat",
+    conversationTitle: "Transcription du chat du LIVE",
+    conversation: "Conversation",
+    transcriptSummary: (messages: string, chatters: string) => `${messages} messages de ${chatters} participants, dans l'ordre. Les messages signalés sont en orange (avertissement) ou en rouge (critique). Les emojis que la police du PDF ne peut pas imprimer sont omis — le fichier .txt les garde.`,
     transcriptNote: (shown: number, total: number) => (shown < total ? `${shown} messages sur ${total} (les plus récents).` : `${total} messages.`),
     none: "—",
     seen: (n: number) => `Spectateurs vus individuellement : ${n} (TikTok ne signale que ceux qui écrivent, offrent, suivent, ou une partie des arrivées).`,
@@ -133,10 +139,12 @@ export interface PdfInput {
   lang: Lang;
   timeZone: string;
   logo?: Buffer;
+  /** "report" (default): full LIVE report. "transcript": the whole chat conversation only. */
+  kind?: "report" | "transcript";
 }
 
 export function buildReportPdf(input: PdfInput): Promise<Buffer> {
-  const { entry, analytics: a, chat, lang, timeZone, logo } = input;
+  const { entry, analytics: a, chat, lang, timeZone, logo, kind = "report" } = input;
   const t = T[lang];
   const locale = lang === "fr" ? "fr-FR" : "en-GB";
   const dateFmt = new Intl.DateTimeFormat(locale, { timeZone, dateStyle: "full", timeStyle: "short" });
@@ -157,7 +165,7 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
     size: "A4",
     margins: { top: 48, bottom: 56, left: 44, right: 44 },
     bufferPages: true,
-    info: { Title: `NOVUS LIVE — ${pdfText(tr(entry.title, lang))}`, Author: "NOVUS LIVE", Subject: t.title },
+    info: { Title: `NOVUS LIVE — ${pdfText(tr(entry.title, lang))}`, Author: "NOVUS LIVE", Subject: kind === "report" ? t.title : t.conversationTitle },
   });
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
@@ -233,7 +241,7 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
   }
   doc.font("Helvetica-Bold").fontSize(24).fillColor("#e0b877").text("NOVUS", textX, 30, { characterSpacing: 5, lineBreak: false });
   doc.font("Helvetica").fontSize(12).fillColor("#e8dcc6").text("LIVE", textX + 132, 40, { characterSpacing: 6, lineBreak: false });
-  doc.font("Helvetica").fontSize(11).fillColor("#b2aaa0").text(t.title, textX, 64, { lineBreak: false });
+  doc.font("Helvetica").fontSize(11).fillColor("#b2aaa0").text(kind === "report" ? t.title : t.conversationTitle, textX, 64, { lineBreak: false });
   doc.font("Helvetica-Bold").fontSize(13).fillColor("#f1ece4").text(pdfText(tr(entry.title, lang)), textX, 81, { width: width - (textX - left), lineBreak: false, ellipsis: true });
 
   doc.y = 136;
@@ -244,176 +252,183 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
   const endTxt = entry.endedAt ? fmtDate.format(entry.endedAt) : t.none;
   para(`${t.start} : ${fmtDate.format(entry.startedAt)}    ·    ${t.end} : ${endTxt}    ·    ${t.duration} : ${dur(a.durationMs || entry.durationMs)}`, { color: INK });
 
-  // ---------------------------------------------------------------- KPI grid
-  heading(t.overview);
-  const kpis: [string, string][] = [
-    [t.messages, n(a.totals.messages)],
-    [t.chatters, n(a.totals.uniqueChatters)],
-    [t.peakViewers, a.audience ? n(a.audience.peakViewers) : t.none],
-    [t.avgViewers, a.audience?.avgViewers != null ? n(a.audience.avgViewers) : t.none],
-    [t.gifts, n(a.gifts?.total ?? a.totals.gifts)],
-    [t.diamonds, a.gifts ? n(a.gifts.diamonds) : t.none],
-    [t.donors, a.gifts ? n(a.gifts.senders) : t.none],
-    [t.follows, n(a.audience?.follows ?? a.totals.follows)],
-    [t.joins, a.audience ? n(a.audience.joins) : t.none],
-    [t.alerts, `${n(a.totals.alerts)}  (${a.totals.critical} ${t.critical})`],
-    [t.actions, `${n(a.totals.actions)}`],
-    [t.response, a.avgResponseTimeMs !== null ? `${(a.avgResponseTimeMs / 1000).toFixed(1)} s` : t.none],
-  ];
-  const colsN = 3;
-  const boxW = (width - (colsN - 1) * 8) / colsN;
-  const boxH = 46;
-  const gridTop = doc.y;
-  kpis.forEach(([label, value], i) => {
-    const x = left + (i % colsN) * (boxW + 8);
-    const y = gridTop + Math.floor(i / colsN) * (boxH + 8);
-    doc.roundedRect(x, y, boxW, boxH, 6).lineWidth(0.7).strokeColor(LINE).stroke();
-    doc.font("Helvetica-Bold").fontSize(15).fillColor(INK).text(value, x + 10, y + 8, { width: boxW - 20, lineBreak: false, ellipsis: true });
-    doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(label.toUpperCase(), x + 10, y + 29, { width: boxW - 20, lineBreak: false, characterSpacing: 0.5 });
-  });
-  doc.y = gridTop + Math.ceil(kpis.length / colsN) * (boxH + 8);
-  doc.x = left;
-  if (a.audience) para(t.seen(a.audience.seenViewers), { size: 8.5 });
-
-  // ---------------------------------------------------------------- activity chart
-  const buckets = a.buckets ?? [];
-  if (buckets.length > 1) {
-    heading(t.activity);
-    ensure(170);
-    const chartTop = doc.y + 4;
-    const chartH = 120;
-    const maxMsgs = Math.max(1, ...buckets.map((b) => b.messages));
-    const maxViewers = Math.max(1, ...buckets.map((b) => b.viewers ?? 0));
-    const step = width / buckets.length;
-    doc.moveTo(left, chartTop + chartH).lineTo(left + width, chartTop + chartH).lineWidth(0.6).strokeColor(LINE).stroke();
-    buckets.forEach((b, i) => {
-      const h = (b.messages / maxMsgs) * chartH;
-      if (h > 0) doc.rect(left + i * step + step * 0.12, chartTop + chartH - h, Math.max(0.6, step * 0.76), h).fill(GOLD);
+  if (kind === "report") {
+    // ---------------------------------------------------------------- KPI grid
+    heading(t.overview);
+    const kpis: [string, string][] = [
+      [t.messages, n(a.totals.messages)],
+      [t.chatters, n(a.totals.uniqueChatters)],
+      [t.peakViewers, a.audience ? n(a.audience.peakViewers) : t.none],
+      [t.avgViewers, a.audience?.avgViewers != null ? n(a.audience.avgViewers) : t.none],
+      [t.gifts, n(a.gifts?.total ?? a.totals.gifts)],
+      [t.diamonds, a.gifts ? n(a.gifts.diamonds) : t.none],
+      [t.donors, a.gifts ? n(a.gifts.senders) : t.none],
+      [t.follows, n(a.audience?.follows ?? a.totals.follows)],
+      [t.joins, a.audience ? n(a.audience.joins) : t.none],
+      [t.alerts, `${n(a.totals.alerts)}  (${a.totals.critical} ${t.critical})`],
+      [t.actions, `${n(a.totals.actions)}`],
+      [t.response, a.avgResponseTimeMs !== null ? `${(a.avgResponseTimeMs / 1000).toFixed(1)} s` : t.none],
+    ];
+    const colsN = 3;
+    const boxW = (width - (colsN - 1) * 8) / colsN;
+    const boxH = 46;
+    const gridTop = doc.y;
+    kpis.forEach(([label, value], i) => {
+      const x = left + (i % colsN) * (boxW + 8);
+      const y = gridTop + Math.floor(i / colsN) * (boxH + 8);
+      doc.roundedRect(x, y, boxW, boxH, 6).lineWidth(0.7).strokeColor(LINE).stroke();
+      doc.font("Helvetica-Bold").fontSize(15).fillColor(INK).text(value, x + 10, y + 8, { width: boxW - 20, lineBreak: false, ellipsis: true });
+      doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(label.toUpperCase(), x + 10, y + 29, { width: boxW - 20, lineBreak: false, characterSpacing: 0.5 });
     });
-    const pts = buckets.map((b, i) => [left + i * step + step / 2, chartTop + chartH - ((b.viewers ?? 0) / maxViewers) * chartH] as const).filter((_, i) => (buckets[i].viewers ?? 0) > 0);
-    if (pts.length > 1) {
-      doc.moveTo(pts[0][0], pts[0][1]);
-      for (const [x, y] of pts.slice(1)) doc.lineTo(x, y);
-      doc.lineWidth(1.4).strokeColor(INK).stroke();
-    }
-    doc.font("Helvetica").fontSize(7.5).fillColor(MUTED);
-    doc.text(fmtTime.format(buckets[0].t), left, chartTop + chartH + 4, { lineBreak: false });
-    doc.text(fmtTime.format(buckets[buckets.length - 1].t), left + width - 60, chartTop + chartH + 4, { width: 60, align: "right", lineBreak: false });
-    doc.text(`max ${maxMsgs} ${t.legendMsgs}`, left, chartTop - 10, { lineBreak: false });
-    if (pts.length > 1) doc.text(`max ${n(maxViewers)} ${t.legendViewers}`, left + width - 160, chartTop - 10, { width: 160, align: "right", lineBreak: false });
-    doc.y = chartTop + chartH + 18;
+    doc.y = gridTop + Math.ceil(kpis.length / colsN) * (boxH + 8);
     doc.x = left;
-    doc.rect(left, doc.y + 2, 8, 8).fill(GOLD);
-    doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(t.legendMsgs, left + 12, doc.y + 2, { lineBreak: false });
-    if (pts.length > 1) {
-      doc.moveTo(left + 110, doc.y + 6).lineTo(left + 124, doc.y + 6).lineWidth(1.4).strokeColor(INK).stroke();
-      doc.text(t.legendViewers, left + 128, doc.y + 2, { lineBreak: false });
-    }
-    doc.y += 16;
-    doc.x = left;
-  }
+    if (a.audience) para(t.seen(a.audience.seenViewers), { size: 8.5 });
 
-  // ---------------------------------------------------------------- gifts
-  if (a.gifts && a.gifts.total > 0) {
-    heading(t.gifts);
-    if (a.gifts.top.length) {
-      doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.topDonors);
-      doc.moveDown(0.3);
+    // ---------------------------------------------------------------- activity chart
+    const buckets = a.buckets ?? [];
+    if (buckets.length > 1) {
+      heading(t.activity);
+      ensure(170);
+      const chartTop = doc.y + 4;
+      const chartH = 120;
+      const maxMsgs = Math.max(1, ...buckets.map((b) => b.messages));
+      const maxViewers = Math.max(1, ...buckets.map((b) => b.viewers ?? 0));
+      const step = width / buckets.length;
+      doc.moveTo(left, chartTop + chartH).lineTo(left + width, chartTop + chartH).lineWidth(0.6).strokeColor(LINE).stroke();
+      buckets.forEach((b, i) => {
+        const h = (b.messages / maxMsgs) * chartH;
+        if (h > 0) doc.rect(left + i * step + step * 0.12, chartTop + chartH - h, Math.max(0.6, step * 0.76), h).fill(GOLD);
+      });
+      const pts = buckets.map((b, i) => [left + i * step + step / 2, chartTop + chartH - ((b.viewers ?? 0) / maxViewers) * chartH] as const).filter((_, i) => (buckets[i].viewers ?? 0) > 0);
+      if (pts.length > 1) {
+        doc.moveTo(pts[0][0], pts[0][1]);
+        for (const [x, y] of pts.slice(1)) doc.lineTo(x, y);
+        doc.lineWidth(1.4).strokeColor(INK).stroke();
+      }
+      doc.font("Helvetica").fontSize(7.5).fillColor(MUTED);
+      doc.text(fmtTime.format(buckets[0].t), left, chartTop + chartH + 4, { lineBreak: false });
+      doc.text(fmtTime.format(buckets[buckets.length - 1].t), left + width - 60, chartTop + chartH + 4, { width: 60, align: "right", lineBreak: false });
+      doc.text(`max ${maxMsgs} ${t.legendMsgs}`, left, chartTop - 10, { lineBreak: false });
+      if (pts.length > 1) doc.text(`max ${n(maxViewers)} ${t.legendViewers}`, left + width - 160, chartTop - 10, { width: 160, align: "right", lineBreak: false });
+      doc.y = chartTop + chartH + 18;
+      doc.x = left;
+      doc.rect(left, doc.y + 2, 8, 8).fill(GOLD);
+      doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(t.legendMsgs, left + 12, doc.y + 2, { lineBreak: false });
+      if (pts.length > 1) {
+        doc.moveTo(left + 110, doc.y + 6).lineTo(left + 124, doc.y + 6).lineWidth(1.4).strokeColor(INK).stroke();
+        doc.text(t.legendViewers, left + 128, doc.y + 2, { lineBreak: false });
+      }
+      doc.y += 16;
+      doc.x = left;
+    }
+
+    // ---------------------------------------------------------------- gifts
+    if (a.gifts && a.gifts.total > 0) {
+      heading(t.gifts);
+      if (a.gifts.top.length) {
+        doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.topDonors);
+        doc.moveDown(0.3);
+        table(
+          [
+            { label: t.rank, w: 0.08 },
+            { label: t.user, w: 0.52 },
+            { label: t.gifts, w: 0.2, align: "right" },
+            { label: t.diamonds, w: 0.2, align: "right" },
+          ],
+          a.gifts.top.map((g, i) => [String(i + 1), `@${pdfText(g.viewer.username)}`, n(g.gifts), n(g.diamonds)]),
+        );
+      }
+      if (a.gifts.byName.length) {
+        doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.giftTypes, left);
+        doc.moveDown(0.3);
+        table(
+          [
+            { label: t.gift, w: 0.6 },
+            { label: t.count, w: 0.2, align: "right" },
+            { label: t.diamonds, w: 0.2, align: "right" },
+          ],
+          a.gifts.byName.map((g) => [pdfText(g.name) || "?", n(g.count), n(g.diamonds)]),
+        );
+      }
+    }
+
+    // ---------------------------------------------------------------- participants
+    if (a.topParticipants.length) {
+      heading(t.topChatters);
       table(
         [
           { label: t.rank, w: 0.08 },
-          { label: t.user, w: 0.52 },
-          { label: t.gifts, w: 0.2, align: "right" },
-          { label: t.diamonds, w: 0.2, align: "right" },
+          { label: t.user, w: 0.56 },
+          { label: t.messages, w: 0.18, align: "right" },
+          { label: t.maxRisk, w: 0.18, align: "right" },
         ],
-        a.gifts.top.map((g, i) => [String(i + 1), `@${pdfText(g.viewer.username)}`, n(g.gifts), n(g.diamonds)]),
+        a.topParticipants.map((p, i) => [String(i + 1), `@${pdfText(p.viewer.username)}`, n(p.messages), String(p.maxRisk)]),
       );
     }
-    if (a.gifts.byName.length) {
-      doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.giftTypes, left);
-      doc.moveDown(0.3);
-      table(
-        [
-          { label: t.gift, w: 0.6 },
-          { label: t.count, w: 0.2, align: "right" },
-          { label: t.diamonds, w: 0.2, align: "right" },
-        ],
-        a.gifts.byName.map((g) => [pdfText(g.name) || "?", n(g.count), n(g.diamonds)]),
-      );
-    }
-  }
 
-  // ---------------------------------------------------------------- participants
-  if (a.topParticipants.length) {
-    heading(t.topChatters);
-    table(
-      [
-        { label: t.rank, w: 0.08 },
-        { label: t.user, w: 0.56 },
-        { label: t.messages, w: 0.18, align: "right" },
-        { label: t.maxRisk, w: 0.18, align: "right" },
-      ],
-      a.topParticipants.map((p, i) => [String(i + 1), `@${pdfText(p.viewer.username)}`, n(p.messages), String(p.maxRisk)]),
-    );
-  }
-
-  if (a.topQuestions.length || a.topTopics.length) {
-    heading(t.questions);
-    if (a.topQuestions.length) {
-      for (const q of a.topQuestions) {
-        ensure(16);
-        para(`•  ${pdfText(q.question)}  ×${q.count}`, { color: INK });
+    if (a.topQuestions.length || a.topTopics.length) {
+      heading(t.questions);
+      if (a.topQuestions.length) {
+        for (const q of a.topQuestions) {
+          ensure(16);
+          para(`•  ${pdfText(q.question)}  ×${q.count}`, { color: INK });
+        }
+      } else para(t.none);
+      if (a.topTopics.length) {
+        doc.moveDown(0.5);
+        doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.topics, left);
+        para(a.topTopics.map((tp) => `${pdfText(tr(tp.topic, lang))} (${tp.count})`).join("   ·   "), { color: INK });
       }
-    } else para(t.none);
-    if (a.topTopics.length) {
-      doc.moveDown(0.5);
-      doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.topics, left);
-      para(a.topTopics.map((tp) => `${pdfText(tr(tp.topic, lang))} (${tp.count})`).join("   ·   "), { color: INK });
     }
-  }
 
-  // ---------------------------------------------------------------- moderation
-  heading(t.moderation);
-  para(
-    `${t.alerts} : ${n(a.totals.alerts)} — ${a.totals.critical} ${t.critical}, ${a.totals.warnings} ${t.warning}.   ${t.actions} : ${n(a.totals.actions)} (${a.totals.manualActions} ${t.manual}).`,
-    { color: INK },
-  );
-  const cats = (Object.entries(a.categoryCounts) as [Category, number][]).filter(([, v]) => v > 0).sort((x, y) => y[1] - x[1]);
-  if (cats.length) {
-    doc.moveDown(0.5);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.categories, left);
-    para(cats.map(([c, v]) => `${pdfText(CATEGORY_LABELS[c]?.[lang] ?? c)} (${v})`).join("   ·   "), { color: INK });
-  }
-  if (a.incidents?.length) {
-    doc.moveDown(0.5);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.incidents, left);
-    doc.moveDown(0.2);
-    for (const inc of a.incidents) {
-      ensure(30);
-      const color = inc.severity === "critical" ? RED : inc.severity === "warning" ? ORANGE : MUTED;
-      doc.font("Helvetica-Bold").fontSize(8.5).fillColor(color).text(`${word(inc.severity, lang).toUpperCase()} ${inc.riskScore}`, left, doc.y, { continued: true });
-      doc.fillColor(INK).text(`   ${fmtTime.format(inc.t)}  @${pdfText(inc.username)}  »  ${word(inc.recommendedAction, lang).toUpperCase()} (${word(inc.status, lang)})`);
-      doc.font("Helvetica").fontSize(8.5).fillColor(MUTED).text(`“${pdfText(inc.text)}” — ${pdfText(inc.reasons.map((r) => tr(r, lang)).join(", "))}`, left + 10, doc.y, { width: width - 10 });
+    // ---------------------------------------------------------------- moderation
+    heading(t.moderation);
+    para(
+      `${t.alerts} : ${n(a.totals.alerts)} — ${a.totals.critical} ${t.critical}, ${a.totals.warnings} ${t.warning}.   ${t.actions} : ${n(a.totals.actions)} (${a.totals.manualActions} ${t.manual}).`,
+      { color: INK },
+    );
+    const cats = (Object.entries(a.categoryCounts) as [Category, number][]).filter(([, v]) => v > 0).sort((x, y) => y[1] - x[1]);
+    if (cats.length) {
+      doc.moveDown(0.5);
+      doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.categories, left);
+      para(cats.map(([c, v]) => `${pdfText(CATEGORY_LABELS[c]?.[lang] ?? c)} (${v})`).join("   ·   "), { color: INK });
+    }
+    if (a.incidents?.length) {
+      doc.moveDown(0.5);
+      doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.incidents, left);
+      doc.moveDown(0.2);
+      for (const inc of a.incidents) {
+        ensure(30);
+        const color = inc.severity === "critical" ? RED : inc.severity === "warning" ? ORANGE : MUTED;
+        doc.font("Helvetica-Bold").fontSize(8.5).fillColor(color).text(`${word(inc.severity, lang).toUpperCase()} ${inc.riskScore}`, left, doc.y, { continued: true });
+        doc.fillColor(INK).text(`   ${fmtTime.format(inc.t)}  @${pdfText(inc.username)}  »  ${word(inc.recommendedAction, lang).toUpperCase()} (${word(inc.status, lang)})`);
+        doc.font("Helvetica").fontSize(8.5).fillColor(MUTED).text(`“${pdfText(inc.text)}” — ${pdfText(inc.reasons.map((r) => tr(r, lang)).join(", "))}`, left + 10, doc.y, { width: width - 10 });
+        doc.moveDown(0.3);
+        doc.x = left;
+      }
+    }
+    if (a.moderationLog?.length) {
       doc.moveDown(0.3);
-      doc.x = left;
+      doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.log, left);
+      doc.moveDown(0.2);
+      for (const l of a.moderationLog) {
+        ensure(14);
+        para(`${fmtTime.format(l.t)}   ${word(l.action, lang).toUpperCase()}   @${pdfText(l.username)}   ${word(l.status, lang)}${l.confirmed ? ` (${t.confirmed})` : ""}`, { color: INK, size: 8.5 });
+      }
     }
-  }
-  if (a.moderationLog?.length) {
-    doc.moveDown(0.3);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.log, left);
-    doc.moveDown(0.2);
-    for (const l of a.moderationLog) {
-      ensure(14);
-      para(`${fmtTime.format(l.t)}   ${word(l.action, lang).toUpperCase()}   @${pdfText(l.username)}   ${word(l.status, lang)}${l.confirmed ? ` (${t.confirmed})` : ""}`, { color: INK, size: 8.5 });
-    }
+  } else {
+    // Conversation file: a short summary, then every message.
+    doc.moveDown(0.4);
+    para(t.transcriptSummary(n(chat.length), n(new Set(chat.map((l) => l.username.toLowerCase())).size)), { color: INK });
   }
 
   // ---------------------------------------------------------------- transcript
   if (chat.length) {
-    doc.addPage();
-    heading(t.transcript);
-    const shown = chat.slice(-MAX_TRANSCRIPT);
-    para(t.transcriptNote(shown.length, chat.length), { size: 8.5 });
+    if (kind === "report") doc.addPage();
+    heading(kind === "report" ? t.transcript : t.conversation);
+    // The report keeps the most recent messages; the conversation file has all of them.
+    const shown = kind === "report" ? chat.slice(-MAX_TRANSCRIPT) : chat;
+    if (kind === "report") para(t.transcriptNote(shown.length, chat.length), { size: 8.5 });
     doc.moveDown(0.4);
     for (const line of shown) {
       if (doc.y + 11 > bottom()) doc.addPage();
