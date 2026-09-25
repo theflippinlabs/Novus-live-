@@ -5,6 +5,7 @@ import type {
   CatchUp,
   ChatPulse,
   DemoSpeed,
+  HistoryEntry,
   LiveSessionInfo,
   ModerationAlert,
   RoomSummary,
@@ -78,6 +79,8 @@ export const api = {
   markAnswered: (id: string, answered: boolean) => request<{ ok: boolean }>("POST", `/assistant/questions/${encodeURIComponent(id)}/answered`, { answered }),
 
   analytics: () => request<AnalyticsSummary>("GET", "/analytics"),
+  history: () => request<{ entries: HistoryEntry[] }>("GET", "/history"),
+  historyDetail: (id: string) => request<{ entry: HistoryEntry; analytics: AnalyticsSummary }>("GET", `/history/${encodeURIComponent(id)}`),
   report: () => request<StreamReport>("GET", "/report"),
 
   settings: () => request<Settings>("GET", "/settings"),
@@ -88,3 +91,39 @@ export const api = {
   tiktokConnect: (username: string) => request<TikTokIntegrationStatus & { room: string }>("POST", "/integrations/tiktok/connect", { username }),
   tiktokDisconnect: () => request<TikTokIntegrationStatus>("POST", "/integrations/tiktok/disconnect"),
 };
+
+/**
+ * Download a report/export. On iPhone the share sheet is the reliable way to save a
+ * file from an installed web app ("Save to Files", AirDrop, Mail…); elsewhere a
+ * regular download is used. Returns the file when sharing needs a fresh tap.
+ */
+export async function fetchExport(path: string, fallbackName: string): Promise<File> {
+  const res = await fetch(`/api${path}`, { credentials: "same-origin", headers: { "X-Novus-Room": getState().room } });
+  if (!res.ok) throw new ApiError(res.status, `http_${res.status}`);
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
+  const blob = await res.blob();
+  return new File([blob], name, { type: blob.type || "application/octet-stream" });
+}
+
+/** Share (mobile) or download (desktop). Throws "needs_tap" when the browser wants a new user gesture. */
+export async function saveFile(file: File): Promise<void> {
+  const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+  const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (mobile && nav.canShare?.({ files: [file] })) {
+    try {
+      await nav.share({ files: [file], title: file.name });
+      return;
+    } catch (e) {
+      if ((e as DOMException)?.name === "AbortError") return;
+      if ((e as DOMException)?.name === "NotAllowedError") throw new Error("needs_tap", { cause: e });
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}

@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
+import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
 import type { PersistBatch, Repository } from "./Repository";
 
 interface FileState {
@@ -19,6 +19,8 @@ export class MemoryRepository implements Repository {
   readonly kind = "memory" as const;
   private state: FileState = { settings: null, flags: {}, reports: [], sessions: [] };
   private writing: Promise<void> = Promise.resolve();
+  /** Recent chat per session (memory mode only keeps the last few sessions). */
+  private chat = new Map<string, ChatLine[]>();
 
   constructor(private dataDir?: string) {}
 
@@ -74,16 +76,29 @@ export class MemoryRepository implements Repository {
   }
 
   async saveSession(session: LiveSessionInfo): Promise<void> {
-    this.state.sessions = [session, ...this.state.sessions.filter((s) => s.id !== session.id)].slice(0, 50);
+    const rest = this.state.sessions.filter((s) => s.id !== session.id);
+    const at = this.state.sessions.findIndex((s) => s.id === session.id);
+    // Keep the original order when a session is updated (e.g. when it ends).
+    this.state.sessions = (at >= 0 ? [...rest.slice(0, at), session, ...rest.slice(at)] : [session, ...rest]).slice(0, 200);
     await this.persist();
   }
 
-  async writeBatch(_batch: PersistBatch): Promise<void> {
-    // Live rows are kept by the runtime ring buffers; nothing to do in memory mode.
+  async writeBatch(batch: PersistBatch): Promise<void> {
+    // Live rows stay in the runtime; only a bounded chat log is kept for history exports.
+    for (const c of batch.comments) {
+      const lines = this.chat.get(c.sessionId) ?? [];
+      const line = { t: c.timestamp, username: c.viewer.username, text: c.text, severity: c.analysis.severity, riskScore: c.analysis.riskScore };
+      const i = lines.findIndex((l) => l.t === line.t && l.username === line.username && l.text === line.text);
+      if (i >= 0) lines[i] = line;
+      else lines.push(line);
+      if (lines.length > 5000) lines.splice(0, lines.length - 5000);
+      this.chat.set(c.sessionId, lines);
+    }
+    while (this.chat.size > 20) this.chat.delete(this.chat.keys().next().value as string);
   }
 
   async saveReport(report: StreamReport): Promise<void> {
-    this.state.reports = [report, ...this.state.reports.filter((r) => r.sessionId !== report.sessionId)].slice(0, 20);
+    this.state.reports = [report, ...this.state.reports.filter((r) => r.sessionId !== report.sessionId)].slice(0, 200);
     await this.persist();
   }
 
@@ -93,5 +108,22 @@ export class MemoryRepository implements Repository {
 
   async getReport(sessionId: string): Promise<StreamReport | null> {
     return this.state.reports.find((r) => r.sessionId === sessionId) ?? null;
+  }
+
+  async listSessions(limit: number): Promise<LiveSessionInfo[]> {
+    return [...this.state.sessions].sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
+  }
+
+  async getSession(sessionId: string): Promise<LiveSessionInfo | null> {
+    return this.state.sessions.find((s) => s.id === sessionId) ?? null;
+  }
+
+  async getReports(sessionIds: string[]): Promise<StreamReport[]> {
+    const ids = new Set(sessionIds);
+    return this.state.reports.filter((r) => ids.has(r.sessionId));
+  }
+
+  async getChat(sessionId: string, limit: number): Promise<ChatLine[]> {
+    return (this.chat.get(sessionId) ?? []).slice(-limit);
   }
 }

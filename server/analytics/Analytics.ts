@@ -3,6 +3,7 @@ import type { AnalyzedComment, Category, MinuteBucket } from "../../shared/types
 // Per-minute rollups for the analytics view and the post-LIVE report.
 
 interface Bucket {
+  viewers: number;
   messages: number;
   alerts: number;
   toxic: number;
@@ -23,7 +24,7 @@ export class Analytics {
     const key = Math.floor(t / 60_000) * 60_000;
     let b = this.buckets.get(key);
     if (!b) {
-      b = { messages: 0, alerts: 0, toxic: 0, riskSum: 0, sentimentSum: 0 };
+      b = { viewers: 0, messages: 0, alerts: 0, toxic: 0, riskSum: 0, sentimentSum: 0 };
       this.buckets.set(key, b);
     }
     return b;
@@ -47,6 +48,11 @@ export class Analytics {
     for (const cat of after.analysis.categories) this.categoryCounts[cat] = (this.categoryCounts[cat] ?? 0) + 1;
   }
 
+  addViewerCount(t: number, count: number): void {
+    const b = this.bucket(t);
+    b.viewers = Math.max(b.viewers, count);
+  }
+
   addAlert(t: number): void {
     this.bucket(t).alerts += 1;
   }
@@ -62,15 +68,16 @@ export class Analytics {
         b
           ? {
               t,
+              viewers: b.viewers,
               messages: b.messages,
               alerts: b.alerts,
               toxicity: b.messages ? Math.round((b.toxic / b.messages) * 1000) / 10 : 0,
               avgRisk: b.messages ? Math.round(b.riskSum / b.messages) : 0,
               sentiment: b.messages ? Math.round((b.sentimentSum / b.messages) * 100) / 100 : 0,
             }
-          : { t, messages: 0, alerts: 0, toxicity: 0, avgRisk: 0, sentiment: 0 },
+          : { t, viewers: 0, messages: 0, alerts: 0, toxicity: 0, avgRisk: 0, sentiment: 0 },
       );
     }
-    return out.slice(-240);
+    return out.slice(-360);
   }
 }

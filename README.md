@@ -198,6 +198,20 @@ The single remaining external dependency is **authorized access to your LIVE's e
 automated actions, an authorized moderation API). Details and integration points:
 **[docs/TIKTOK_INTEGRATION.md](docs/TIKTOK_INTEGRATION.md)**.
 
+## LIVE history and exports
+
+Every LIVE (followed TikTok accounts and demos) is kept in **Analytics › History**: audience
+(peak / average viewers, joins, follows), gifts (total, diamonds, top donors, by gift), chat
+activity per minute, questions, topics and moderation. A running LIVE's report is re-saved every
+minute, so a server restart keeps the stats up to that point (the LIVE is then shown as
+*interrupted*). Each LIVE exports to a **PDF report** (with the full chat transcript as an appendix)
+and a **CSV of all messages**:
+
+- `GET /api/history` · `GET /api/history/:sessionId`
+- `GET /api/history/:sessionId/report.pdf` · `GET /api/history/:sessionId/messages.csv`
+
+Monitoring runs on the server: closing the app on the phone does not stop it.
+
 ## Deployment
 
 Novus is a **stateful, long‑running Node process** (live context in memory + SSE stream). Deploy it

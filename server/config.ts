@@ -34,6 +34,8 @@ export interface Config {
   ingestRateLimitPerMinute: number;
   tiktokLiveConnector: boolean;
   eulerApiKey?: string;
+  /** Time zone used for dates in LIVE reports and exports. */
+  reportTimeZone: string;
 }
 
 export function loadConfig(): Config {
@@ -70,5 +72,16 @@ export function loadConfig(): Config {
     // Unofficial read-only TikTok LIVE connector (see docs/TIKTOK_INTEGRATION.md). On unless set to "off".
     tiktokLiveConnector: (process.env.TIKTOK_LIVE_CONNECTOR ?? "on").toLowerCase() !== "off",
     eulerApiKey: str("EULER_API_KEY"),
+    reportTimeZone: validTimeZone(str("REPORT_TIMEZONE")) ?? "Europe/Paris",
   };
+}
+
+function validTimeZone(tz?: string): string | undefined {
+  if (!tz) return undefined;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return tz;
+  } catch {
+    return undefined;
+  }
 }

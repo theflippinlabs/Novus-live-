@@ -21,6 +21,7 @@ import {
   type Settings,
   type Snapshot,
   type StreamReport,
+  type ChatLine,
   type ViewerCommentSummary,
   type ViewerFlag,
   type ViewerListItem,
@@ -70,6 +71,8 @@ const MAX_COMMENTS = 3000;
 const MAX_ALERTS = 2000;
 const ALERT_MERGE_WINDOW_MS = 10 * 60_000;
 const DEMO_MUTE_MS = 5 * 60_000;
+// How often a running LIVE's report is re-saved, so history survives a server restart.
+const REPORT_SAVE_MS = 60_000;
 
 interface ViewerState {
   viewer: ViewerRef;
@@ -117,6 +120,12 @@ export class NovusRuntime {
   private ignored = new Set<string>();
   private recentTimes: number[] = [];
   private counters = { messages: 0, gifts: 0, follows: 0, joins: 0, viewerCount: 0 };
+  /** Audience samples and gift ledger for the LIVE history / PDF report. */
+  private audience = { peak: 0, peakAt: null as number | null, sum: 0, samples: 0 };
+  private giftsBySender = new Map<string, { viewer: ViewerRef; gifts: number; diamonds: number }>();
+  private giftsByName = new Map<string, { name: string; count: number; diamonds: number }>();
+  private diamonds = 0;
+  private lastReportSave = 0;
 
   readonly context = new ViewerContextStore();
   readonly room = new RoomContext();
@@ -154,6 +163,11 @@ export class NovusRuntime {
 
   // ---------------------------------------------------------------- lifecycle
 
+  /** Storage shared by every room (used by the LIVE history). */
+  get repository(): Repository {
+    return this.deps.repo;
+  }
+
   async init(): Promise<void> {
     await this.deps.repo.init();
     const stored = await this.deps.repo.loadSettings();
@@ -181,6 +195,11 @@ export class NovusRuntime {
     this.actions = [];
     this.recentTimes = [];
     this.counters = { messages: 0, gifts: 0, follows: 0, joins: 0, viewerCount: 0 };
+    this.audience = { peak: 0, peakAt: null, sum: 0, samples: 0 };
+    this.giftsBySender.clear();
+    this.giftsByName.clear();
+    this.diamonds = 0;
+    this.lastReportSave = 0;
     this.context.clear();
     this.room.clear();
     this.insights.reset();
@@ -262,9 +281,23 @@ export class NovusRuntime {
         return this.processComment(event);
       case "viewer_count":
         this.counters.viewerCount = event.count;
+        this.analytics.addViewerCount(t, event.count);
+        this.audience.sum += event.count;
+        this.audience.samples += 1;
+        if (event.count > this.audience.peak) this.audience = { ...this.audience, peak: event.count, peakAt: t };
         break;
       case "gift": {
         this.counters.gifts += event.count;
+        const diamonds = Math.max(0, (event.value ?? 0) * event.count);
+        this.diamonds += diamonds;
+        const sender = this.giftsBySender.get(event.viewer.id) ?? { viewer: event.viewer, gifts: 0, diamonds: 0 };
+        sender.gifts += event.count;
+        sender.diamonds += diamonds;
+        this.giftsBySender.set(event.viewer.id, sender);
+        const kind = this.giftsByName.get(event.giftName) ?? { name: event.giftName, count: 0, diamonds: 0 };
+        kind.count += event.count;
+        kind.diamonds += diamonds;
+        this.giftsByName.set(event.giftName, kind);
         const v = this.touchViewer(event.viewer, t);
         v.gifts += event.count;
         this.insights.addGift(event.viewer, event.giftName, event.count, event.value, t, event.id);
@@ -971,7 +1004,43 @@ export class NovusRuntime {
       categoryCounts: { ...this.analytics.categoryCounts },
       avgResponseTimeMs: responseTimes.length ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null,
       durationMs: this.session ? end - this.session.startedAt : 0,
+      audience: {
+        peakViewers: this.audience.peak,
+        peakAt: this.audience.peakAt,
+        avgViewers: this.audience.samples ? Math.round(this.audience.sum / this.audience.samples) : null,
+        joins: stats.joins,
+        follows: stats.follows,
+        seenViewers: this.viewers.size,
+      },
+      gifts: {
+        total: stats.gifts,
+        diamonds: this.diamonds,
+        senders: this.giftsBySender.size,
+        top: [...this.giftsBySender.values()].sort((a, b) => b.diamonds - a.diamonds || b.gifts - a.gifts).slice(0, 15),
+        byName: [...this.giftsByName.values()].sort((a, b) => b.diamonds - a.diamonds || b.count - a.count).slice(0, 20),
+      },
+      incidents: this.sortedAlerts()
+        .slice(0, 20)
+        .map((a) => ({
+          t: a.createdAt,
+          username: a.viewer.username,
+          text: a.text,
+          severity: a.severity,
+          riskScore: a.riskScore,
+          reasons: a.reasons.slice(0, 4),
+          recommendedAction: a.recommendedAction,
+          status: a.status,
+        })),
+      moderationLog: this.actions
+        .filter((a) => a.adapter !== "novus-ai")
+        .slice(-60)
+        .map((a) => ({ t: a.performedAt, action: a.action, username: a.viewer.username, status: a.status, confirmed: Boolean(a.confirmedAt) })),
     };
+  }
+
+  /** Chat lines still held in memory for the running LIVE (for exports). */
+  chatLines(): ChatLine[] {
+    return this.comments.map((c) => ({ t: c.timestamp, username: c.viewer.username, text: c.text, severity: c.analysis.severity, riskScore: c.analysis.riskScore }));
   }
 
   report(): StreamReport {
@@ -1005,7 +1074,11 @@ export class NovusRuntime {
     batch.alerts = [...new Map(batch.alerts.map((a) => [a.id, a])).values()];
     batch.actions = [...new Map(batch.actions.map((a) => [a.id, a])).values()];
     const empty = !batch.events.length && !batch.comments.length && !batch.alerts.length && !batch.actions.length && !batch.viewers.length && !batch.analyses.length;
-    if (empty) return;
-    await this.deps.repo.writeBatch(batch).catch((e) => this.persistError(e));
+    if (!empty) await this.deps.repo.writeBatch(batch).catch((e) => this.persistError(e));
+    // Keep the saved report fresh while LIVE so history survives a server restart.
+    if (this.session?.status === "live" && this.now() - this.lastReportSave >= REPORT_SAVE_MS) {
+      this.lastReportSave = this.now();
+      await this.deps.repo.saveReport(this.report()).catch((e) => this.persistError(e));
+    }
   }
 }

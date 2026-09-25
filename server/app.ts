@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
@@ -17,10 +17,13 @@ import {
 import type { ActionType, DemoSpeed, LiveEvent, Settings, ViewerFlag } from "../shared/types";
 import type { Config } from "./config";
 import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
+import { chatCsv, HistoryService } from "./history/History";
+import { buildReportPdf } from "./reports/pdf";
 import { AUTH_COOKIE, isAuthenticated, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
 
 export interface AppDeps {
-  config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute">;
+  config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
+    Partial<Pick<Config, "reportTimeZone">>;
   rooms: RoomRegistry;
 }
 
@@ -72,6 +75,21 @@ const mainOnly = (room: Room): Room => {
 export function createApp({ config, rooms }: AppDeps) {
   const snapshotOf = (room: Room) => ({ ...room.runtime.snapshot(), room: room.id, rooms: rooms.summaries() });
   const { runtime, tiktok } = rooms.main;
+  const history = new HistoryService(runtime.repository, rooms);
+  const timeZone = config.reportTimeZone ?? "Europe/Paris";
+  let logo: Buffer | null | undefined;
+  const reportLogo = () => {
+    if (logo === undefined) {
+      const file = join(resolve(config.webDir), "icons", "icon-192.png");
+      logo = existsSync(file) ? readFileSync(file) : null;
+    }
+    return logo ?? undefined;
+  };
+  /** ASCII file name from a LIVE title and its start date. */
+  const fileName = (title: string, startedAt: number, ext: string) => {
+    const slug = title.normalize("NFKD").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "live";
+    return `novus-live-${slug}-${new Date(startedAt).toISOString().slice(0, 10)}.${ext}`;
+  };
   const app = express();
   app.disable("x-powered-by");
   if (config.trustProxy) app.set("trust proxy", 1);
@@ -291,6 +309,57 @@ export function createApp({ config, rooms }: AppDeps) {
   );
 
   api.get("/rooms", h(() => ({ rooms: rooms.summaries() })));
+
+  // ---------------------------------------------------------------- LIVE history & exports
+  api.get(
+    "/history",
+    h(async (req) => {
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
+      return { entries: await history.list(limit) };
+    }),
+  );
+  api.get(
+    "/history/:id",
+    h(async (req) => {
+      const detail = await history.detail(param(req, "id"));
+      if (!detail) throw new HttpError(404, "session_not_found");
+      return detail;
+    }),
+  );
+  api.get(
+    "/history/:id/messages.csv",
+    h(async (req, res) => {
+      const id = param(req, "id");
+      const detail = await history.detail(id);
+      if (!detail) throw new HttpError(404, "session_not_found");
+      const csv = chatCsv(await history.chat(id), timeZone);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName(detail.entry.title, detail.entry.startedAt, "csv")}"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send(csv);
+    }),
+  );
+  api.get(
+    "/history/:id/report.pdf",
+    rateLimit("pdf", 20),
+    h(async (req, res) => {
+      const id = param(req, "id");
+      const detail = await history.detail(id);
+      if (!detail) throw new HttpError(404, "session_not_found");
+      const pdf = await buildReportPdf({
+        entry: detail.entry,
+        analytics: detail.analytics,
+        chat: await history.chat(id),
+        lang: rooms.settings.language,
+        timeZone,
+        logo: reportLogo(),
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName(detail.entry.title, detail.entry.startedAt, "pdf")}"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send(pdf);
+    }),
+  );
 
   api.get("/integrations/tiktok", h((req) => roomOf(rooms, req).tiktok.status()));
   api.post(

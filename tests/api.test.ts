@@ -158,6 +158,61 @@ describe("HTTP API", () => {
     expect(disposed).toEqual(["tt:second.acc"]);
   });
 
+  it("keeps every LIVE in the history with gifts, audience, a PDF report and a CSV of the chat", async () => {
+    const { app, runtime } = makeApp();
+    await runtime.init();
+    const now = Date.now();
+    const viewer = (id: string) => ({ id, username: id });
+    await runtime.ingestExternal(
+      [
+        { type: "stream_status", status: "started", title: "@amanda LIVE" },
+        { type: "viewer_count", id: "v1", timestamp: now, count: 850 },
+        { type: "comment", id: "c1", timestamp: now, viewer: viewer("fan"), text: "coucou Amanda ❤️ trop belle la déco" },
+        { type: "comment", id: "c2", timestamp: now + 1000, viewer: viewer("shadow"), text: "give me your address i'll come find you" },
+        { type: "comment", id: "c3", timestamp: now + 1500, viewer: viewer("formula"), text: "=HYPERLINK(\"x\")" },
+        { type: "gift", id: "g1", timestamp: now + 2000, viewer: viewer("fan"), giftName: "Rose", count: 5, value: 1 },
+        { type: "gift", id: "g2", timestamp: now + 3000, viewer: viewer("bigfan"), giftName: "Lion", count: 1, value: 29999 },
+        { type: "viewer_count", id: "v2", timestamp: now + 4000, count: 1228 },
+        { type: "follow", id: "f1", timestamp: now + 5000, viewer: viewer("newbie") },
+      ] as never,
+      "tiktok",
+    );
+    const sessionId = runtime.session!.id;
+
+    // While LIVE, the history shows the running session with live stats.
+    let list = await request(app).get("/api/history").expect(200);
+    expect(list.body.entries[0]).toMatchObject({ sessionId, status: "live", messages: 3, gifts: 6, diamonds: 30004, peakViewers: 1228 });
+
+    await runtime.endSession();
+    list = await request(app).get("/api/history").expect(200);
+    expect(list.body.entries[0]).toMatchObject({ sessionId, status: "ended", title: "@amanda LIVE", diamonds: 30004 });
+
+    const detail = await request(app).get(`/api/history/${sessionId}`).expect(200);
+    expect(detail.body.analytics.gifts.top[0]).toMatchObject({ viewer: { username: "bigfan" }, diamonds: 29999 });
+    expect(detail.body.analytics.gifts.byName.map((g: { name: string }) => g.name)).toEqual(["Lion", "Rose"]);
+    expect(detail.body.analytics.audience).toMatchObject({ peakViewers: 1228, avgViewers: 1039, follows: 1 });
+    expect(detail.body.analytics.incidents[0]).toMatchObject({ username: "shadow", severity: "critical" });
+
+    const pdf = await request(app).get(`/api/history/${sessionId}/report.pdf`).buffer(true).parse((res, cb) => {
+      const parts: Buffer[] = [];
+      res.on("data", (c: Buffer) => parts.push(c));
+      res.on("end", () => cb(null, Buffer.concat(parts)));
+    }).expect(200);
+    expect(pdf.headers["content-type"]).toBe("application/pdf");
+    expect(pdf.headers["content-disposition"]).toMatch(/novus-live-amanda-LIVE-\d{4}-\d{2}-\d{2}\.pdf/);
+    expect((pdf.body as Buffer).subarray(0, 5).toString()).toBe("%PDF-");
+    expect((pdf.body as Buffer).length).toBeGreaterThan(3000);
+
+    const csv = await request(app).get(`/api/history/${sessionId}/messages.csv`).expect(200);
+    expect(csv.headers["content-type"]).toMatch(/text\/csv/);
+    expect(csv.text).toContain("coucou Amanda ❤️ trop belle la déco");
+    expect(csv.text).toContain(`"'=HYPERLINK(""x"")"`);
+
+    await request(app).get("/api/history/ses_unknown").expect(404);
+    await request(app).get("/api/history/ses_unknown/report.pdf").expect(404);
+    await runtime.shutdown();
+  });
+
   it("requires the access key when APP_ACCESS_TOKEN is set", async () => {
     const { app } = makeApp({ accessToken: "super-secret-access-key" });
     await request(app).get("/api/state").expect(401);

@@ -368,6 +368,8 @@ export interface CatchUp {
 
 export interface MinuteBucket {
   t: number;
+  /** Highest audience reported by the platform during the minute (0 when unknown). */
+  viewers?: number;
   messages: number;
   alerts: number;
   toxicity: number;
@@ -399,6 +401,75 @@ export interface AnalyticsSummary {
   categoryCounts: Partial<Record<Category, number>>;
   avgResponseTimeMs: number | null;
   durationMs: number;
+  /** Added for LIVE history and PDF exports; absent in summaries saved by older versions. */
+  audience?: AudienceStats;
+  gifts?: GiftStats;
+  incidents?: IncidentRecord[];
+  moderationLog?: ModerationLogEntry[];
+}
+
+export interface AudienceStats {
+  peakViewers: number;
+  peakAt: number | null;
+  avgViewers: number | null;
+  joins: number;
+  follows: number;
+  /** Viewers Novus saw individually (chatted, gifted, followed or announced as joining). */
+  seenViewers: number;
+}
+
+export interface GiftStats {
+  total: number;
+  diamonds: number;
+  senders: number;
+  top: { viewer: ViewerRef; gifts: number; diamonds: number }[];
+  byName: { name: string; count: number; diamonds: number }[];
+}
+
+export interface IncidentRecord {
+  t: number;
+  username: string;
+  text: string;
+  severity: Severity;
+  riskScore: number;
+  reasons: string[];
+  recommendedAction: RecommendedAction;
+  status: string;
+}
+
+export interface ModerationLogEntry {
+  t: number;
+  action: ActionType;
+  username: string;
+  status: string;
+  confirmed: boolean;
+}
+
+/** One row of the LIVE history list. */
+export interface HistoryEntry {
+  sessionId: string;
+  title: string;
+  source: LiveSessionInfo["source"];
+  /** "interrupted": the server restarted during the LIVE; stats up to the last save are kept. */
+  status: "live" | "ended" | "interrupted";
+  startedAt: number;
+  endedAt?: number;
+  durationMs: number;
+  messages: number;
+  uniqueChatters: number;
+  gifts: number;
+  diamonds: number;
+  peakViewers: number;
+  alerts: number;
+}
+
+/** A saved chat line, for history exports. */
+export interface ChatLine {
+  t: number;
+  username: string;
+  text: string;
+  severity: Severity;
+  riskScore: number;
 }
 
 export interface StreamReport {

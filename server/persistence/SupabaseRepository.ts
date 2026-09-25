@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
+import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
 import type { PersistBatch, Repository } from "./Repository";
 
 // Supabase/Postgres store. Uses the service-role key, which is only ever read
@@ -232,4 +232,65 @@ export class SupabaseRepository implements Repository {
     const r = data?.[0];
     return r ? { sessionId: r.session_id, generatedAt: Date.parse(r.generated_at), analytics: r.analytics, markdown: r.markdown } : null;
   }
+
+  async listSessions(limit: number): Promise<LiveSessionInfo[]> {
+    const data = await this.check<SessionRow[]>(this.db.from("live_sessions").select("*").order("started_at", { ascending: false }).limit(limit), "listSessions");
+    return (data ?? []).map(toSession);
+  }
+
+  async getSession(sessionId: string): Promise<LiveSessionInfo | null> {
+    const data = await this.check<SessionRow[]>(this.db.from("live_sessions").select("*").eq("id", sessionId).limit(1), "getSession");
+    return data?.[0] ? toSession(data[0]) : null;
+  }
+
+  async getReports(sessionIds: string[]): Promise<StreamReport[]> {
+    if (!sessionIds.length) return [];
+    const data = await this.check<{ session_id: string; generated_at: string; analytics: StreamReport["analytics"]; markdown: string }[]>(
+      this.db.from("stream_summaries").select("*").in("session_id", sessionIds),
+      "getReports",
+    );
+    return (data ?? []).map((r) => ({ sessionId: r.session_id, generatedAt: Date.parse(r.generated_at), analytics: r.analytics, markdown: r.markdown }));
+  }
+
+  async getChat(sessionId: string, limit: number): Promise<ChatLine[]> {
+    const out: ChatLine[] = [];
+    // PostgREST caps a response at 1000 rows: page through the session's chat.
+    for (let from = 0; out.length < limit; from += 1000) {
+      const data = await this.check<{ username: string; text: string; severity: ChatLine["severity"]; risk_score: number; occurred_at: string }[]>(
+        this.db
+          .from("live_comments")
+          .select("username, text, severity, risk_score, occurred_at")
+          .eq("session_id", sessionId)
+          .order("occurred_at", { ascending: true })
+          .range(from, Math.min(from + 999, limit - 1)),
+        "getChat",
+      );
+      const rows = data ?? [];
+      for (const r of rows) out.push({ t: Date.parse(r.occurred_at), username: r.username, text: r.text, severity: r.severity, riskScore: r.risk_score });
+      if (rows.length < 1000) break;
+    }
+    return out;
+  }
+}
+
+interface SessionRow {
+  id: string;
+  platform: LiveSessionInfo["platform"];
+  source: LiveSessionInfo["source"];
+  title: string;
+  status: LiveSessionInfo["status"];
+  started_at: string;
+  ended_at: string | null;
+}
+
+function toSession(r: SessionRow): LiveSessionInfo {
+  return {
+    id: r.id,
+    platform: r.platform,
+    source: r.source,
+    title: r.title,
+    status: r.status,
+    startedAt: Date.parse(r.started_at),
+    ...(r.ended_at ? { endedAt: Date.parse(r.ended_at) } : {}),
+  };
 }

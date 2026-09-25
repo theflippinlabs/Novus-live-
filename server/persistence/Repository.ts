@@ -1,5 +1,6 @@
 import type {
   ActionRecord,
+  ChatLine,
   AnalyzedComment,
   LiveEvent,
   LiveSessionInfo,
@@ -49,6 +50,12 @@ export interface Repository {
   saveReport(report: StreamReport): Promise<void>;
   listReports(limit: number): Promise<{ sessionId: string; generatedAt: number }[]>;
   getReport(sessionId: string): Promise<StreamReport | null>;
+  /** LIVE history: most recent sessions first. */
+  listSessions(limit: number): Promise<LiveSessionInfo[]>;
+  getSession(sessionId: string): Promise<LiveSessionInfo | null>;
+  getReports(sessionIds: string[]): Promise<StreamReport[]>;
+  /** Saved chat of a session, oldest first. */
+  getChat(sessionId: string, limit: number): Promise<ChatLine[]>;
 }
 
 export function emptyBatch(): PersistBatch {
