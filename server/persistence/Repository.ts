@@ -45,8 +45,15 @@ export interface SessionFilter {
   withoutAccount?: boolean;
 }
 
+/** The space of the app owner (APP_ACCESS_TOKEN); data written before spaces existed belongs to it. */
+export const OWNER_TENANT = "owner";
+
 export interface Repository {
   readonly kind: "memory" | "supabase";
+  /** Whose space this repository reads and writes (one per access key). */
+  readonly tenant: string;
+  /** The same store, restricted to another space: settings, flags, secrets and LIVE history are separate. */
+  scoped(tenant: string): Repository;
   init(): Promise<void>;
   loadSettings(): Promise<Settings | null>;
   saveSettings(settings: Settings): Promise<void>;
@@ -55,7 +62,6 @@ export interface Repository {
   saveSession(session: LiveSessionInfo): Promise<void>;
   writeBatch(batch: PersistBatch): Promise<void>;
   saveReport(report: StreamReport): Promise<void>;
-  listReports(limit: number): Promise<{ sessionId: string; generatedAt: number }[]>;
   getReport(sessionId: string): Promise<StreamReport | null>;
   /** LIVE history: most recent sessions first. */
   listSessions(limit: number, filter?: SessionFilter): Promise<LiveSessionInfo[]>;

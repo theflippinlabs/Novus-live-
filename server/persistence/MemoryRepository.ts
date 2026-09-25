@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
-import type { PersistBatch, Repository, SessionFilter } from "./Repository";
+import { OWNER_TENANT, type PersistBatch, type Repository, type SessionFilter } from "./Repository";
 
 interface FileState {
   settings: Settings | null;
@@ -23,10 +23,19 @@ export class MemoryRepository implements Repository {
   /** Recent chat per session (memory mode only keeps the last few sessions). */
   private chat = new Map<string, ChatLine[]>();
 
-  constructor(private dataDir?: string) {}
+  constructor(
+    private dataDir?: string,
+    readonly tenant: string = OWNER_TENANT,
+  ) {}
+
+  /** Each space has its own state (and its own file when DATA_DIR is set). */
+  scoped(tenant: string): Repository {
+    return tenant === this.tenant ? this : new MemoryRepository(this.dataDir, tenant);
+  }
 
   private get file(): string | null {
-    return this.dataDir ? join(this.dataDir, "novus-state.json") : null;
+    if (!this.dataDir) return null;
+    return join(this.dataDir, this.tenant === OWNER_TENANT ? "novus-state.json" : `novus-state-${this.tenant}.json`);
   }
 
   private loaded = false;
@@ -113,10 +122,6 @@ export class MemoryRepository implements Repository {
   async saveReport(report: StreamReport): Promise<void> {
     this.state.reports = [report, ...this.state.reports.filter((r) => r.sessionId !== report.sessionId)].slice(0, 200);
     await this.persist();
-  }
-
-  async listReports(limit: number) {
-    return this.state.reports.slice(0, limit).map((r) => ({ sessionId: r.sessionId, generatedAt: r.generatedAt }));
   }
 
   async getReport(sessionId: string): Promise<StreamReport | null> {

@@ -21,14 +21,25 @@ import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Ro
 import { ChatSendError, EulerChatSender } from "./chat/EulerChat";
 import { chatCsv, HistoryService } from "./history/History";
 import { buildReportPdf } from "./reports/pdf";
-import { accessKeys, AUTH_COOKIE, isAuthenticated, matchKey, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
+import { OWNER_TENANT } from "./persistence/Repository";
+import { accessKeys, AUTH_COOKIE, authKey, isAuthenticated, matchKey, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
     Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens">>;
-  rooms: RoomRegistry;
+  /** Single-space mode (tests, open access): every key opens these rooms. */
+  rooms?: RoomRegistry;
   /** "Send in chat" through Euler Stream OAuth (optional). */
   chat?: EulerChatSender;
+  /** One separate space per access key: the owner's first. Overrides `rooms`/`chat`. */
+  spaces?: Space[];
+}
+
+/** One person's Novus: their own followed accounts, settings, history and "Send in chat" account. */
+export interface Space {
+  id: string;
+  rooms: RoomRegistry;
+  chat: EulerChatSender;
 }
 
 class HttpError extends Error {
@@ -76,7 +87,7 @@ const mainOnly = (room: Room): Room => {
   return room;
 };
 
-export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
+export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList }: AppDeps) {
   // The hashed app bundle currently served (e.g. "index-0YX36Sc8.js"): lets installed apps notice a new version.
   const build = (() => {
     try {
@@ -85,10 +96,23 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
       return undefined;
     }
   })();
-  const snapshotOf = (room: Room) => ({ ...room.runtime.snapshot(), room: room.id, rooms: rooms.summaries(), build });
-  const { runtime, tiktok } = rooms.main;
-  const history = new HistoryService(runtime.repository, rooms);
-  const chat = chatSender ?? new EulerChatSender({}, runtime.repository);
+  const spaces: Space[] =
+    spaceList ??
+    (singleRooms ? [{ id: OWNER_TENANT, rooms: singleRooms, chat: singleChat ?? new EulerChatSender({}, singleRooms.main.runtime.repository) }] : []);
+  if (!spaces.length) throw new Error("createApp needs rooms or spaces");
+  const owner = spaces[0];
+  const byId = new Map(spaces.map((s) => [s.id, { ...s, history: new HistoryService(s.rooms.main.runtime.repository, s.rooms) }]));
+  const keys = accessKeys(config.accessToken, config.accessTokens, owner.id);
+  /** The space of the logged-in key. In single-space mode every key opens the owner's space. */
+  const sp = (req: Request) => {
+    if (!spaceList || !keys.length) return byId.get(owner.id)!;
+    const space = byId.get(authKey(req, keys)?.tenant ?? "");
+    if (!space) throw new HttpError(403, "no_space");
+    return space;
+  };
+  const snapshotOf = (room: Room, rooms: RoomRegistry) => ({ ...room.runtime.snapshot(), room: room.id, rooms: rooms.summaries(), build });
+  // The token-protected connector ingestion and /health belong to the owner's main room.
+  const { runtime, tiktok } = owner.rooms.main;
   /** OAuth redirect back to this app: PUBLIC_URL when set, else the request's own origin. */
   const oauthRedirect = (req: Request) => {
     const origin = config.publicUrl ?? `${config.production ? "https" : req.protocol}://${req.get("host")}`;
@@ -105,13 +129,12 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     return logo ?? undefined;
   };
   /** Language of an export: `?lang=` from the app, else the saved setting. */
-  const langOf = (req: Request): "en" | "fr" => (req.query.lang === "fr" || req.query.lang === "en" ? req.query.lang : rooms.settings.language);
+  const langOf = (req: Request): "en" | "fr" => (req.query.lang === "fr" || req.query.lang === "en" ? req.query.lang : sp(req).rooms.settings.language);
   /** ASCII file name from a LIVE title and its start date. */
   const fileName = (title: string, startedAt: number, ext: string) => {
     const slug = title.normalize("NFKD").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "live";
     return `novus-live-${slug}-${new Date(startedAt).toISOString().slice(0, 10)}.${ext}`;
   };
-  const keys = accessKeys(config.accessToken, config.accessTokens);
   const app = express();
   app.disable("x-powered-by");
   if (config.trustProxy) app.set("trust proxy", 1);
@@ -135,7 +158,7 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
       if (!keys.length) return { ok: true };
       const matched = matchKey(key, keys);
       if (!matched) throw new HttpError(401, "invalid_key");
-      res.cookie(AUTH_COOKIE, sessionCookieValue(matched), {
+      res.cookie(AUTH_COOKIE, sessionCookieValue(matched.key), {
         httpOnly: true,
         sameSite: "strict",
         secure: config.production,
@@ -164,7 +187,10 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     if (!code || !state) result = typeof req.query.error === "string" ? "denied" : "failed";
     else {
       try {
-        await chat.complete(code, state);
+        // The one-time state tells which space started this connection.
+        const space = spaces.find((x) => x.chat.hasState(state));
+        if (!space) throw new ChatSendError("chat_session_expired", 400);
+        await space.chat.complete(code, state);
       } catch (e) {
         console.warn(`[chat] OAuth callback failed: ${e instanceof Error ? e.message : e}`);
         result = e instanceof ChatSendError && e.code === "chat_session_expired" ? "expired" : "failed";
@@ -222,12 +248,12 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     next();
   });
 
-  api.get("/state", h((req) => snapshotOf(roomOf(rooms, req))));
+  api.get("/state", h((req) => snapshotOf(roomOf(sp(req).rooms, req), sp(req).rooms)));
 
   api.get("/stream", (req, res, next) => {
     try {
-      const room = roomOf(rooms, req);
-      room.hub.addClient(res, snapshotOf(room));
+      const room = roomOf(sp(req).rooms, req);
+      room.hub.addClient(res, snapshotOf(room, sp(req).rooms));
     } catch (err) {
       next(err);
     }
@@ -237,7 +263,7 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     "/demo/start",
     h(async (req) => {
       const { speed } = parse(demoStartSchema, req.body);
-      const session = await mainOnly(roomOf(rooms, req)).runtime.startDemo((speed ?? 1) as DemoSpeed);
+      const session = await mainOnly(roomOf(sp(req).rooms, req)).runtime.startDemo((speed ?? 1) as DemoSpeed);
       return { session };
     }),
   );
@@ -245,14 +271,14 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     "/demo/speed",
     h((req) => {
       const { speed } = parse(demoSpeedSchema, req.body);
-      mainOnly(roomOf(rooms, req)).runtime.setDemoSpeed(speed as DemoSpeed);
+      mainOnly(roomOf(sp(req).rooms, req)).runtime.setDemoSpeed(speed as DemoSpeed);
       return { ok: true };
     }),
   );
   api.post(
     "/session/end",
     h(async (req) => {
-      const { runtime } = roomOf(rooms, req);
+      const { runtime } = roomOf(sp(req).rooms, req);
       const report = await runtime.endSession();
       return { session: runtime.session, report };
     }),
@@ -260,12 +286,12 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
 
   api.get(
     "/alerts",
-    h((req) => ({ alerts: roomOf(rooms, req).runtime.sortedAlerts() })),
+    h((req) => ({ alerts: roomOf(sp(req).rooms, req).runtime.sortedAlerts() })),
   );
   api.post(
     "/alerts/:id/action",
     h(async (req) => {
-      const { runtime } = roomOf(rooms, req);
+      const { runtime } = roomOf(sp(req).rooms, req);
       const { action, note } = parse(actionRequestSchema, req.body);
       const out = await runtime.actOnAlert(param(req, "id"), action as ActionType, note);
       if (!out) throw new HttpError(404, "alert_not_found");
@@ -275,19 +301,19 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
   api.post(
     "/actions/:id/confirm",
     h((req) => {
-      const record = roomOf(rooms, req).runtime.confirmManualAction(param(req, "id"));
+      const record = roomOf(sp(req).rooms, req).runtime.confirmManualAction(param(req, "id"));
       if (!record) throw new HttpError(404, "manual_action_not_found");
       return { record };
     }),
   );
 
   // ---------------------------------------------------------------- "Send in chat" (Euler OAuth, one tap per message)
-  api.get("/chat-sender", h(() => chat.status()));
+  api.get("/chat-sender", h((req) => sp(req).chat.status()));
   api.post(
     "/chat-sender/connect",
     h((req) => {
       try {
-        return { url: chat.authorizeUrl(oauthRedirect(req)).url };
+        return { url: sp(req).chat.authorizeUrl(oauthRedirect(req)).url };
       } catch (e) {
         throw chatError(e);
       }
@@ -295,7 +321,8 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
   );
   api.post(
     "/chat-sender/disconnect",
-    h(async () => {
+    h(async (req) => {
+      const { chat } = sp(req);
       await chat.disconnect();
       return chat.status();
     }),
@@ -304,14 +331,14 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     "/actions/:id/send-chat",
     rateLimit("chat", 30),
     h(async (req) => {
-      const room = roomOf(rooms, req);
+      const room = roomOf(sp(req).rooms, req);
       const { text } = parse(sendChatSchema, req.body);
       const id = param(req, "id");
       if (!room.runtime.manualAction(id)) throw new HttpError(404, "manual_action_not_found");
       const roomId = room.liveRoomId?.();
       if (!roomId) throw new HttpError(409, "chat_not_live");
       try {
-        await chat.send(roomId, text);
+        await sp(req).chat.send(roomId, text);
       } catch (e) {
         throw chatError(e);
       }
@@ -325,13 +352,13 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
       const q = typeof req.query.q === "string" ? req.query.q.slice(0, 64) : undefined;
       const sort = ["risk", "messages", "recent"].includes(String(req.query.sort)) ? (req.query.sort as "risk") : "risk";
       const filter = ["trusted", "watchlist", "ignored", "flagged", "all"].includes(String(req.query.filter)) ? (req.query.filter as "all") : "all";
-      return { viewers: roomOf(rooms, req).runtime.viewerList({ q, sort, filter }) };
+      return { viewers: roomOf(sp(req).rooms, req).runtime.viewerList({ q, sort, filter }) };
     }),
   );
   api.get(
     "/viewers/:id",
     h((req) => {
-      const { runtime } = roomOf(rooms, req);
+      const { runtime } = roomOf(sp(req).rooms, req);
       const id = param(req, "id");
       const profile = runtime.viewerProfile(id);
       if (!profile) throw new HttpError(404, "viewer_not_found");
@@ -342,7 +369,7 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     "/viewers/:id/flag",
     h(async (req) => {
       const { flag } = parse(flagRequestSchema, req.body);
-      const profile = await roomOf(rooms, req).runtime.setViewerFlag(param(req, "id"), flag as ViewerFlag | null);
+      const profile = await roomOf(sp(req).rooms, req).runtime.setViewerFlag(param(req, "id"), flag as ViewerFlag | null);
       if (!profile) throw new HttpError(404, "viewer_not_found");
       return { profile };
     }),
@@ -350,7 +377,7 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
   api.post(
     "/viewers/:id/action",
     h(async (req) => {
-      const { runtime } = roomOf(rooms, req);
+      const { runtime } = roomOf(sp(req).rooms, req);
       const { action, note } = parse(actionRequestSchema, req.body);
       const record = await runtime.actOnViewer(param(req, "id"), action as ActionType, note);
       if (!record) throw new HttpError(404, "viewer_not_found");
@@ -358,51 +385,51 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     }),
   );
 
-  api.get("/assistant/pulse", h((req) => roomOf(rooms, req).runtime.pulse()));
+  api.get("/assistant/pulse", h((req) => roomOf(sp(req).rooms, req).runtime.pulse()));
   api.post(
     "/assistant/catchup",
     h(async (req) => {
-      const { runtime } = roomOf(rooms, req);
+      const { runtime } = roomOf(sp(req).rooms, req);
       const { since, lang } = parse(catchUpRequestSchema, req.body);
       const fallback = runtime.session?.startedAt ?? Date.now() - 10 * 60_000;
-      return runtime.catchUp(since ?? fallback, lang ?? rooms.settings.language);
+      return runtime.catchUp(since ?? fallback, lang ?? sp(req).rooms.settings.language);
     }),
   );
   api.post(
     "/assistant/questions/:id/answered",
     h((req) => {
       const answered = req.body?.answered !== false;
-      if (!roomOf(rooms, req).runtime.markQuestionAnswered(param(req, "id"), answered)) throw new HttpError(404, "question_not_found");
+      if (!roomOf(sp(req).rooms, req).runtime.markQuestionAnswered(param(req, "id"), answered)) throw new HttpError(404, "question_not_found");
       return { ok: true };
     }),
   );
 
-  api.get("/analytics", h((req) => roomOf(rooms, req).runtime.analyticsSummary()));
-  api.get("/report", h((req) => roomOf(rooms, req).runtime.report()));
+  api.get("/analytics", h((req) => roomOf(sp(req).rooms, req).runtime.analyticsSummary()));
+  api.get("/report", h((req) => roomOf(sp(req).rooms, req).runtime.report()));
 
-  api.get("/settings", h(() => rooms.settings));
+  api.get("/settings", h((req) => sp(req).rooms.settings));
   api.put(
     "/settings",
     h(async (req) => {
       const patch = parse(settingsPatchSchema, req.body) as Partial<Settings>;
-      return rooms.updateSettings(patch);
+      return sp(req).rooms.updateSettings(patch);
     }),
   );
 
-  api.get("/rooms", h(() => ({ rooms: rooms.summaries() })));
+  api.get("/rooms", h((req) => ({ rooms: sp(req).rooms.summaries() })));
 
   // ---------------------------------------------------------------- LIVE history & exports
   api.get(
     "/history",
     h(async (req) => {
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
-      return { entries: await history.list(limit, roomOf(rooms, req)) };
+      return { entries: await sp(req).history.list(limit, roomOf(sp(req).rooms, req)) };
     }),
   );
   api.get(
     "/history/:id",
     h(async (req) => {
-      const detail = await history.detail(param(req, "id"));
+      const detail = await sp(req).history.detail(param(req, "id"));
       if (!detail) throw new HttpError(404, "session_not_found");
       return detail;
     }),
@@ -411,9 +438,9 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     "/history/:id/messages.csv",
     h(async (req, res) => {
       const id = param(req, "id");
-      const detail = await history.detail(id);
+      const detail = await sp(req).history.detail(id);
       if (!detail) throw new HttpError(404, "session_not_found");
-      const csv = chatCsv(await history.chat(id), timeZone, langOf(req));
+      const csv = chatCsv(await sp(req).history.chat(id), timeZone, langOf(req));
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName(detail.entry.title, detail.entry.startedAt, "csv")}"`);
       res.setHeader("Cache-Control", "no-store");
@@ -425,12 +452,12 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     rateLimit("pdf", 20),
     h(async (req, res) => {
       const id = param(req, "id");
-      const detail = await history.detail(id);
+      const detail = await sp(req).history.detail(id);
       if (!detail) throw new HttpError(404, "session_not_found");
       const pdf = await buildReportPdf({
         entry: detail.entry,
         analytics: detail.analytics,
-        chat: await history.chat(id),
+        chat: await sp(req).history.chat(id),
         lang: langOf(req),
         timeZone,
         logo: reportLogo(),
@@ -442,11 +469,13 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     }),
   );
 
-  api.get("/integrations/tiktok", h((req) => roomOf(rooms, req).tiktok.status()));
+  api.get("/integrations/tiktok", h((req) => roomOf(sp(req).rooms, req).tiktok.status()));
   api.post(
     "/integrations/tiktok/connect",
     h(async (req) => {
       // Adds the account to the followed profiles; it gets its own room, watched alongside the others.
+      const { rooms } = sp(req);
+      const { tiktok } = rooms.main;
       const username = parse(tiktokConnectSchema, req.body).username.replace(/^@/, "");
       const profiles = rooms.settings.tiktokProfiles ?? [];
       if (!profiles.some((p) => p.toLowerCase() === username.toLowerCase())) await rooms.updateSettings({ tiktokProfiles: [...profiles, username].slice(-20) });
@@ -461,6 +490,8 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
   api.post(
     "/integrations/tiktok/disconnect",
     h(async (req) => {
+      const { rooms } = sp(req);
+      const { tiktok } = rooms.main;
       const room = roomOf(rooms, req);
       if (room.kind === "tiktok" && room.username) {
         const name = room.username.toLowerCase();

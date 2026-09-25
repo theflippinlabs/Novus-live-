@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
-import type { PersistBatch, Repository, SessionFilter } from "./Repository";
+import { OWNER_TENANT, type PersistBatch, type Repository, type SessionFilter } from "./Repository";
 
 // Supabase/Postgres store. Uses the service-role key, which is only ever read
 // on the server (SUPABASE_SERVICE_ROLE_KEY) — it is never sent to the browser.
@@ -11,9 +11,21 @@ const iso = (t?: number) => (t ? new Date(t).toISOString() : null);
 export class SupabaseRepository implements Repository {
   readonly kind = "supabase" as const;
   private db: SupabaseClient;
+  readonly tenant: string;
 
-  constructor(url: string, serviceRoleKey: string) {
-    this.db = createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  constructor(url: string, serviceRoleKey: string, tenant = OWNER_TENANT, db?: SupabaseClient) {
+    this.db = db ?? createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    this.tenant = tenant;
+  }
+
+  /** Same database, another space (rows carry `tenant`; settings/secrets ids are prefixed). */
+  scoped(tenant: string): Repository {
+    return tenant === this.tenant ? this : new SupabaseRepository("", "", tenant, this.db);
+  }
+
+  /** Row id of a per-space setting/secret; the owner keeps the ids used before spaces existed. */
+  private key(id: string): string {
+    return this.tenant === OWNER_TENANT ? id : `${this.tenant}:${id}`;
   }
 
   private async check<T>(p: PromiseLike<{ error: { message: string } | null; data?: T | null }>, what: string): Promise<T | undefined> {
@@ -27,32 +39,32 @@ export class SupabaseRepository implements Repository {
   }
 
   async loadSecret(id: string): Promise<unknown | null> {
-    const data = await this.check<{ value: unknown }[]>(this.db.from("server_secrets").select("value").eq("id", id).limit(1), "loadSecret");
+    const data = await this.check<{ value: unknown }[]>(this.db.from("server_secrets").select("value").eq("id", this.key(id)).limit(1), "loadSecret");
     return data?.[0]?.value ?? null;
   }
 
   async saveSecret(id: string, value: unknown | null): Promise<void> {
-    if (value === null) await this.check(this.db.from("server_secrets").delete().eq("id", id), "deleteSecret");
-    else await this.check(this.db.from("server_secrets").upsert({ id, value, updated_at: new Date().toISOString() }), "saveSecret");
+    if (value === null) await this.check(this.db.from("server_secrets").delete().eq("id", this.key(id)), "deleteSecret");
+    else await this.check(this.db.from("server_secrets").upsert({ id: this.key(id), value, updated_at: new Date().toISOString() }), "saveSecret");
   }
 
   async loadSettings(): Promise<Settings | null> {
-    const data = await this.check<{ value: Settings }[]>(this.db.from("settings").select("value").eq("id", "default").limit(1), "loadSettings");
+    const data = await this.check<{ value: Settings }[]>(this.db.from("settings").select("value").eq("id", this.key("default")).limit(1), "loadSettings");
     return data?.[0]?.value ?? null;
   }
 
   async saveSettings(settings: Settings): Promise<void> {
-    await this.check(this.db.from("settings").upsert({ id: "default", value: settings, updated_at: new Date().toISOString() }), "saveSettings");
+    await this.check(this.db.from("settings").upsert({ id: this.key("default"), value: settings, updated_at: new Date().toISOString() }), "saveSettings");
   }
 
   async loadViewerFlags(): Promise<Record<string, ViewerFlag>> {
-    const data = await this.check<{ username: string; flag: ViewerFlag }[]>(this.db.from("viewer_flags").select("username, flag"), "loadViewerFlags");
+    const data = await this.check<{ username: string; flag: ViewerFlag }[]>(this.db.from("viewer_flags").select("username, flag").eq("tenant", this.tenant), "loadViewerFlags");
     return Object.fromEntries((data ?? []).map((r) => [r.username, r.flag]));
   }
 
   async saveViewerFlag(username: string, flag: ViewerFlag | null): Promise<void> {
-    if (flag) await this.check(this.db.from("viewer_flags").upsert({ username, flag, updated_at: new Date().toISOString() }), "saveViewerFlag");
-    else await this.check(this.db.from("viewer_flags").delete().eq("username", username), "deleteViewerFlag");
+    if (flag) await this.check(this.db.from("viewer_flags").upsert({ tenant: this.tenant, username, flag, updated_at: new Date().toISOString() }, { onConflict: "tenant,username" }), "saveViewerFlag");
+    else await this.check(this.db.from("viewer_flags").delete().eq("tenant", this.tenant).eq("username", username), "deleteViewerFlag");
   }
 
   async saveSession(s: LiveSessionInfo): Promise<void> {
@@ -63,6 +75,7 @@ export class SupabaseRepository implements Repository {
         source: s.source,
         title: s.title,
         account: s.account ?? null,
+        tenant: this.tenant,
         status: s.status,
         started_at: iso(s.startedAt),
         ended_at: iso(s.endedAt),
@@ -227,14 +240,6 @@ export class SupabaseRepository implements Repository {
     );
   }
 
-  async listReports(limit: number) {
-    const data = await this.check<{ session_id: string; generated_at: string }[]>(
-      this.db.from("stream_summaries").select("session_id, generated_at").order("generated_at", { ascending: false }).limit(limit),
-      "listReports",
-    );
-    return (data ?? []).map((r) => ({ sessionId: r.session_id, generatedAt: Date.parse(r.generated_at) }));
-  }
-
   async getReport(sessionId: string): Promise<StreamReport | null> {
     const data = await this.check<{ session_id: string; generated_at: string; analytics: StreamReport["analytics"]; markdown: string }[]>(
       this.db.from("stream_summaries").select("*").eq("session_id", sessionId).limit(1),
@@ -245,7 +250,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async listSessions(limit: number, filter: SessionFilter = {}): Promise<LiveSessionInfo[]> {
-    let q = this.db.from("live_sessions").select("*");
+    let q = this.db.from("live_sessions").select("*").eq("tenant", this.tenant);
     if (filter.account) q = q.eq("account", filter.account.toLowerCase());
     else if (filter.withoutAccount) q = q.is("account", null);
     const data = await this.check<SessionRow[]>(q.order("started_at", { ascending: false }).limit(limit), "listSessions");
@@ -253,7 +258,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async getSession(sessionId: string): Promise<LiveSessionInfo | null> {
-    const data = await this.check<SessionRow[]>(this.db.from("live_sessions").select("*").eq("id", sessionId).limit(1), "getSession");
+    const data = await this.check<SessionRow[]>(this.db.from("live_sessions").select("*").eq("id", sessionId).eq("tenant", this.tenant).limit(1), "getSession");
     return data?.[0] ? toSession(data[0]) : null;
   }
 

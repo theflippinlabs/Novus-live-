@@ -111,6 +111,12 @@ export class EulerChatSender {
     return { url: url.toString(), state };
   }
 
+  /** Whether this sender started the OAuth flow carrying `state` (and it has not expired). */
+  hasState(state: string): boolean {
+    const pending = this.states.get(state);
+    return Boolean(pending && pending.expires >= this.now());
+  }
+
   /** OAuth callback: validates the one-time state, exchanges the code and stores the tokens. */
   async complete(code: string, state: string): Promise<ChatSenderStatus> {
     const pending = this.states.get(state);

@@ -21,7 +21,7 @@ export interface Config {
   webDir: string;
   trustProxy: boolean;
   accessToken?: string;
-  /** Extra access keys (e.g. beta testers), from APP_ACCESS_TOKENS (comma-separated). */
+  /** Extra access keys, each opening its own separate space: APP_ACCESS_TOKENS="name:key,name2:key2". */
   accessTokens?: string[];
   ingestToken?: string;
   anthropicApiKey?: string;
@@ -62,7 +62,7 @@ export function loadConfig(): Config {
     .split(",")
     .map((k) => k.trim())
     .filter(Boolean);
-  if (accessTokens.some((k) => k.length < 12)) throw new Error("Each APP_ACCESS_TOKENS key must be at least 12 characters");
+  if (accessTokens.some((k) => k.slice(k.indexOf(":") + 1).trim().length < 12)) throw new Error("Each APP_ACCESS_TOKENS key must be at least 12 characters");
   if (ingestToken && ingestToken.length < 24) throw new Error("INGEST_TOKEN must be at least 24 characters");
   return {
     port: int("PORT", 8787, 1, 65535),

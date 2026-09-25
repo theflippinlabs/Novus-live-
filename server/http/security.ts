@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 
 export function securityHeaders(_req: Request, res: Response, next: NextFunction): void {
@@ -77,24 +77,50 @@ export function readCookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
-/** Every access key that opens the app (owner + testers). Empty: open access. */
-export function accessKeys(primary?: string, extra: string[] = []): string[] {
-  return [primary, ...extra].filter((k): k is string => Boolean(k));
+/** An access key and the space (tenant) it opens. */
+export interface AccessKey {
+  key: string;
+  tenant: string;
 }
 
-/** The session cookie is tied to one key: removing a key logs out only whoever used it. */
-export function isAuthenticated(req: Request, keys: string | string[] | undefined): boolean {
-  const list = Array.isArray(keys) ? keys : keys ? [keys] : [];
-  if (!list.length) return true;
+const TENANT_RE = /^[a-z0-9_-]{1,32}$/;
+
+/**
+ * Every access key that opens the app. APP_ACCESS_TOKEN opens the owner's space; each
+ * APP_ACCESS_TOKENS entry ("name:key", or a bare key) opens its own separate space.
+ * Empty: open access (single space).
+ */
+export function accessKeys(primary?: string, extra: string[] = [], owner = "owner"): AccessKey[] {
+  const out: AccessKey[] = primary ? [{ key: primary, tenant: owner }] : [];
+  for (const raw of extra) {
+    const i = raw.indexOf(":");
+    const name = i > 0 ? raw.slice(0, i).trim().toLowerCase() : "";
+    const key = i > 0 ? raw.slice(i + 1).trim() : raw.trim();
+    if (!key) continue;
+    const tenant = TENANT_RE.test(name) && name !== owner ? name : `k${createHash("sha256").update(key).digest("hex").slice(0, 10)}`;
+    out.push({ key, tenant });
+  }
+  return out;
+}
+
+/** The key behind the session cookie. The cookie is tied to one key: removing a key logs out only whoever used it. */
+export function authKey(req: Request, keys: AccessKey[]): AccessKey | undefined {
   const cookie = readCookie(req, AUTH_COOKIE);
-  return Boolean(cookie && list.some((k) => safeEqual(cookie, sessionCookieValue(k))));
+  if (!cookie) return undefined;
+  let found: AccessKey | undefined;
+  for (const k of keys) if (safeEqual(cookie, sessionCookieValue(k.key))) found = k;
+  return found;
+}
+
+export function isAuthenticated(req: Request, keys: AccessKey[]): boolean {
+  return !keys.length || Boolean(authKey(req, keys));
 }
 
 /** The key matching what was typed at login, if any. */
-export function matchKey(input: string, keys: string[]): string | undefined {
-  let found: string | undefined;
+export function matchKey(input: string, keys: AccessKey[]): AccessKey | undefined {
+  let found: AccessKey | undefined;
   // Compare against every key (no early exit) to keep timing uniform.
-  for (const k of keys) if (safeEqual(input, k)) found = k;
+  for (const k of keys) if (safeEqual(input, k.key)) found = k;
   return found;
 }
 
