@@ -8,7 +8,7 @@ import { createRuntime } from "./helpers";
 
 const INGEST = "test-ingest-token-0123456789abcdef";
 
-function makeApp(overrides: { accessToken?: string; ingestToken?: string; apiRateLimitPerMinute?: number; multiRoom?: boolean } = {}) {
+function makeApp(overrides: { accessToken?: string; accessTokens?: string[]; ingestToken?: string; apiRateLimitPerMinute?: number; multiRoom?: boolean } = {}) {
   const { runtime, tiktok } = createRuntime({ connector: Boolean(overrides.ingestToken ?? INGEST) });
   const hub = new RealtimeHub(50);
   const main: Room = { id: "main", kind: "main", runtime, hub, tiktok, dispose: async () => undefined };
@@ -29,6 +29,7 @@ function makeApp(overrides: { accessToken?: string; ingestToken?: string; apiRat
   const app = createApp({
     config: {
       accessToken: overrides.accessToken,
+      accessTokens: overrides.accessTokens,
       ingestToken: "ingestToken" in overrides ? overrides.ingestToken : INGEST,
       production: false,
       webDir: "does-not-exist",
@@ -241,6 +242,22 @@ describe("HTTP API", () => {
     expect(cookie).toMatch(/SameSite=Strict/);
     expect(cookie).not.toContain("super-secret-access-key");
     await request(app).get("/api/state").set("Cookie", cookie.split(";")[0]).expect(200);
+  });
+
+  it("accepts extra access keys for testers, each revocable on its own", async () => {
+    const owner = "super-secret-access-key";
+    const tester = "beta-tester-access-key";
+    const { app } = makeApp({ accessToken: owner, accessTokens: [tester] });
+    const asTester = (await request(app).post("/api/auth/login").send({ key: tester }).expect(200)).headers["set-cookie"][0].split(";")[0];
+    const asOwner = (await request(app).post("/api/auth/login").send({ key: owner }).expect(200)).headers["set-cookie"][0].split(";")[0];
+    expect(asTester).not.toBe(asOwner);
+    await request(app).get("/api/state").set("Cookie", asTester).expect(200);
+
+    // The tester's key is removed: only the tester is logged out.
+    const { app: after } = makeApp({ accessToken: owner });
+    await request(after).get("/api/state").set("Cookie", asTester).expect(401);
+    await request(after).get("/api/state").set("Cookie", asOwner).expect(200);
+    await request(after).post("/api/auth/login").send({ key: tester }).expect(401);
   });
 
   it("rate-limits the API", async () => {

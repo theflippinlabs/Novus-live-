@@ -21,11 +21,11 @@ import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Ro
 import { ChatSendError, EulerChatSender } from "./chat/EulerChat";
 import { chatCsv, HistoryService } from "./history/History";
 import { buildReportPdf } from "./reports/pdf";
-import { AUTH_COOKIE, isAuthenticated, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
+import { accessKeys, AUTH_COOKIE, isAuthenticated, matchKey, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
-    Partial<Pick<Config, "reportTimeZone" | "publicUrl">>;
+    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens">>;
   rooms: RoomRegistry;
   /** "Send in chat" through Euler Stream OAuth (optional). */
   chat?: EulerChatSender;
@@ -111,6 +111,7 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
     const slug = title.normalize("NFKD").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "live";
     return `novus-live-${slug}-${new Date(startedAt).toISOString().slice(0, 10)}.${ext}`;
   };
+  const keys = accessKeys(config.accessToken, config.accessTokens);
   const app = express();
   app.disable("x-powered-by");
   if (config.trustProxy) app.set("trust proxy", 1);
@@ -124,16 +125,17 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
   // ---------------------------------------------------------------- public
   api.get("/health", h(() => ({ ok: true, build, session: runtime.session?.status ?? "idle", ai: runtime.aiQueue.status().state })));
 
-  api.get("/auth/status", h((req) => ({ required: Boolean(config.accessToken), authenticated: isAuthenticated(req, config.accessToken) })));
+  api.get("/auth/status", h((req) => ({ required: keys.length > 0, authenticated: isAuthenticated(req, keys) })));
 
   api.post(
     "/auth/login",
     rateLimit("login", 10),
     h((req, res) => {
       const { key } = parse(loginSchema, req.body);
-      if (!config.accessToken) return { ok: true };
-      if (!safeEqual(key, config.accessToken)) throw new HttpError(401, "invalid_key");
-      res.cookie(AUTH_COOKIE, sessionCookieValue(config.accessToken), {
+      if (!keys.length) return { ok: true };
+      const matched = matchKey(key, keys);
+      if (!matched) throw new HttpError(401, "invalid_key");
+      res.cookie(AUTH_COOKIE, sessionCookieValue(matched), {
         httpOnly: true,
         sameSite: "strict",
         secure: config.production,
@@ -216,7 +218,7 @@ export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
 
   // ---------------------------------------------------------------- authenticated app API
   api.use((req, _res, next) => {
-    if (!isAuthenticated(req, config.accessToken)) return next(new HttpError(401, "unauthorized"));
+    if (!isAuthenticated(req, keys)) return next(new HttpError(401, "unauthorized"));
     next();
   });
 

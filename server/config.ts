@@ -21,6 +21,8 @@ export interface Config {
   webDir: string;
   trustProxy: boolean;
   accessToken?: string;
+  /** Extra access keys (e.g. beta testers), from APP_ACCESS_TOKENS (comma-separated). */
+  accessTokens?: string[];
   ingestToken?: string;
   anthropicApiKey?: string;
   anthropicModel: string;
@@ -56,6 +58,11 @@ export function loadConfig(): Config {
   const accessToken = str("APP_ACCESS_TOKEN");
   const ingestToken = str("INGEST_TOKEN");
   if (accessToken && accessToken.length < 12) throw new Error("APP_ACCESS_TOKEN must be at least 12 characters");
+  const accessTokens = (str("APP_ACCESS_TOKENS") ?? "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+  if (accessTokens.some((k) => k.length < 12)) throw new Error("Each APP_ACCESS_TOKENS key must be at least 12 characters");
   if (ingestToken && ingestToken.length < 24) throw new Error("INGEST_TOKEN must be at least 24 characters");
   return {
     port: int("PORT", 8787, 1, 65535),
@@ -64,6 +71,7 @@ export function loadConfig(): Config {
     webDir: str("WEB_DIR") ?? "dist/web",
     trustProxy: process.env.TRUST_PROXY === "true" || process.env.TRUST_PROXY === "1",
     accessToken,
+    accessTokens,
     ingestToken,
     anthropicApiKey: str("ANTHROPIC_API_KEY"),
     anthropicModel: str("ANTHROPIC_MODEL") ?? "claude-opus-5",

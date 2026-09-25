@@ -136,7 +136,7 @@ async function main() {
     console.log(`[novus] NOVUS LIVE listening on http://${config.host}:${config.port}`);
     console.log(`[novus] AI: ${ai.available() ? `${ai.name} (${ai.model})` : "local heuristics only (no ANTHROPIC_API_KEY)"}`);
     console.log(`[novus] Persistence: ${repo.kind}${repo.kind === "memory" && config.dataDir ? ` (+ ${config.dataDir})` : ""}`);
-    console.log(`[novus] Access token: ${config.accessToken ? "required" : "NOT SET (open access — set APP_ACCESS_TOKEN before exposing publicly)"}`);
+    console.log(`[novus] Access token: ${config.accessToken || config.accessTokens?.length ? `required (${[config.accessToken, ...(config.accessTokens ?? [])].filter(Boolean).length} key(s))` : "NOT SET (open access — set APP_ACCESS_TOKEN before exposing publicly)"}`);
     console.log(`[novus] Send in chat: ${chat.configured ? "Euler OAuth configured" : "off (set EULER_CLIENT_ID / EULER_CLIENT_SECRET)"}`);
     console.log(`[novus] Connector ingestion: ${config.ingestToken ? "enabled" : "disabled (set INGEST_TOKEN)"}`);
   });

@@ -77,10 +77,25 @@ export function readCookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
-export function isAuthenticated(req: Request, accessToken?: string): boolean {
-  if (!accessToken) return true;
+/** Every access key that opens the app (owner + testers). Empty: open access. */
+export function accessKeys(primary?: string, extra: string[] = []): string[] {
+  return [primary, ...extra].filter((k): k is string => Boolean(k));
+}
+
+/** The session cookie is tied to one key: removing a key logs out only whoever used it. */
+export function isAuthenticated(req: Request, keys: string | string[] | undefined): boolean {
+  const list = Array.isArray(keys) ? keys : keys ? [keys] : [];
+  if (!list.length) return true;
   const cookie = readCookie(req, AUTH_COOKIE);
-  return Boolean(cookie && safeEqual(cookie, sessionCookieValue(accessToken)));
+  return Boolean(cookie && list.some((k) => safeEqual(cookie, sessionCookieValue(k))));
+}
+
+/** The key matching what was typed at login, if any. */
+export function matchKey(input: string, keys: string[]): string | undefined {
+  let found: string | undefined;
+  // Compare against every key (no early exit) to keep timing uniform.
+  for (const k of keys) if (safeEqual(input, k)) found = k;
+  return found;
 }
 
 /** Mutating requests must be JSON: blocks cross-site HTML form posts (CSRF) in addition to SameSite=Strict. */
