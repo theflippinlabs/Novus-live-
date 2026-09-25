@@ -12,6 +12,7 @@ import { TikTokAdapter } from "./platform/TikTokAdapter";
 import { defaultConnectionFactory, TikTokLiveWatcher } from "./platform/TikTokLiveWatcher";
 import { RealtimeHub } from "./realtime/RealtimeHub";
 import { MAIN_ROOM, RoomRegistry, tiktokRoomId, type Room } from "./core/Rooms";
+import { EulerChatSender } from "./chat/EulerChat";
 
 async function main() {
   const config = loadConfig();
@@ -106,6 +107,7 @@ async function main() {
       runtime,
       hub,
       tiktok,
+      liveRoomId: () => watcher?.roomId,
       dispose: async () => {
         watcher?.stop();
         await runtime.endSession().catch(() => undefined);
@@ -125,12 +127,17 @@ async function main() {
   await rooms.syncProfiles();
   rooms.start();
 
-  const app = createApp({ config, rooms });
+  const chat = new EulerChatSender(
+    { apiKey: config.eulerApiKey, clientId: config.eulerClientId, clientSecret: config.eulerClientSecret, authorizeUrl: config.eulerOAuthAuthorizeUrl },
+    repo,
+  );
+  const app = createApp({ config, rooms, chat });
   const server = app.listen(config.port, config.host, () => {
     console.log(`[novus] NOVUS LIVE listening on http://${config.host}:${config.port}`);
     console.log(`[novus] AI: ${ai.available() ? `${ai.name} (${ai.model})` : "local heuristics only (no ANTHROPIC_API_KEY)"}`);
     console.log(`[novus] Persistence: ${repo.kind}${repo.kind === "memory" && config.dataDir ? ` (+ ${config.dataDir})` : ""}`);
     console.log(`[novus] Access token: ${config.accessToken ? "required" : "NOT SET (open access — set APP_ACCESS_TOKEN before exposing publicly)"}`);
+    console.log(`[novus] Send in chat: ${chat.configured ? "Euler OAuth configured" : "off (set EULER_CLIENT_ID / EULER_CLIENT_SECRET)"}`);
     console.log(`[novus] Connector ingestion: ${config.ingestToken ? "enabled" : "disabled (set INGEST_TOKEN)"}`);
   });
 

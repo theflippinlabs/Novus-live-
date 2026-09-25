@@ -63,6 +63,9 @@ export interface Repository {
   getReports(sessionIds: string[]): Promise<StreamReport[]>;
   /** Saved chat of a session, oldest first. */
   getChat(sessionId: string, limit: number): Promise<ChatLine[]>;
+  /** Server-only secrets (e.g. the chat sender's OAuth tokens). Never sent to the browser. */
+  loadSecret(id: string): Promise<unknown | null>;
+  saveSecret(id: string, value: unknown | null): Promise<void>;
 }
 
 export function emptyBatch(): PersistBatch {

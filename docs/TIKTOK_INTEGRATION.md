@@ -43,6 +43,21 @@ community library [`tiktok-live-connector`](https://www.npmjs.com/package/tiktok
   raises the signing service's rate limits.
 - **Turn it off:** set `TIKTOK_LIVE_CONNECTOR=off` on the server.
 
+### Optional: "Send in chat" (Euler Stream OAuth)
+
+- The moderator connects their own TikTok account once (Settings › TikTok Integration ›
+  *Send in chat*) through Euler Stream's OAuth page (scope `webcast:chat`). Novus never sees the
+  TikTok password; the OAuth tokens are stored server-side only (`server_secrets`, service role).
+- A **Send in chat** button then appears next to each suggested warning, in a followed account's
+  room while it is LIVE. One tap posts that text in the LIVE chat as the moderator
+  (`POST https://tiktok.eulerstream.com/webcast/rooms/{room_id}/chat`). Nothing is sent
+  automatically.
+- If Euler refuses (401/403: the plan does not include chat sending) or the account is not LIVE,
+  Novus says so and nothing is marked as sent. A sent warning resolves its alert.
+- Server variables: `EULER_API_KEY`, `EULER_CLIENT_ID`, `EULER_CLIENT_SECRET`, `PUBLIC_URL`,
+  optional `EULER_OAUTH_AUTHORIZE_URL`. Same risks as the connector: unofficial, not authorized
+  by TikTok. Mute / block / report stay manual.
+
 ## Capability matrix
 
 | Capability | Status | Notes |
@@ -53,7 +68,7 @@ community library [`tiktok-live-connector`](https://www.npmjs.com/package/tiktok
 | Automatic session start/stop from `stream_status` events + post‑LIVE report | ✅ Implemented | `NovusRuntime.ingestExternal()` |
 | Target TikTok account name (which LIVE a connector should follow) | ✅ Implemented | `POST /api/integrations/tiktok/connect` — stored only, no TikTok call |
 | Reading LIVE comments, gifts, joins, follows, viewers | 🟧 Via the unofficial connector (opt-in) | Not authorized by TikTok; for an approved source implement `TikTokEventSource` |
-| Warn viewer | 🟨 Manual | Novus prepares the exact text to paste in chat |
+| Warn viewer | 🟨 Manual, or one tap | Novus prepares the exact text; optional "Send in chat" posts it via Euler OAuth |
 | Mute viewer | 🟨 Manual | Exact in‑app steps; confirmation logged |
 | Block / remove viewer | 🟨 Manual | Exact in‑app steps; confirmation logged |
 | Report viewer | 🟨 Manual | Suggested report category from Novus' reasons |

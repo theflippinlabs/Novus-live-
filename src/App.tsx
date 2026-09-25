@@ -6,6 +6,7 @@ import { BrandLogo } from "./components/ui";
 import { LangToggle } from "./components/LangToggle";
 import { ViewerSheet } from "./components/ViewerSheet";
 import { useT } from "./i18n";
+import { handleChatSenderReturn, refreshChatSender } from "./chatSender";
 import { connectRealtime, useStore } from "./store";
 import { AlertsView } from "./views/AlertsView";
 import { AnalyticsView } from "./views/AnalyticsView";
@@ -90,6 +91,18 @@ export function App() {
   useEffect(() => {
     if (auth !== "ok") return;
     return connectRealtime(() => setAuth("needed"));
+  }, [auth]);
+
+  // "Send in chat": pick up the TikTok connection, also when coming back from its sign-in page.
+  useEffect(() => {
+    if (auth !== "ok") return;
+    handleChatSenderReturn();
+    void refreshChatSender();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshChatSender();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [auth]);
 
   if (auth === "checking") return null;

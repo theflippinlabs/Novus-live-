@@ -4,6 +4,7 @@ import { api } from "../api";
 import { actionCopy, actionLabel, categoryLabel, pick, useLang, useT, word } from "../i18n";
 import { clock, hm } from "../format";
 import { openViewer, toast, useStore } from "../store";
+import { SendToChatButton } from "./SendToChat";
 import { Sparkline } from "./Charts";
 import { Avatar, Segmented, SeverityBadge, Sheet } from "./ui";
 
@@ -182,7 +183,21 @@ function ViewerSheetInner({ id }: { id: string }) {
               <li key={s}>{s}</li>
             ))}
           </ol>
-          {actionCopy(lastManual, lang).suggestedMessage ? <div className="suggested">{actionCopy(lastManual, lang).suggestedMessage}</div> : null}
+          {actionCopy(lastManual, lang).suggestedMessage ? (
+            <>
+              <div className="suggested">{actionCopy(lastManual, lang).suggestedMessage}</div>
+              <SendToChatButton
+                key={lastManual.id}
+                record={lastManual}
+                text={actionCopy(lastManual, lang).suggestedMessage!}
+                onSent={(r) => {
+                  if (!r.confirmedAt) return;
+                  setLastManual(null);
+                  void load();
+                }}
+              />
+            </>
+          ) : null}
           <button
             className="btn gold sm"
             onClick={async () => {

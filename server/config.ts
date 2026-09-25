@@ -34,6 +34,12 @@ export interface Config {
   ingestRateLimitPerMinute: number;
   tiktokLiveConnector: boolean;
   eulerApiKey?: string;
+  /** Euler Stream OAuth client for "Send in chat" (optional). */
+  eulerClientId?: string;
+  eulerClientSecret?: string;
+  eulerOAuthAuthorizeUrl?: string;
+  /** Public https origin of the app (OAuth redirect), e.g. https://novus-live-production.up.railway.app */
+  publicUrl?: string;
   /** Time zone used for dates in LIVE reports and exports. */
   reportTimeZone: string;
 }
@@ -72,6 +78,10 @@ export function loadConfig(): Config {
     // Unofficial read-only TikTok LIVE connector (see docs/TIKTOK_INTEGRATION.md). On unless set to "off".
     tiktokLiveConnector: (process.env.TIKTOK_LIVE_CONNECTOR ?? "on").toLowerCase() !== "off",
     eulerApiKey: str("EULER_API_KEY"),
+    eulerClientId: str("EULER_CLIENT_ID"),
+    eulerClientSecret: str("EULER_CLIENT_SECRET"),
+    eulerOAuthAuthorizeUrl: str("EULER_OAUTH_AUTHORIZE_URL"),
+    publicUrl: str("PUBLIC_URL")?.replace(/\/+$/, ""),
     reportTimeZone: validTimeZone(str("REPORT_TIMEZONE")) ?? "Europe/Paris",
   };
 }

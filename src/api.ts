@@ -3,6 +3,7 @@ import type {
   ActionType,
   AnalyticsSummary,
   CatchUp,
+  ChatSenderStatus,
   ChatPulse,
   DemoSpeed,
   HistoryEntry,
@@ -64,6 +65,10 @@ export const api = {
   alertAction: (id: string, action: ActionType, note?: string) =>
     request<{ record: ActionRecord; alert: ModerationAlert }>("POST", `/alerts/${encodeURIComponent(id)}/action`, { action, note }),
   confirmAction: (id: string) => request<{ record: ActionRecord }>("POST", `/actions/${encodeURIComponent(id)}/confirm`),
+  sendToChat: (id: string, text: string) => request<{ record: ActionRecord | null }>("POST", `/actions/${encodeURIComponent(id)}/send-chat`, { text }),
+  chatSender: () => request<ChatSenderStatus>("GET", "/chat-sender"),
+  chatSenderConnect: () => request<{ url: string }>("POST", "/chat-sender/connect"),
+  chatSenderDisconnect: () => request<ChatSenderStatus>("POST", "/chat-sender/disconnect"),
 
   viewers: (params: { q?: string; sort?: string; filter?: string }) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString();

@@ -5,6 +5,7 @@ import { actionCopy, actionLabel, categoryLabel, pick, severityLabel, tr, useLan
 import { ago } from "../format";
 import { runAlertAction } from "../actions";
 import { openViewer, serverNow, toast, upsertAlert } from "../store";
+import { SendToChatButton } from "./SendToChat";
 import { Avatar, SeverityBadge } from "./ui";
 
 const ACTIONS: ActionType[] = ["watch", "warn", "mute", "block", "report", "dismiss"];
@@ -139,6 +140,12 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
           {copyOfRes.suggestedMessage ? (
             <>
               <div className="suggested">{copyOfRes.suggestedMessage}</div>
+              <SendToChatButton
+                key={res.id}
+                record={res}
+                text={copyOfRes.suggestedMessage}
+                onSent={(r) => r.confirmedAt && upsertAlert({ ...alert, status: "resolved", resolution: r })}
+              />
               <button className="btn sm" onClick={() => copy(copyOfRes.suggestedMessage!)}>
                 {copied ? t("copied") : t("copyMessage")}
               </button>{" "}

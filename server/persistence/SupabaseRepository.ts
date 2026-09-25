@@ -26,6 +26,16 @@ export class SupabaseRepository implements Repository {
     await this.check(this.db.from("settings").select("id").limit(1), "init");
   }
 
+  async loadSecret(id: string): Promise<unknown | null> {
+    const data = await this.check<{ value: unknown }[]>(this.db.from("server_secrets").select("value").eq("id", id).limit(1), "loadSecret");
+    return data?.[0]?.value ?? null;
+  }
+
+  async saveSecret(id: string, value: unknown | null): Promise<void> {
+    if (value === null) await this.check(this.db.from("server_secrets").delete().eq("id", id), "deleteSecret");
+    else await this.check(this.db.from("server_secrets").upsert({ id, value, updated_at: new Date().toISOString() }), "saveSecret");
+  }
+
   async loadSettings(): Promise<Settings | null> {
     const data = await this.check<{ value: Settings }[]>(this.db.from("settings").select("value").eq("id", "default").limit(1), "loadSettings");
     return data?.[0]?.value ?? null;

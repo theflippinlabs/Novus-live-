@@ -8,6 +8,7 @@ interface FileState {
   flags: Record<string, ViewerFlag>;
   reports: StreamReport[];
   sessions: LiveSessionInfo[];
+  secrets?: Record<string, unknown>;
 }
 
 /**
@@ -37,7 +38,7 @@ export class MemoryRepository implements Repository {
     try {
       const raw = await readFile(this.file, "utf8");
       const parsed = JSON.parse(raw) as Partial<FileState>;
-      this.state = { settings: parsed.settings ?? null, flags: parsed.flags ?? {}, reports: parsed.reports ?? [], sessions: parsed.sessions ?? [] };
+      this.state = { settings: parsed.settings ?? null, flags: parsed.flags ?? {}, reports: parsed.reports ?? [], sessions: parsed.sessions ?? [], secrets: parsed.secrets ?? {} };
     } catch {
       // First run — nothing stored yet.
     }
@@ -54,6 +55,18 @@ export class MemoryRepository implements Repository {
       await rename(tmp, file);
     });
     return this.writing;
+  }
+
+  async loadSecret(id: string): Promise<unknown | null> {
+    return this.state.secrets?.[id] ?? null;
+  }
+
+  async saveSecret(id: string, value: unknown | null): Promise<void> {
+    const secrets = { ...this.state.secrets };
+    if (value === null) delete secrets[id];
+    else secrets[id] = value;
+    this.state.secrets = secrets;
+    await this.persist();
   }
 
   async loadSettings(): Promise<Settings | null> {

@@ -11,20 +11,24 @@ import {
   flagRequestSchema,
   ingestBatchSchema,
   loginSchema,
+  sendChatSchema,
   settingsPatchSchema,
   tiktokConnectSchema,
 } from "../shared/schemas";
 import type { ActionType, DemoSpeed, LiveEvent, Settings, ViewerFlag } from "../shared/types";
 import type { Config } from "./config";
 import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
+import { ChatSendError, EulerChatSender } from "./chat/EulerChat";
 import { chatCsv, HistoryService } from "./history/History";
 import { buildReportPdf } from "./reports/pdf";
 import { AUTH_COOKIE, isAuthenticated, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
-    Partial<Pick<Config, "reportTimeZone">>;
+    Partial<Pick<Config, "reportTimeZone" | "publicUrl">>;
   rooms: RoomRegistry;
+  /** "Send in chat" through Euler Stream OAuth (optional). */
+  chat?: EulerChatSender;
 }
 
 class HttpError extends Error {
@@ -72,7 +76,7 @@ const mainOnly = (room: Room): Room => {
   return room;
 };
 
-export function createApp({ config, rooms }: AppDeps) {
+export function createApp({ config, rooms, chat: chatSender }: AppDeps) {
   // The hashed app bundle currently served (e.g. "index-0YX36Sc8.js"): lets installed apps notice a new version.
   const build = (() => {
     try {
@@ -84,6 +88,13 @@ export function createApp({ config, rooms }: AppDeps) {
   const snapshotOf = (room: Room) => ({ ...room.runtime.snapshot(), room: room.id, rooms: rooms.summaries(), build });
   const { runtime, tiktok } = rooms.main;
   const history = new HistoryService(runtime.repository, rooms);
+  const chat = chatSender ?? new EulerChatSender({}, runtime.repository);
+  /** OAuth redirect back to this app: PUBLIC_URL when set, else the request's own origin. */
+  const oauthRedirect = (req: Request) => {
+    const origin = config.publicUrl ?? `${config.production ? "https" : req.protocol}://${req.get("host")}`;
+    return `${origin}/api/chat-sender/callback`;
+  };
+  const chatError = (e: unknown) => (e instanceof ChatSendError ? new HttpError(e.status, e.code) : e);
   const timeZone = config.reportTimeZone ?? "Europe/Paris";
   let logo: Buffer | null | undefined;
   const reportLogo = () => {
@@ -140,6 +151,26 @@ export function createApp({ config, rooms }: AppDeps) {
       return { ok: true };
     }),
   );
+
+  // OAuth return from Euler/TikTok. Public on purpose: the browser comes back from another
+  // site, so the SameSite=Strict login cookie is absent. It is protected by the one-time,
+  // unguessable `state` that only an authenticated /chat-sender/connect call can create.
+  api.get("/chat-sender/callback", rateLimit("oauth", 20), async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code.slice(0, 2000) : "";
+    const state = typeof req.query.state === "string" ? req.query.state.slice(0, 200) : "";
+    let result = "connected";
+    if (!code || !state) result = typeof req.query.error === "string" ? "denied" : "failed";
+    else {
+      try {
+        await chat.complete(code, state);
+      } catch (e) {
+        console.warn(`[chat] OAuth callback failed: ${e instanceof Error ? e.message : e}`);
+        result = e instanceof ChatSendError && e.code === "chat_session_expired" ? "expired" : "failed";
+      }
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.redirect(303, `/?chat=${result}`);
+  });
 
   // ---------------------------------------------------------------- connector ingestion (token-protected)
   const ingest = express.Router();
@@ -245,6 +276,44 @@ export function createApp({ config, rooms }: AppDeps) {
       const record = roomOf(rooms, req).runtime.confirmManualAction(param(req, "id"));
       if (!record) throw new HttpError(404, "manual_action_not_found");
       return { record };
+    }),
+  );
+
+  // ---------------------------------------------------------------- "Send in chat" (Euler OAuth, one tap per message)
+  api.get("/chat-sender", h(() => chat.status()));
+  api.post(
+    "/chat-sender/connect",
+    h((req) => {
+      try {
+        return { url: chat.authorizeUrl(oauthRedirect(req)).url };
+      } catch (e) {
+        throw chatError(e);
+      }
+    }),
+  );
+  api.post(
+    "/chat-sender/disconnect",
+    h(async () => {
+      await chat.disconnect();
+      return chat.status();
+    }),
+  );
+  api.post(
+    "/actions/:id/send-chat",
+    rateLimit("chat", 30),
+    h(async (req) => {
+      const room = roomOf(rooms, req);
+      const { text } = parse(sendChatSchema, req.body);
+      const id = param(req, "id");
+      if (!room.runtime.manualAction(id)) throw new HttpError(404, "manual_action_not_found");
+      const roomId = room.liveRoomId?.();
+      if (!roomId) throw new HttpError(409, "chat_not_live");
+      try {
+        await chat.send(roomId, text);
+      } catch (e) {
+        throw chatError(e);
+      }
+      return { record: room.runtime.markSentToChat(id) };
     }),
   );
 

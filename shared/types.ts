@@ -175,6 +175,8 @@ export interface ActionRecord {
   responseTimeMs?: number;
   /** Set when the moderator confirms a manual action was done in-app. */
   confirmedAt?: number;
+  /** Set when the suggested message was posted in the LIVE chat from Novus. */
+  sentToChatAt?: number;
 }
 
 export interface ActionCopy {
@@ -295,6 +297,17 @@ export interface CapabilityInfo {
   capability: string;
   status: "implemented" | "requires_authorized_connector" | "manual_only" | "not_available";
   detail: string;
+}
+
+/** "Send in chat": the moderator's TikTok account connected through Euler Stream OAuth. */
+export interface ChatSenderStatus {
+  /** Server has the Euler API key + OAuth client configured. */
+  configured: boolean;
+  connected: boolean;
+  username?: string;
+  nickname?: string;
+  connectedAt?: number;
+  lastError?: string;
 }
 
 export interface TikTokIntegrationStatus {

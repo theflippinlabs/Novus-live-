@@ -121,3 +121,10 @@ export const tiktokConnectSchema = z
   .strict();
 
 export const loginSchema = z.object({ key: z.string().min(1).max(256) }).strict();
+
+/** "Send in chat": the text shown to the moderator (TikTok chat messages are short). */
+export const sendChatSchema = z
+  .object({
+    text: z.string().trim().min(1).max(150),
+  })
+  .strict();

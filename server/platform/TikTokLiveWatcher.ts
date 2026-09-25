@@ -7,7 +7,8 @@ import { mapChat, mapFollow, mapGift, mapJoin, mapViewerCount } from "./tiktokMa
  * ⚠️ Uses the UNOFFICIAL community library `tiktok-live-connector` (reverse-engineered,
  * not authorized by TikTok, may break or conflict with TikTok's Terms). It is enabled
  * because the owner explicitly chose it. It is READ-ONLY: it never logs in, never
- * sends messages and never performs moderation actions — those stay manual.
+ * sends messages and never performs moderation actions. (The separate, opt-in
+ * "Send in chat" button uses the room id it found — see server/chat/EulerChat.ts.)
  */
 
 type Draft = Omit<LiveEvent, "sessionId" | "platform">;
@@ -16,6 +17,8 @@ export interface LiveConnectionLike {
   connect(): Promise<unknown>;
   disconnect(): unknown;
   on(event: string, handler: (data: unknown) => void): unknown;
+  /** TikTok room id of the LIVE, once connected. */
+  readonly roomId?: string;
 }
 
 export type ConnectionFactory = (username: string) => Promise<LiveConnectionLike>;
@@ -98,6 +101,9 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
       on: (event, handler) => conn.on(event as never, handler as never),
       disconnect: () => conn.disconnect(),
       connect: () => serialized(() => connectWithFallback(conn, mod.RoomIdRouteConfig, username, log)),
+      get roomId() {
+        return conn.roomId || undefined;
+      },
     };
   };
 }
@@ -145,6 +151,11 @@ export class TikTokLiveWatcher {
 
   get isLive(): boolean {
     return this.live;
+  }
+
+  /** Room id of the LIVE being followed (undefined when not live). */
+  get roomId(): string | undefined {
+    return this.live ? this.conn?.roomId : undefined;
   }
 
   watch(username: string): void {

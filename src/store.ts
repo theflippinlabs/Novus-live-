@@ -4,6 +4,7 @@ import type {
   ActionRecord,
   AIStatus,
   AnalyzedComment,
+  ChatSenderStatus,
   DemoStatus,
   LiveSessionInfo,
   LiveStats,
@@ -39,6 +40,8 @@ export interface AppState {
   ai: AIStatus;
   demo: DemoStatus;
   tiktok: TikTokIntegrationStatus | null;
+  /** "Send in chat": the moderator's TikTok account connected through Euler OAuth. */
+  chatSender: ChatSenderStatus | null;
   selectedViewerId: string | null;
   toast: { id: number; text: string; tone: "info" | "ok" | "warn" } | null;
   serverOffset: number;
@@ -72,6 +75,7 @@ let state: AppState = {
   ai: { state: "local_only", provider: "local", queued: 0, analyzed: 0 },
   demo: { running: false, speed: 1, demoSecond: 0 },
   tiktok: null,
+  chatSender: null,
   selectedViewerId: null,
   toast: null,
   serverOffset: 0,

@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import type { TikTokIntegrationState } from "../../shared/types";
 import { api } from "../api";
+import { refreshChatSender } from "../chatSender";
+import { ChatSenderCard } from "../components/SendToChat";
 import { TikTokProfiles } from "../components/TikTokProfiles";
 import { tiktokStateLabel, tr, useLang, useT } from "../i18n";
 import { ago } from "../format";
@@ -64,6 +66,7 @@ export function TikTokIntegration() {
       .tiktok()
       .then((s) => setState({ tiktok: s }))
       .catch(() => undefined);
+    void refreshChatSender();
   }, []);
 
   if (!status) return <div className="card muted">…</div>;
@@ -97,6 +100,7 @@ export function TikTokIntegration() {
       </div>
 
       <TikTokProfiles />
+      <ChatSenderCard />
       <div className="small muted" style={{ marginTop: 6 }}>
         {status.source === "unofficial_live_connector"
           ? lang === "fr"

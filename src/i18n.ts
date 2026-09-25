@@ -54,6 +54,8 @@ const en = {
   doneInTikTok: "Done in TikTok",
   copyMessage: "Copy message",
   copied: "Copied",
+  sendInChat: "Send in chat",
+  sentInChat: "Sent in chat",
   simulated: "Simulated on demo platform",
   confirmed: "Confirmed",
   accounts: "accounts",
@@ -227,6 +229,8 @@ const fr: Dict = {
   doneInTikTok: "Fait dans TikTok",
   copyMessage: "Copier le message",
   copied: "Copié",
+  sendInChat: "Envoyer dans le chat",
+  sentInChat: "Envoyé dans le chat",
   simulated: "Simulé sur la plateforme démo",
   confirmed: "Confirmé",
   accounts: "comptes",
@@ -440,6 +444,25 @@ const ERRORS: Record<string, { en: string; fr: string }> = {
   demo_main_room_only: { en: "The demo only runs in the Demo space.", fr: "La démo ne fonctionne que dans l'espace Démo." },
   save_failed: { en: "Save failed.", fr: "Échec de l'enregistrement." },
   internal_error: { en: "Server error — try again.", fr: "Erreur du serveur — réessaie." },
+  manual_action_not_found: { en: "This action is no longer pending.", fr: "Cette action n'est plus en attente." },
+  chat_not_configured: {
+    en: "Sending in chat is not set up on the server yet.",
+    fr: "L'envoi dans le chat n'est pas encore configuré sur le serveur.",
+  },
+  chat_not_connected: {
+    en: "Connect your TikTok account in Settings to send in chat.",
+    fr: "Connecte ton compte TikTok dans les Réglages pour envoyer dans le chat.",
+  },
+  chat_not_live: { en: "This account is not LIVE — nothing was sent.", fr: "Ce compte n'est pas en LIVE — rien n'a été envoyé." },
+  chat_plan_required: {
+    en: "Euler Stream refused: sending chat messages needs a paid Euler plan. Nothing was sent.",
+    fr: "Euler Stream a refusé : l'envoi de messages demande un abonnement Euler payant. Rien n'a été envoyé.",
+  },
+  chat_session_expired: {
+    en: "Your TikTok connection expired — reconnect it in Settings. Nothing was sent.",
+    fr: "Ta connexion TikTok a expiré — reconnecte-la dans les Réglages. Rien n'a été envoyé.",
+  },
+  chat_failed: { en: "TikTok did not accept the message. Nothing was sent.", fr: "TikTok n'a pas accepté le message. Rien n'a été envoyé." },
 };
 
 /** Human message for an API error code. */

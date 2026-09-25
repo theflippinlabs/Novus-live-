@@ -748,6 +748,23 @@ export class NovusRuntime {
     return record;
   }
 
+  /** A manual action of the running session (for "Send in chat"). */
+  manualAction(actionId: string): ActionRecord | null {
+    const record = this.actions.find((a) => a.id === actionId);
+    return record && record.status === "manual_required" ? record : null;
+  }
+
+  /** The suggested message was posted in the LIVE chat from Novus: a warning is then done. */
+  markSentToChat(actionId: string): ActionRecord | null {
+    const record = this.manualAction(actionId);
+    if (!record) return null;
+    record.sentToChatAt = this.now();
+    if (record.action === "warn" && !record.confirmedAt) return this.confirmManualAction(actionId);
+    this.pending.actions.push(record);
+    this.deps.hub?.pushAction(record);
+    return record;
+  }
+
   // ---------------------------------------------------------------- flags & settings
 
   async setViewerFlag(viewerId: string, flag: ViewerFlag | null): Promise<ViewerProfile | null> {

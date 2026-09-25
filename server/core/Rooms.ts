@@ -23,6 +23,8 @@ export interface Room {
   runtime: NovusRuntime;
   hub: RealtimeHub;
   tiktok: TikTokAdapter;
+  /** TikTok room id of the account's current LIVE (followed accounts only). */
+  liveRoomId?: () => string | undefined;
   /** Stop watchers/timers and close any running session. */
   dispose(): Promise<void>;
 }
