@@ -31,6 +31,61 @@ export interface WatcherSink {
   alive(): void;
 }
 
+/*
+ * Every room connects through this one queue. The Euler fallback below flips the library's
+ * process-wide RoomIdRouteConfig, so two rooms connecting at once must never overlap
+ * (an overlap once left TikTok's own lookups disabled for every account).
+ */
+let connectQueue: Promise<unknown> = Promise.resolve();
+const CONNECT_SLOT_MS = 30_000;
+
+export function serialized<T>(fn: () => Promise<T>): Promise<T> {
+  const run = connectQueue.then(fn, fn);
+  // Hold the slot until this attempt settles, but never longer than CONNECT_SLOT_MS.
+  connectQueue = Promise.race([run.catch(() => undefined), new Promise((r) => setTimeout(r, CONNECT_SLOT_MS).unref?.())]);
+  return run;
+}
+
+interface RoomIdConfig {
+  skipFetchRoomInfoFromHtmlRoute: boolean;
+  skipFetchRoomInfoFromApiLiveRoute: boolean;
+}
+
+// TikTok often serves cloud servers a cached profile page that still points at the
+// previous (ended) room, so the library reports "offline" during a real LIVE.
+// Before believing it, ask Euler Stream for the current room id and retry once.
+export async function connectWithFallback(
+  conn: { connect(roomId?: string): Promise<unknown>; fetchRoomId(): Promise<string>; roomId: string },
+  cfg: RoomIdConfig,
+  username: string,
+  log?: (m: string) => void,
+): Promise<unknown> {
+  // Always start from TikTok's own lookups enabled.
+  cfg.skipFetchRoomInfoFromHtmlRoute = false;
+  cfg.skipFetchRoomInfoFromApiLiveRoute = false;
+  try {
+    return await conn.connect();
+  } catch (err) {
+    if (!isOffline(err)) throw err;
+    const stale = conn.roomId;
+    let fresh: string | undefined;
+    try {
+      cfg.skipFetchRoomInfoFromHtmlRoute = true;
+      cfg.skipFetchRoomInfoFromApiLiveRoute = true;
+      fresh = await conn.fetchRoomId();
+    } catch (e) {
+      log?.(`[tiktok] @${username}: offline per TikTok (room ${stale || "none"}); Euler lookup failed: ${describeError(e)}`);
+      throw err;
+    } finally {
+      cfg.skipFetchRoomInfoFromHtmlRoute = false;
+      cfg.skipFetchRoomInfoFromApiLiveRoute = false;
+    }
+    if (!fresh || fresh === stale) throw err;
+    log?.(`[tiktok] @${username}: TikTok page had stale room ${stale}; retrying with room ${fresh}`);
+    return conn.connect(fresh);
+  }
+}
+
 export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) => void): ConnectionFactory {
   return async (username) => {
     const mod = await import("tiktok-live-connector");
@@ -42,34 +97,7 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
     return {
       on: (event, handler) => conn.on(event as never, handler as never),
       disconnect: () => conn.disconnect(),
-      // TikTok often serves cloud servers a cached profile page that still points at the
-      // previous (ended) room, so the library reports "offline" during a real LIVE.
-      // Before believing it, ask Euler Stream for the current room id and retry once.
-      connect: async () => {
-        try {
-          return await conn.connect();
-        } catch (err) {
-          if (!isOffline(err)) throw err;
-          const stale = conn.roomId;
-          const cfg = mod.RoomIdRouteConfig;
-          const saved = { html: cfg.skipFetchRoomInfoFromHtmlRoute, api: cfg.skipFetchRoomInfoFromApiLiveRoute };
-          let fresh: string | undefined;
-          try {
-            cfg.skipFetchRoomInfoFromHtmlRoute = true;
-            cfg.skipFetchRoomInfoFromApiLiveRoute = true;
-            fresh = await conn.fetchRoomId();
-          } catch (e) {
-            log?.(`[tiktok] @${username}: offline per TikTok (room ${stale}); Euler lookup failed: ${describeError(e)}`);
-            throw err;
-          } finally {
-            cfg.skipFetchRoomInfoFromHtmlRoute = saved.html;
-            cfg.skipFetchRoomInfoFromApiLiveRoute = saved.api;
-          }
-          if (!fresh || fresh === stale) throw err;
-          log?.(`[tiktok] @${username}: TikTok page had stale room ${stale}; retrying with room ${fresh}`);
-          return conn.connect(fresh);
-        }
-      },
+      connect: () => serialized(() => connectWithFallback(conn, mod.RoomIdRouteConfig, username, log)),
     };
   };
 }

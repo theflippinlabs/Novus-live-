@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LiveEvent } from "../shared/types";
 import { TikTokAdapter } from "../server/platform/TikTokAdapter";
-import { TikTokLiveWatcher, type LiveConnectionLike } from "../server/platform/TikTokLiveWatcher";
+import { connectWithFallback, serialized, TikTokLiveWatcher, type LiveConnectionLike } from "../server/platform/TikTokLiveWatcher";
 import { mapChat, mapGift, mapViewerCount } from "../server/platform/tiktokMapping";
 import { createRuntime } from "./helpers";
 
@@ -129,5 +129,48 @@ describe("TikTok live watcher", () => {
     await vi.advanceTimersByTimeAsync(120_000);
     expect(attempts).toBe(2);
     watcher.stop();
+  });
+});
+
+describe("TikTok connect fallback", () => {
+  const offline = () => Object.assign(new Error("The requested user isn't online :("), { name: "UserOfflineError" });
+
+  it("retries with Euler's room id and always leaves TikTok's own lookups enabled", async () => {
+    const cfg = { skipFetchRoomInfoFromHtmlRoute: true, skipFetchRoomInfoFromApiLiveRoute: true };
+    const seen: (string | undefined)[] = [];
+    const conn = {
+      roomId: "old",
+      async connect(roomId?: string) {
+        seen.push(roomId);
+        if (!roomId) throw offline();
+        return { roomId };
+      },
+      async fetchRoomId() {
+        expect(cfg.skipFetchRoomInfoFromHtmlRoute).toBe(true);
+        return "fresh";
+      },
+    };
+    await connectWithFallback(conn, cfg, "someone");
+    expect(seen).toEqual([undefined, "fresh"]);
+    expect(cfg).toEqual({ skipFetchRoomInfoFromHtmlRoute: false, skipFetchRoomInfoFromApiLiveRoute: false });
+
+    // Euler refusing still restores the config and reports the account as offline.
+    const conn2 = { ...conn, fetchRoomId: async () => Promise.reject(new Error("lack of permission")) };
+    await expect(connectWithFallback(conn2, cfg, "someone")).rejects.toThrow(/isn't online/);
+    expect(cfg).toEqual({ skipFetchRoomInfoFromHtmlRoute: false, skipFetchRoomInfoFromApiLiveRoute: false });
+  });
+
+  it("never runs two connection attempts at the same time", async () => {
+    let running = 0;
+    let maxRunning = 0;
+    const attempt = () =>
+      serialized(async () => {
+        running++;
+        maxRunning = Math.max(maxRunning, running);
+        await new Promise((r) => setTimeout(r, 5));
+        running--;
+      });
+    await Promise.all([attempt(), attempt(), attempt()]);
+    expect(maxRunning).toBe(1);
   });
 });
