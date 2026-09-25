@@ -4,7 +4,7 @@ import { api } from "../api";
 import { runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
-import { Avatar, BrandLogo, Logo, Segmented, SeverityBadge } from "../components/ui";
+import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
 import { actionLabel, tr, useLang, useT } from "../i18n";
 import { navigate, openViewer, switchRoom, toast, useStore } from "../store";
 
@@ -60,9 +60,7 @@ function WaitingForLive({ username }: { username: string }) {
   const failing = tiktok?.state === "ERROR";
   return (
     <div className="hero">
-      <div className="logo">
-        <Logo size={64} />
-      </div>
+      <BrandLogo />
       <div className={`waiting-pill ${failing ? "bad" : ""}`}>
         <span className="dot" />
         {failing ? t("tiktokRetrying") : t("waitingForLive")}

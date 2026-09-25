@@ -209,3 +209,22 @@ describe("trusted user thresholds", () => {
     expect(rank[sevStrict]).toBeGreaterThan(rank[sevLow]);
   });
 });
+
+describe("strict mode on real LIVE chat", () => {
+  it("catches veiled / misspelled insults and sends weak signals to the AI", async () => {
+    const { defaultSettings } = await import("../shared/settings");
+    const strict = { ...defaultSettings(), sensitivity: "strict" as const };
+    const a = createAnalyzer(strict);
+    const dig = a.analyze("junito2332", "Listen it's not ur fault people r dum enough to give u $$$ for just sitting there");
+    expect(dig.analysis.categories).toContain("insult");
+    expect(dig.analysis.severity === "normal" ? dig.ambiguous : true).toBe(true);
+    // Rude body question: below thresholds but reviewed by the AI in strict mode.
+    const q = a.analyze("moussitv", "HEIGHT AND WEIGHT?");
+    expect(q.ambiguous).toBe(true);
+    // Ordinary chat is not sent.
+    expect(a.analyze("espi.cozi", "What's for dinner").ambiguous).toBe(false);
+    // Balanced mode keeps the AI budget for clearer cases.
+    const b = createAnalyzer();
+    expect(b.analyze("moussitv", "HEIGHT AND WEIGHT?").ambiguous).toBe(false);
+  });
+});

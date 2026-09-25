@@ -54,7 +54,7 @@ export const PATTERNS: PatternRule[] = [
     category: "insult",
     weight: 0.25,
     reason: "Insult",
-    re: /\b(idiot|stupid|dumb|moron|loser|clown|pathetic|trash|garbage|ugly|fat|worthless|useless|cringe|l+ozer|braindead|dumbass|fool|annoying|irritating|embarrassing)\b/,
+    re: /\b(idiots?|stupid|stoopid|stupi?d+|dumb|dum+|dumbo|moron|losers?|clown|pathetic|trash|garbage|ugly|fat|worthless|useless|cringe|l+ozer|braindead|dumbass|fool|annoying|irritating|embarrassing|lame|gold ?digger|attention seeker|begging)\b/,
     needsTarget: true,
   },
   {
