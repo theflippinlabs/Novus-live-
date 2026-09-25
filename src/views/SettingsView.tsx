@@ -4,10 +4,11 @@ import { CATEGORIES, type Sensitivity, type Settings, type Thresholds } from "..
 import { api, ApiError } from "../api";
 import { Segmented, Toggle } from "../components/ui";
 import { categoryLabel, errorText, setLanguage, severityLabel, useLang, useT } from "../i18n";
-import { getState, setState, toast, useStore } from "../store";
+import { getState, navigate, setState, toast, useStore } from "../store";
 import { TikTokIntegration } from "./TikTokIntegration";
 import { TeamSection } from "../components/TeamSection";
-import { useCan } from "../permissions";
+import { useCan, useIsFounder } from "../permissions";
+import { BillingSection } from "../components/BillingSection";
 
 async function save(patch: Partial<Settings>, okText: string) {
   try {
@@ -119,6 +120,8 @@ export function SettingsView() {
   const ai = useStore((s) => s.ai);
   const canSettings = useCan("settings");
   const canTeam = useCan("team");
+  const isFounder = useIsFounder();
+  const isAdmin = useStore((s) => Boolean(s.me?.admin));
   const teamEnabled = useStore((s) => s.me?.teamEnabled ?? false);
   const [streamer, setStreamer] = useState(settings.streamerName);
   const [authRequired, setAuthRequired] = useState(false);
@@ -143,6 +146,19 @@ export function SettingsView() {
     <div className="scroll">
       <div className="narrow">
         <MeCard />
+        {isFounder ? (
+          <>
+            <div className="section-title" style={{ marginTop: 4 }}>
+              {lang === "fr" ? "Abonnement" : "Subscription"}
+            </div>
+            <BillingSection />
+          </>
+        ) : null}
+        {isAdmin ? (
+          <button className="btn block" style={{ marginTop: 10 }} onClick={() => navigate("admin")}>
+            {lang === "fr" ? "Tableau de bord admin" : "Admin dashboard"}
+          </button>
+        ) : null}
         {canSettings ? (
           <>
         <div className="section-title" style={{ marginTop: 4 }}>

@@ -4,6 +4,7 @@ import { loadConfig } from "./config";
 import Stripe from "stripe";
 import { MeteredAIProvider, NullAIProvider, type AIProvider } from "./ai/AIProvider";
 import { BillingService, type StripeLike } from "./billing/Billing";
+import { applyPlanToRooms } from "./billing/wire";
 import { MemoryBillingStore, SupabaseBillingStore, type BillingStore } from "./billing/Store";
 import { AnthropicProvider } from "./ai/AnthropicProvider";
 import { NovusRuntime } from "./core/NovusRuntime";
@@ -167,12 +168,7 @@ async function main() {
 
     const rooms = new RoomRegistry(mainRoom, createTikTokRoom);
     // Monitor only what the plan allows: none when restricted or when a trial used its LIVE hours.
-    rooms.creatorLimit = () => {
-      const eff = billing.effective(tenant);
-      if (eff.access === "restricted") return 0;
-      if (eff.access === "trial" && !billing.allowed(tenant, "live")) return 0;
-      return eff.entitlements.creator_limit;
-    };
+    applyPlanToRooms(rooms, billing, tenant);
     // Room badges (LIVE detected, recording) refresh right away when a LIVE starts or ends.
     onRoomsChanged = () => rooms.broadcastSummaries();
     // Older installs stored a single followed account; fold it into the profile list.
@@ -198,7 +194,13 @@ async function main() {
   const spaces: Space[] = [];
   for (const tenant of tenants) spaces.push(await buildSpace(tenant));
   // Self-serve customer workspaces.
-  for (const ws of billing.all()) if (ws.founderCodeHash && !tenants.includes(ws.id)) spaces.push(await buildSpace(ws.id));
+  // (Signups never paid for over 7 days are not loaded: their code cannot log in any more.)
+  const staleSignup = Date.now() - 7 * 24 * 3600 * 1000;
+  for (const ws of billing.all()) {
+    if (!ws.founderCodeHash || tenants.includes(ws.id)) continue;
+    if (ws.status === "pending" && ws.createdAt < staleSignup) continue;
+    spaces.push(await buildSpace(ws.id));
+  }
   const byTenant = new Map(spaces.map((x) => [x.id, x]));
   const owner = spaces[0];
   const chat = owner.chat;

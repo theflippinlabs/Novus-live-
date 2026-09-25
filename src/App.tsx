@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "./api";
+import { api, ApiError, setPlanLimitHandler } from "./api";
 import { BottomNav } from "./components/BottomNav";
 import { TopBar } from "./components/TopBar";
 import { BrandLogo } from "./components/ui";
@@ -8,13 +8,17 @@ import { ViewerSheet } from "./components/ViewerSheet";
 import { useT } from "./i18n";
 import { handleChatSenderReturn, refreshChatSender } from "./chatSender";
 import { loadMe } from "./permissions";
-import { connectRealtime, useStore } from "./store";
+import { connectRealtime, navigate, useStore } from "./store";
+import { refreshBilling, showUpgrade } from "./billing";
+import { BillingBanner, UpgradeSheet } from "./components/BillingSection";
+import { AdminView } from "./views/AdminView";
 import { AlertsView } from "./views/AlertsView";
 import { AnalyticsView } from "./views/AnalyticsView";
 import { AssistantView } from "./views/AssistantView";
 import { LiveView } from "./views/LiveView";
 import { SettingsView } from "./views/SettingsView";
 import { ViewersView } from "./views/ViewersView";
+import { PricingPage } from "./views/PricingPage";
 
 function Login({ onDone }: { onDone: () => void }) {
   const t = useT();
@@ -50,6 +54,9 @@ function Login({ onDone }: { onDone: () => void }) {
           {t("login")}
         </button>
       </div>
+      <a className="link-btn" href="/pricing?from=login" style={{ display: "block", textAlign: "center", marginTop: 16 }}>
+        {t("noAccount")}
+      </a>
     </div>
   );
 }
@@ -59,6 +66,7 @@ function Shell() {
   const toast = useStore((s) => s.toast);
   return (
     <div className="app">
+      <BillingBanner />
       <TopBar />
       <main className="view">
         {view === "live" ? <LiveView /> : null}
@@ -67,9 +75,11 @@ function Shell() {
         {view === "assistant" ? <AssistantView /> : null}
         {view === "analytics" ? <AnalyticsView /> : null}
         {view === "settings" ? <SettingsView /> : null}
+        {view === "admin" ? <AdminView /> : null}
       </main>
       <BottomNav />
       <ViewerSheet />
+      <UpgradeSheet />
       {toast ? (
         <div className={`toast ${toast.tone}`} role="status" key={toast.id}>
           {toast.text}
@@ -80,6 +90,14 @@ function Shell() {
 }
 
 export function App() {
+  // Public pages (no login): pricing and the post-checkout confirmation.
+  const path = location.pathname;
+  if (path.startsWith("/pricing")) return <PricingPage />;
+  if (path.startsWith("/billing/success")) return <PricingPage success />;
+  return <AppAuthed />;
+}
+
+function AppAuthed() {
   const [auth, setAuth] = useState<"checking" | "needed" | "ok">("checking");
 
   useEffect(() => {
@@ -100,8 +118,17 @@ export function App() {
     handleChatSenderReturn();
     void refreshChatSender();
     void loadMe();
+    void refreshBilling();
+    setPlanLimitHandler(showUpgrade);
+    // Back from the billing portal or a plan change.
+    if (new URLSearchParams(location.search).get("view") === "billing") {
+      navigate("settings");
+      history.replaceState(null, "", "/");
+    }
     const onVisible = () => {
-      if (document.visibilityState === "visible") void refreshChatSender();
+      if (document.visibilityState !== "visible") return;
+      void refreshChatSender();
+      void refreshBilling();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);

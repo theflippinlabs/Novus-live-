@@ -600,6 +600,8 @@ export interface Me {
   member?: TeamMember;
   permissions: Permission[];
   accounts: string[] | null;
+  /** The platform owner: admin dashboards (profitability, metrics, config). */
+  admin?: boolean;
 }
 
 // ---------------------------------------------------------------- billing

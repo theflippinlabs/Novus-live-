@@ -7,6 +7,7 @@ import { createApp, type Space } from "../server/app";
 import { BillingService, type StripeLike } from "../server/billing/Billing";
 import { effectiveEntitlements, PAST_DUE_GRACE_MS } from "../server/billing/Entitlements";
 import { MemoryBillingStore, type Workspace } from "../server/billing/Store";
+import { applyPlanToRooms, monitoredCreatorLimit } from "../server/billing/wire";
 import { EulerChatSender } from "../server/chat/EulerChat";
 import { RoomRegistry, tiktokRoomId, type Room } from "../server/core/Rooms";
 import { MemoryRepository } from "../server/persistence/MemoryRepository";
@@ -98,15 +99,20 @@ async function makeApp() {
   const repo = new MemoryRepository();
   await billing.ensureComped("owner", "Novus Live", "enterprise");
   const owner = await space(repo, "owner");
+  const provisioned = new Map<string, Space>();
   const app = createApp({
     config: { accessToken: OWNER, production: false, webDir: "x", trustProxy: false, apiRateLimitPerMinute: 10_000, ingestRateLimitPerMinute: 1000, sessionSecret: "s", publicUrl: "https://novus.test" },
     spaces: [owner],
     billing,
-    provisionSpace: (id) => space(repo, id),
+    provisionSpace: async (id) => {
+      const s = await space(repo, id);
+      provisioned.set(id, s);
+      return s;
+    },
   });
   const cookieOf = (res: request.Response) => (res.headers["set-cookie"] as unknown as string[])[0].split(";")[0];
   const ownerCookie = cookieOf(await request(app).post("/api/auth/login").send({ key: OWNER }).expect(200));
-  return { app, billing, stripe, ownerCookie, cookieOf };
+  return { app, billing, stripe, ownerCookie, cookieOf, provisioned };
 }
 
 describe("Pricing catalog", () => {
@@ -295,6 +301,37 @@ describe("Founding Agency offer", () => {
   });
 });
 
+describe("Plan limits on monitoring", () => {
+  it("monitors up to the plan's creators, pauses the rest, and stops when restricted — without deleting", async () => {
+    const { billing, stripe } = await makeBilling();
+    const { workspace } = await billing.signup({ name: "Grow", email: "g@x.co", plan: "moderator_pro" });
+    const repo = new MemoryRepository();
+    const s = await space(repo, workspace.id);
+    applyPlanToRooms(s.rooms, billing, workspace.id);
+    stripe.subs.set("sub_g", sub("sub_g", workspace.id, "active", "novus_moderator_pro_month"));
+    await billing.syncSubscription(stripe.subs.get("sub_g")!);
+    await s.rooms.updateSettings({ tiktokProfiles: ["a", "b", "c", "d"] });
+    expect(s.rooms.all().filter((r) => r.kind === "tiktok").map((r) => r.username)).toEqual(["a", "b", "c"]);
+    expect(s.rooms.paused()).toEqual(["d"]);
+    // Canceled: read-only, monitoring stops, the followed accounts are kept.
+    await billing.syncSubscription(sub("sub_g", workspace.id, "canceled", "novus_moderator_pro_month"));
+    await s.rooms.syncProfiles();
+    expect(s.rooms.all().filter((r) => r.kind === "tiktok")).toHaveLength(0);
+    expect(s.rooms.settings.tiktokProfiles).toEqual(["a", "b", "c", "d"]);
+    expect(monitoredCreatorLimit(billing, workspace.id)).toBe(0);
+  });
+
+  it("a trial that used its LIVE hours pauses monitoring", async () => {
+    const { billing } = await makeBilling();
+    const { workspace } = await billing.signup({ name: "T", email: "t@x.co", plan: "creator_pro" });
+    await billing.syncSubscription(sub("sub_tr", workspace.id, "trialing", "novus_creator_pro_month"));
+    expect(monitoredCreatorLimit(billing, workspace.id)).toBe(3);
+    billing.meterAdd(workspace.id, "live_minutes", 15 * 60);
+    expect(monitoredCreatorLimit(billing, workspace.id)).toBe(0);
+    expect(billing.me(workspace.id, { creators: 0, seats: 0, isFounder: true }).reason).toBe("trial_quota");
+  });
+});
+
 describe("Billing over HTTP", () => {
   it("self-serve signup creates an isolated workspace, restricted until Stripe confirms", async () => {
     const { app, billing, stripe, ownerCookie, cookieOf } = await makeApp();
@@ -340,6 +377,31 @@ describe("Billing over HTTP", () => {
     expect(row).toMatchObject({ plan: "moderator_pro", mrr: 24.99, creators: 3 });
     expect(admin.body.metrics).toMatchObject({ activeSubscriptions: 1, mrr: 24.99 });
     expect(admin.body.metrics.founding).toMatchObject({ capacity: 20, remaining: 20 });
+  });
+
+  it("counts exports against the plan and hides LIVEs older than the history window", async () => {
+    const { app, billing, stripe, ownerCookie, cookieOf, provisioned } = await makeApp();
+    const res = await request(app).post("/api/billing/signup").send({ name: "Exp", email: "e@x.co", plan: "moderator_pro", cycle: "month" }).expect(200);
+    const cookie = cookieOf(res);
+    const id = res.body.workspaceId as string;
+    stripe.subs.set("sub_e", sub("sub_e", id, "active", "novus_moderator_pro_month"));
+    await billing.syncSubscription(stripe.subs.get("sub_e")!);
+    await request(app).put("/api/admin/config").set("Cookie", ownerCookie).send({ plans: { moderator_pro: { entitlements: { exports_limit: 1 } } } }).expect(200);
+    const rt = provisioned.get(id)!.rooms.main.runtime;
+    await rt.ingestExternal([{ type: "stream_status", status: "started", title: "L" }, { type: "comment", id: "c1", timestamp: Date.now(), viewer: { id: "v", username: "fan" }, text: "hello" }] as never, "tiktok");
+    await rt.endSession();
+    const sid = rt.session!.id;
+    await request(app).get(`/api/history/${sid}/chat.txt`).set("Cookie", cookie).expect(200);
+    const second = await request(app).get(`/api/history/${sid}/messages.csv`).set("Cookie", cookie).expect(402);
+    expect(second.body.error).toBe("plan_limit_exports");
+    // History window: shrink it to 1 day, then look at a LIVE from 3 days ago.
+    await request(app).put("/api/admin/config").set("Cookie", ownerCookie).send({ plans: { moderator_pro: { entitlements: { history_retention_days: 1 } } } }).expect(200);
+    rt.session!.startedAt = Date.now() - 3 * 86400_000;
+    await rt.repository.saveSession(rt.session!);
+    const list = await request(app).get("/api/history").set("Cookie", cookie).expect(200);
+    expect(list.body.entries).toHaveLength(0);
+    expect(list.body.hiddenOlder).toBe(true);
+    expect((await request(app).get(`/api/history/${sid}`).set("Cookie", cookie).expect(402)).body.error).toBe("history_retention");
   });
 
   it("the admin changes limits without a deploy; history beyond the plan window is hidden", async () => {

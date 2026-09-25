@@ -1794,3 +1794,603 @@ main.view {
   color: #1a1107;
   background: linear-gradient(180deg, #f0cf92, #c99a5b);
 }
+
+/* ---------------------------------------------------------------- pricing (public page) */
+.pricing {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: calc(var(--safe-top) + 12px) 16px calc(var(--safe-bottom) + 32px);
+  background:
+    radial-gradient(1200px 520px at 50% -180px, rgba(217, 174, 106, 0.16), transparent 70%),
+    var(--bg);
+}
+
+.pricing > * {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.pricing-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pricing-top .brand-logo,
+.pricing-top img {
+  max-height: 44px;
+  width: auto;
+}
+
+.pricing-hero {
+  text-align: center;
+  padding: 36px 0 20px;
+}
+
+.pricing-hero h1 {
+  margin: 0 auto 10px;
+  max-width: 760px;
+  font-size: clamp(30px, 6vw, 52px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  background: var(--chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.pricing-hero p {
+  margin: 0 auto 22px;
+  max-width: 620px;
+  color: var(--text-2);
+  font-size: 17px;
+}
+
+.cycle-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.cycle-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  color: var(--text-2);
+  font-weight: 700;
+}
+
+.cycle-toggle button.on {
+  color: #1b1307;
+  background: var(--chrome);
+}
+
+.cycle-toggle .save {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+.cycle-toggle button.on .save {
+  background: rgba(27, 19, 7, 0.14);
+  color: #1b1307;
+}
+
+.small-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  border-radius: 14px;
+}
+
+.small-toggle button {
+  flex: 1 1 40%;
+  min-height: 36px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+.pricing-notice {
+  margin: 14px auto 0;
+  max-width: 560px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.pricing-loading {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--text-3);
+}
+
+.plan-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+@media (min-width: 720px) {
+  .plan-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1120px) {
+  .plan-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.plan-card.popular {
+  border-color: var(--border-strong);
+}
+
+.plan-card.agency {
+  background: linear-gradient(180deg, #16130d 0%, var(--surface) 55%);
+  border-color: var(--gold-line);
+}
+
+.plan-card.featured {
+  box-shadow: 0 0 0 1px var(--gold-line), 0 18px 50px rgba(217, 174, 106, 0.14);
+}
+
+.plan-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.plan-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.plan-badge.gold {
+  color: #1b1307;
+  background: var(--chrome);
+  border-color: transparent;
+}
+
+.plan-badge.founding {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.plan-name {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+
+.plan-tag {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  min-height: 40px;
+}
+
+.plan-price {
+  padding: 6px 0 2px;
+}
+
+.price-main {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.price-main small {
+  margin-left: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.price-strike {
+  color: var(--text-3);
+  text-decoration: line-through;
+  font-size: 15px;
+}
+
+.price-note {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.plan-anchor {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--gold-soft);
+  border: 1px solid var(--gold-line);
+  font-size: 13.5px;
+}
+
+.plan-anchor b {
+  color: var(--gold);
+}
+
+.founding-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.founding-box b {
+  color: var(--gold);
+}
+
+.plan-trial {
+  text-align: center;
+}
+
+.plan-features {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.plan-features li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.plan-features .tick {
+  color: var(--gold);
+  font-weight: 800;
+  flex: none;
+}
+
+.plan-features .soon {
+  color: var(--text-3);
+  font-style: normal;
+  font-size: 12.5px;
+}
+
+@media (min-width: 720px) {
+  .plan-features.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.link-btn {
+  color: var(--gold);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 4px 0;
+}
+
+.enterprise,
+.roi,
+.compare,
+.faq {
+  margin-top: 22px;
+  padding: 22px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.enterprise {
+  display: grid;
+  gap: 16px;
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .enterprise {
+    grid-template-columns: 1.1fr 1.6fr auto;
+  }
+}
+
+.roi {
+  background: linear-gradient(135deg, #17130c, var(--surface) 60%);
+  border-color: var(--gold-line);
+}
+
+.roi h2,
+.compare h2,
+.faq h2 {
+  margin: 0 0 8px;
+  font-size: clamp(22px, 4vw, 30px);
+  letter-spacing: -0.01em;
+}
+
+.roi p {
+  color: var(--text-2);
+  margin: 0 0 14px;
+}
+
+.roi-price {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: baseline;
+  margin: 16px 0;
+}
+
+.roi-price b {
+  font-size: 20px;
+}
+
+.roi-price span {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.compare-group h3 {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.compare-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.compare-row b {
+  text-align: right;
+}
+
+.compare-table {
+  display: none;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.compare-table th,
+.compare-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.compare-table th {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.compare-table .featured {
+  background: rgba(217, 174, 106, 0.06);
+}
+
+.compare-table tr.group td {
+  padding-top: 18px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: none;
+}
+
+@media (min-width: 900px) {
+  .compare-table {
+    display: table;
+  }
+  .compare-mobile {
+    display: none;
+  }
+}
+
+.faq details {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+}
+
+.faq summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 15px;
+  list-style: none;
+}
+
+.faq summary::after {
+  content: "+";
+  float: right;
+  color: var(--gold);
+}
+
+.faq details[open] summary::after {
+  content: "–";
+}
+
+.faq details p {
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.pricing-foot {
+  text-align: center;
+  margin-top: 26px;
+}
+
+.sheet-card {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.sheet-card h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+/* ---------------------------------------------------------------- billing in the app */
+.usage-row {
+  margin: 10px 0;
+}
+
+.usage-row .usage-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.usage-bar {
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.usage-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--chrome);
+}
+
+.usage-bar.warn > span {
+  background: var(--r-warning);
+}
+
+.usage-bar.full > span {
+  background: var(--r-critical);
+}
+
+.billing-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.billing-banner.bad {
+  border-color: rgba(229, 38, 62, 0.45);
+  background: var(--r-critical-bg);
+}
+
+.billing-banner span {
+  flex: 1;
+}
+
+.admin-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (min-width: 720px) {
+  .admin-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.kpi {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.kpi b {
+  display: block;
+  font-size: 20px;
+}
+
+.kpi span {
+  font-size: 11.5px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.health {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.health.healthy {
+  color: var(--ok);
+  border: 1px solid rgba(143, 207, 138, 0.4);
+}
+
+.health.watch {
+  color: var(--r-watch);
+  border: 1px solid rgba(240, 211, 90, 0.4);
+}
+
+.health.at_risk {
+  color: var(--r-critical);
+  border: 1px solid rgba(229, 38, 62, 0.45);
+}
+
+.health.n\/a {
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+.sheet-backdrop > .sheet-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}

@@ -34,6 +34,7 @@ const TEXT = {
     groupOf: (u: string) => `Group of @${u}`,
     emptyGroup: "Empty — pick this group next to an account below.",
     liveNotRecorded: "LIVE · NOT RECORDED",
+    paused: "PAUSED · PLAN LIMIT",
     auto: "AUTO",
     manual: "MANUAL",
     modeTitle: (u: string, manual: boolean) =>
@@ -71,6 +72,7 @@ const TEXT = {
     groupOf: (u: string) => `Groupe de @${u}`,
     emptyGroup: "Vide — choisis ce groupe à côté d'un compte ci-dessous.",
     liveNotRecorded: "EN LIVE · NON ENREGISTRÉ",
+    paused: "EN PAUSE · LIMITE DE L'OFFRE",
     auto: "AUTO",
     manual: "MANUEL",
     modeTitle: (u: string, manual: boolean) =>
@@ -217,9 +219,11 @@ export function TikTokProfiles() {
       ? { cls: "bad", text: tx.live }
       : room?.detected
         ? { cls: "bad", text: tx.liveNotRecorded }
-        : room?.state === "ERROR"
-          ? { cls: "bad", text: tx.error }
-          : { cls: "gold", text: tx.waiting };
+        : !room && rooms.length
+          ? { cls: "", text: tx.paused }
+          : room?.state === "ERROR"
+            ? { cls: "bad", text: tx.error }
+            : { cls: "gold", text: tx.waiting };
     const manual = isManual(p);
     return (
       <div key={p} className="list-row">

@@ -476,7 +476,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     h((req): Me => {
       const p = principal(req);
       return p.kind === "founder"
-        ? { kind: "founder", teamEnabled: keys.length > 0, permissions: [...PERMISSIONS], accounts: null }
+        ? { kind: "founder", teamEnabled: keys.length > 0, permissions: [...PERMISSIONS], accounts: null, admin: isAdmin(req) }
         : { kind: "member", teamEnabled: true, member: p.member, permissions: p.member.permissions, accounts: p.member.accounts };
     }),
   );

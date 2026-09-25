@@ -42,6 +42,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Called when the API refuses an action because of the plan (402): shows the upgrade prompt. */
+let on402: (code: string) => void = () => undefined;
+export function setPlanLimitHandler(fn: (code: string) => void): void {
+  on402 = fn;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
@@ -59,6 +65,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     } catch {
       /* non-JSON error */
     }
+    if (res.status === 402) on402(code);
     throw new ApiError(res.status, code);
   }
   return (await res.json()) as T;

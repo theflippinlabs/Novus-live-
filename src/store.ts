@@ -4,6 +4,7 @@ import type {
   ActionRecord,
   AIStatus,
   AnalyzedComment,
+  BillingMe,
   ChatSenderStatus,
   Me,
   DemoStatus,
@@ -21,7 +22,7 @@ import type {
 // reference, so components subscribed to `stats` do not rerender when chat
 // messages arrive, and the chat list only receives a new array per batch.
 
-export type View = "live" | "alerts" | "viewers" | "assistant" | "analytics" | "settings";
+export type View = "live" | "alerts" | "viewers" | "assistant" | "analytics" | "settings" | "admin";
 export type Connection = "connecting" | "live" | "reconnecting" | "unauthorized";
 
 const MAX_CHAT = 1500;
@@ -45,6 +46,10 @@ export interface AppState {
   chatSender: ChatSenderStatus | null;
   /** Who is logged in: the founder, or a team member with limited rights. */
   me: Me | null;
+  /** The workspace's plan, limits and usage (billing). */
+  billing: BillingMe | null;
+  /** A plan limit was hit: which one (shows the contextual upgrade prompt). */
+  upgrade: string | null;
   selectedViewerId: string | null;
   toast: { id: number; text: string; tone: "info" | "ok" | "warn" } | null;
   serverOffset: number;
@@ -80,6 +85,8 @@ let state: AppState = {
   tiktok: null,
   chatSender: null,
   me: null,
+  billing: null,
+  upgrade: null,
   selectedViewerId: null,
   toast: null,
   serverOffset: 0,
