@@ -226,6 +226,16 @@ button {
   animation: none;
 }
 
+.waiting-pill.live {
+  color: var(--r-critical);
+  border-color: rgba(229, 38, 62, 0.45);
+}
+
+.waiting-pill.live .dot {
+  background: var(--r-critical);
+  animation: pulse 1.6s infinite;
+}
+
 @keyframes pulse-gold {
   0% { box-shadow: 0 0 0 0 rgba(217, 174, 106, 0.55); }
   70% { box-shadow: 0 0 0 8px rgba(217, 174, 106, 0); }
@@ -294,6 +304,11 @@ button {
 .room-chip .dot.on {
   background: var(--r-critical);
   animation: pulse 1.6s infinite;
+}
+
+.room-chip .dot.detected {
+  background: transparent;
+  border: 2px solid var(--r-critical);
 }
 
 .room-chip .dot.bad {
@@ -383,6 +398,24 @@ button {
 
 .group-name.muted {
   color: var(--text-3);
+}
+
+.mode-toggle {
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.mode-toggle.manual {
+  color: var(--gold);
+  border-color: var(--gold-line);
 }
 
 .group-select {

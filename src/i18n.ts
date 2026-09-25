@@ -444,6 +444,8 @@ const ERRORS: Record<string, { en: string; fr: string }> = {
   demo_main_room_only: { en: "The demo only runs in the Demo space.", fr: "La démo ne fonctionne que dans l'espace Démo." },
   save_failed: { en: "Save failed.", fr: "Échec de l'enregistrement." },
   internal_error: { en: "Server error — try again.", fr: "Erreur du serveur — réessaie." },
+  not_live: { en: "This account is not LIVE right now.", fr: "Ce compte n'est pas en LIVE en ce moment." },
+  not_a_followed_account: { en: "Only followed TikTok accounts can be recorded.", fr: "Seuls les comptes TikTok suivis peuvent être enregistrés." },
   manual_action_not_found: { en: "This action is no longer pending.", fr: "Cette action n'est plus en attente." },
   chat_not_configured: {
     en: "Sending in chat is not set up on the server yet.",

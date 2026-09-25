@@ -25,6 +25,14 @@ export interface Room {
   tiktok: TikTokAdapter;
   /** TikTok room id of the account's current LIVE (followed accounts only). */
   liveRoomId?: () => string | undefined;
+  /** The account is confirmed LIVE on TikTok (followed accounts only). */
+  detected?: () => boolean;
+  /** Recording mode of a followed account. */
+  mode?: () => "auto" | "manual";
+  /** Start / stop recording the current LIVE (manual mode, or to stop early). */
+  setRecording?: (on: boolean) => Promise<void>;
+  /** New settings for this room (recording mode…). */
+  applySettings?: (settings: Settings) => void;
   /** Stop watchers/timers and close any running session. */
   dispose(): Promise<void>;
 }
@@ -64,6 +72,8 @@ export class RoomRegistry {
         kind: r.kind,
         username: r.username,
         live: r.runtime.session?.status === "live",
+        detected: r.detected?.() ?? false,
+        mode: r.mode?.(),
         state: r.tiktok.state(),
         openAlerts: stats.openAlerts,
         criticalAlerts: stats.criticalAlerts,
@@ -88,13 +98,21 @@ export class RoomRegistry {
 
   /** Save settings once, share them with every room, then follow/unfollow TikTok accounts. */
   async updateSettings(patch: Partial<Settings>): Promise<Settings> {
-    // Groups only keep accounts that are still followed.
-    if (patch.tiktokProfiles || patch.tiktokGroups) {
+    // Groups and manual-mode entries only keep accounts that are still followed.
+    if (patch.tiktokProfiles || patch.tiktokGroups || patch.tiktokManual) {
       const followed = new Set((patch.tiktokProfiles ?? this.settings.tiktokProfiles ?? []).map((u) => u.toLowerCase()));
-      patch = { ...patch, tiktokGroups: (patch.tiktokGroups ?? this.settings.tiktokGroups ?? []).map((g) => ({ ...g, members: g.members.filter((u) => followed.has(u)) })) };
+      patch = {
+        ...patch,
+        tiktokGroups: (patch.tiktokGroups ?? this.settings.tiktokGroups ?? []).map((g) => ({ ...g, members: g.members.filter((u) => followed.has(u)) })),
+        tiktokManual: (patch.tiktokManual ?? this.settings.tiktokManual ?? []).filter((u) => followed.has(u)),
+      };
     }
     const settings = await this.main.runtime.updateSettings(patch);
-    for (const r of this.all()) if (r !== this.main) r.runtime.adoptSettings(this.roomSettings(r, settings));
+    for (const r of this.all()) {
+      if (r !== this.main) r.runtime.adoptSettings(this.roomSettings(r, settings));
+      r.applySettings?.(settings);
+    }
+    this.broadcastSummaries(true);
     if (patch.tiktokProfiles) await this.syncProfiles();
     return settings;
   }
@@ -123,6 +141,7 @@ export class RoomRegistry {
       if (this.rooms.has(id)) continue;
       const room = await this.createTikTokRoom(username);
       room.runtime.adoptSettings(this.roomSettings(room));
+      room.applySettings?.(this.settings);
       this.rooms.set(id, room);
     }
     this.broadcastSummaries(true);

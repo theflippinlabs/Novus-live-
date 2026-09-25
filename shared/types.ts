@@ -247,6 +247,11 @@ export interface Settings {
   tiktokProfiles: string[];
   /** Folders to organize followed accounts; an account belongs to at most one group. */
   tiktokGroups: TikTokGroup[];
+  /**
+   * Followed accounts in MANUAL mode (lowercase): their LIVE is detected but only recorded
+   * once the moderator taps "Start recording". Every other account records automatically.
+   */
+  tiktokManual: string[];
 }
 
 export interface TikTokGroup {
@@ -520,7 +525,12 @@ export interface RoomSummary {
   kind: "main" | "tiktok";
   /** TikTok handle (without "@") for TikTok rooms. */
   username?: string;
+  /** A LIVE session is being recorded in this room. */
   live: boolean;
+  /** The account is confirmed LIVE on TikTok (recorded or not). */
+  detected?: boolean;
+  /** Recording mode of a followed account. */
+  mode?: "auto" | "manual";
   state: TikTokIntegrationState;
   openAlerts: number;
   criticalAlerts: number;

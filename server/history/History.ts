@@ -60,8 +60,9 @@ export class HistoryService {
         const report = reports.get(s.id);
         return this.toEntry(s, report?.analytics ?? null, false, report?.generatedAt);
       })
-      // Hide empty artifacts (a session opened and closed within seconds with nothing in it).
-      .filter((e) => e.status === "live" || e.messages > 0 || e.gifts > 0 || e.peakViewers > 0 || e.durationMs >= 60_000);
+      // Hide sessions with no activity at all: a real LIVE always has viewers, messages or gifts
+      // (older versions could open one on a TikTok room that was not actually broadcasting).
+      .filter((e) => e.status === "live" || e.messages > 0 || e.gifts > 0 || e.peakViewers > 0);
   }
 
   async detail(sessionId: string): Promise<HistoryDetail | null> {

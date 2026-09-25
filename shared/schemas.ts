@@ -96,6 +96,10 @@ export const settingsPatchSchema = z
       .array(tiktokHandle.pipe(z.string().min(2)))
       .max(MAX_PROFILES)
       .transform((list) => [...new Set(list)]),
+    tiktokManual: z
+      .array(tiktokHandle.pipe(z.string().min(2)))
+      .max(MAX_PROFILES)
+      .transform((list) => [...new Set(list.map((u) => u.toLowerCase()))]),
     tiktokGroups: z
       .array(
         z
@@ -150,3 +154,5 @@ export const sendChatSchema = z
     text: z.string().trim().min(1).max(150),
   })
   .strict();
+
+export const recordingSchema = z.object({ action: z.enum(["start", "stop"]) }).strict();

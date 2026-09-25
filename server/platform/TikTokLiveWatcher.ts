@@ -130,25 +130,49 @@ const isOffline = (err: unknown): boolean => {
   return text.includes("offline") || text.includes("not live") || text.includes("isn't online") || text.includes("not online");
 };
 
+export interface WatcherOptions {
+  pollMs: number;
+  errorBackoffMs: number;
+  log?: (m: string) => void;
+  /**
+   * A connection only counts as a LIVE once the room shows real activity (viewer count, chat,
+   * gifts…) after this delay — the burst replayed right at connect time does not count.
+   */
+  confirmAfterMs?: number;
+  /** No activity within this window after connecting: not a LIVE (TikTok pointed at a dead room). */
+  confirmWindowMs?: number;
+  /** A running LIVE that sends nothing for this long is over (TikTok did not send "stream end"). */
+  silenceMs?: number;
+}
+
+const DEFAULTS = { confirmAfterMs: 5_000, confirmWindowMs: 90_000, silenceMs: 4 * 60_000 };
+
 export class TikTokLiveWatcher {
   private username: string | null = null;
   private conn: LiveConnectionLike | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private confirmTimer: ReturnType<typeof setTimeout> | null = null;
+  private silenceTimer: ReturnType<typeof setInterval> | null = null;
   private live = false;
   private loggedOffline = false;
   private generation = 0;
   private queue: Promise<void> = Promise.resolve();
+  private lastActivity = 0;
+  private opts: WatcherOptions & typeof DEFAULTS;
 
   constructor(
     private factory: ConnectionFactory,
     private sink: WatcherSink,
-    private opts: { pollMs: number; errorBackoffMs: number; log?: (m: string) => void } = { pollMs: 60_000, errorBackoffMs: 180_000 },
-  ) {}
+    opts: WatcherOptions = { pollMs: 60_000, errorBackoffMs: 180_000 },
+  ) {
+    this.opts = { ...DEFAULTS, ...opts };
+  }
 
   get watching(): string | null {
     return this.username;
   }
 
+  /** True only once the LIVE is confirmed by real room activity. */
   get isLive(): boolean {
     return this.live;
   }
@@ -166,8 +190,23 @@ export class TikTokLiveWatcher {
 
   stop(): void {
     this.generation += 1;
+    this.clearTimers();
+    this.dropConnection();
+    if (this.live) {
+      this.live = false;
+      this.enqueue([endMarker()]);
+    }
+    this.username = null;
+  }
+
+  private clearTimers(): void {
     if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
+    if (this.confirmTimer) clearTimeout(this.confirmTimer);
+    if (this.silenceTimer) clearInterval(this.silenceTimer);
+    this.timer = this.confirmTimer = this.silenceTimer = null;
+  }
+
+  private dropConnection(): void {
     const conn = this.conn;
     this.conn = null;
     if (conn) {
@@ -177,11 +216,6 @@ export class TikTokLiveWatcher {
         /* already closed */
       }
     }
-    if (this.live) {
-      this.live = false;
-      this.enqueue([{ id: `tt:end:${Date.now()}`, timestamp: Date.now(), type: "stream_status", status: "ended" } as Draft]);
-    }
-    this.username = null;
   }
 
   private schedule(gen: number, ms: number): void {
@@ -208,25 +242,64 @@ export class TikTokLiveWatcher {
     }
     if (gen !== this.generation) return;
 
+    // Events wait here until the LIVE is confirmed, then open the session together.
+    let pending: Draft[] = [];
+    let connectedAt = 0;
+    const confirm = () => {
+      if (this.live || this.conn !== conn || gen !== this.generation) return;
+      if (this.confirmTimer) clearTimeout(this.confirmTimer);
+      this.confirmTimer = null;
+      this.live = true;
+      this.loggedOffline = false;
+      this.lastActivity = Date.now();
+      this.sink.alive();
+      this.opts.log?.(`[tiktok] @${username} is LIVE (activity confirmed ${Math.round((Date.now() - connectedAt) / 1000)}s after connecting)`);
+      this.enqueue([{ id: `tt:start:${Date.now()}`, timestamp: Date.now(), type: "stream_status", status: "started", title: `@${username} LIVE` } as Draft, ...pending]);
+      pending = [];
+      this.silenceTimer = setInterval(() => {
+        if (this.live && this.conn === conn && Date.now() - this.lastActivity > this.opts.silenceMs) {
+          this.opts.log?.(`[tiktok] @${username}: no activity for ${Math.round(this.opts.silenceMs / 60_000)} min — closing the LIVE`);
+          ended();
+        }
+      }, Math.min(30_000, this.opts.silenceMs / 4));
+    };
+
     const on = (event: string, map: (raw: never) => Draft | null) =>
       conn.on(event, (raw) => {
-        // Only while this connection is the live one: stragglers after the LIVE ended
+        // Only this attempt's connection counts: stragglers after the LIVE ended
         // (a last viewer count, a late comment) must not open a new, empty session.
-        if (gen !== this.generation || !this.live || this.conn !== conn) return;
+        if (gen !== this.generation || this.conn !== conn) return;
         const ev = map(raw as never);
-        if (ev) this.enqueue([ev]);
+        if (!ev) return;
+        if (this.live) {
+          this.lastActivity = Date.now();
+          this.enqueue([ev]);
+          return;
+        }
+        if (pending.length < 500) pending.push(ev);
+        if (Date.now() - connectedAt >= this.opts.confirmAfterMs) confirm();
       });
     on("chat", mapChat);
     on("gift", mapGift);
     on("member", mapJoin);
     on("follow", mapFollow);
     on("roomUser", mapViewerCount);
+    // Likes are not stored but prove the room is alive.
+    conn.on("like", () => {
+      if (gen !== this.generation || this.conn !== conn) return;
+      if (this.live) this.lastActivity = Date.now();
+      else if (Date.now() - connectedAt >= this.opts.confirmAfterMs) confirm();
+    });
     const ended = () => {
-      if (gen !== this.generation || !this.live) return;
+      if (gen !== this.generation || this.conn !== conn) return;
+      const wasLive = this.live;
       this.live = false;
-      this.conn = null;
-      this.enqueue([{ id: `tt:end:${Date.now()}`, timestamp: Date.now(), type: "stream_status", status: "ended" } as Draft]);
-      this.opts.log?.(`[tiktok] @${username} LIVE ended / disconnected — watching for the next one`);
+      this.clearTimers();
+      this.dropConnection();
+      if (wasLive) {
+        this.enqueue([endMarker()]);
+        this.opts.log?.(`[tiktok] @${username} LIVE ended / disconnected — watching for the next one`);
+      }
       this.schedule(gen, this.opts.pollMs);
     };
     conn.on("streamEnd", ended);
@@ -258,10 +331,17 @@ export class TikTokLiveWatcher {
       return;
     }
     this.conn = conn;
-    this.live = true;
-    this.loggedOffline = false;
-    this.sink.alive();
-    this.opts.log?.(`[tiktok] connected to @${username}'s LIVE`);
-    this.enqueue([{ id: `tt:start:${Date.now()}`, timestamp: Date.now(), type: "stream_status", status: "started", title: `@${username} LIVE` } as Draft]);
+    connectedAt = Date.now();
+    this.sink.waiting(`Checking that @${username} is really LIVE…`);
+    this.confirmTimer = setTimeout(() => {
+      if (this.live || this.conn !== conn || gen !== this.generation) return;
+      // TikTok pointed at a room that shows no activity: not a LIVE. Look again later.
+      this.opts.log?.(`[tiktok] @${username}: connected but the room shows no activity — not counted as a LIVE`);
+      this.dropConnection();
+      this.sink.waiting(`Waiting for @${username} to go LIVE`);
+      this.schedule(gen, this.opts.pollMs);
+    }, this.opts.confirmWindowMs);
   }
 }
+
+const endMarker = (): Draft => ({ id: `tt:end:${Date.now()}`, timestamp: Date.now(), type: "stream_status", status: "ended" }) as Draft;

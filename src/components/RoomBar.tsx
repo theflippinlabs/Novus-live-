@@ -25,7 +25,7 @@ function RoomChip({ r, current, lang }: { r: RoomSummary; current: string; lang:
       onClick={() => switchRoom(r.id)}
       aria-current={r.id === current ? "true" : undefined}
     >
-      {r.kind === "tiktok" ? <span className={`dot ${r.live ? "on" : r.state === "ERROR" ? "bad" : ""}`} /> : null}
+      {r.kind === "tiktok" ? <span className={`dot ${r.live ? "on" : r.detected ? "detected" : r.state === "ERROR" ? "bad" : ""}`} /> : null}
       <span className="name">{roomLabel(r, lang)}</span>
       {r.openAlerts > 0 ? <span className={`count ${r.criticalAlerts > 0 ? "crit" : ""}`}>{r.openAlerts}</span> : null}
     </button>
@@ -90,7 +90,7 @@ export function RoomBar() {
     <>
       <nav className="room-bar group-bar" aria-label={lang === "fr" ? "Groupes" : "Groups"}>
         {tabs.map((g) => {
-          const live = g.rooms.filter((r) => r.live).length;
+          const live = g.rooms.filter((r) => r.live || r.detected).length;
           return (
             <button key={g.id} className={`group-tab ${g.id === active ? "on" : ""}`} onClick={() => pick(g.id)} aria-pressed={g.id === active}>
               <span className="name">{g.name}</span>

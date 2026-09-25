@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import type { DemoSpeed } from "../../shared/types";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
 import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
-import { actionLabel, tr, useLang, useT } from "../i18n";
+import { actionLabel, errorText, tr, useLang, useT } from "../i18n";
 import { navigate, openViewer, switchRoom, toast, useStore } from "../store";
 
 const SPEEDS: { value: DemoSpeed; label: string }[] = [
@@ -53,6 +53,48 @@ function DemoCard({ secondary }: { secondary: boolean }) {
   );
 }
 
+/** The account is LIVE on TikTok but not recorded (manual mode, or recording stopped by hand). */
+function LiveNotRecorded({ username, mode }: { username: string; mode?: "auto" | "manual" }) {
+  const lang = useLang();
+  const [busy, setBusy] = useState(false);
+  const fr = lang === "fr";
+  const start = async () => {
+    setBusy(true);
+    try {
+      await api.setRecording("start");
+      toast(fr ? "Enregistrement démarré" : "Recording started", "ok");
+    } catch (e) {
+      toast(errorText(e instanceof ApiError ? e.code : "internal_error", lang), "warn");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="hero">
+      <BrandLogo />
+      <div className="waiting-pill live">
+        <span className="dot" />
+        {fr ? "EN LIVE · NON ENREGISTRÉ" : "LIVE · NOT RECORDED"}
+      </div>
+      <h2 className="chrome-text" style={{ letterSpacing: "0.06em", textTransform: "none" }}>
+        @{username}
+      </h2>
+      <p>
+        {mode === "manual"
+          ? fr
+            ? "Ce compte est en mode manuel : Novus a détecté le LIVE mais n'enregistre rien tant que tu ne l'as pas lancé."
+            : "This account is in manual mode: Novus detected the LIVE but records nothing until you start it."
+          : fr
+            ? "L'enregistrement de ce LIVE a été arrêté. Tu peux le relancer."
+            : "Recording of this LIVE was stopped. You can start it again."}
+      </p>
+      <button className="btn gold" onClick={start} disabled={busy}>
+        {busy ? "…" : fr ? "● Démarrer l'enregistrement" : "● Start recording"}
+      </button>
+    </div>
+  );
+}
+
 function WaitingForLive({ username }: { username: string }) {
   const t = useT();
   const lang = useLang();
@@ -87,8 +129,8 @@ function FollowedAccounts() {
       {rooms.length ? (
         <div className="chips">
           {rooms.map((r) => (
-            <button key={r.id} className={`chip ${r.live ? "on" : ""}`} onClick={() => switchRoom(r.id)}>
-              {r.live ? "● " : ""}@{r.username}
+            <button key={r.id} className={`chip ${r.live || r.detected ? "on" : ""}`} onClick={() => switchRoom(r.id)}>
+              {r.live || r.detected ? "● " : ""}@{r.username}
             </button>
           ))}
         </div>
@@ -109,11 +151,20 @@ function StartPanel() {
   const session = useStore((s) => s.session);
   const room = useStore((s) => s.room);
   const tiktok = useStore((s) => s.tiktok);
+  const summary = useStore((s) => s.rooms.find((r) => r.id === s.room));
   const followed = room !== "main" && tiktok?.username ? tiktok.username : undefined;
   return (
     <div className="scroll">
       <div className="narrow stack">
-        {followed ? <WaitingForLive username={followed} /> : <DemoCard secondary={false} />}
+        {followed ? (
+          summary?.detected ? (
+            <LiveNotRecorded username={followed} mode={summary.mode} />
+          ) : (
+            <WaitingForLive username={followed} />
+          )
+        ) : (
+          <DemoCard secondary={false} />
+        )}
         {session?.status === "ended" ? (
           <button className="btn block" onClick={() => navigate("analytics")}>
             {t("report")} →
@@ -191,13 +242,18 @@ export function LiveView() {
   const lang = useLang();
   const session = useStore((s) => s.session);
   const demo = useStore((s) => s.demo);
+  const room = useStore((s) => s.room);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
 
   if (!session || session.status !== "live") return <StartPanel />;
 
+  // On a followed account the LIVE goes on on TikTok: this only stops recording it.
+  const followedRoom = session.source === "tiktok" && room !== "main";
+  const endLabel = followedRoom ? (lang === "fr" ? "Arrêter l'enregistrement" : "Stop recording") : t("endLive");
   const end = async () => {
-    if (!window.confirm(t("endLive") + "?")) return;
-    await api.endSession();
+    if (!window.confirm(`${endLabel} ?`)) return;
+    if (followedRoom) await api.setRecording("stop");
+    else await api.endSession();
     navigate("analytics");
   };
 
@@ -227,7 +283,7 @@ export function LiveView() {
           onChange={(v) => setFlaggedOnly(v === "flagged")}
         />
         <span className="spacer" />
-        <button className="end-btn" onClick={end} aria-label={t("endLive")} title={t("endLive")}>
+        <button className="end-btn" onClick={end} aria-label={endLabel} title={endLabel}>
           ■ {t("endShort")}
         </button>
       </div>

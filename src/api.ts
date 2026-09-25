@@ -91,6 +91,7 @@ export const api = {
   saveSettings: (patch: Partial<Settings>) => request<Settings>("PUT", "/settings", patch),
 
   rooms: () => request<{ rooms: RoomSummary[] }>("GET", "/rooms"),
+  setRecording: (action: "start" | "stop") => request<{ session: LiveSessionInfo | null; rooms: RoomSummary[] }>("POST", "/rooms/recording", { action }),
   tiktok: () => request<TikTokIntegrationStatus>("GET", "/integrations/tiktok"),
   tiktokConnect: (username: string) => request<TikTokIntegrationStatus & { room: string }>("POST", "/integrations/tiktok/connect", { username }),
   tiktokDisconnect: () => request<TikTokIntegrationStatus>("POST", "/integrations/tiktok/disconnect"),

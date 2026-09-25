@@ -123,6 +123,8 @@ const FR_PATTERNS: [RegExp, (...m: string[]) => string][] = [
   [/^Repeated hostility \((\d+)x\)$/, (n) => `Hostilité répétée (${n} fois)`],
   [/^sent (\d+)× (.+)$/, (n, g) => `a envoyé ${n}× ${g}`],
   [/^Waiting for @(.+) to go LIVE$/, (u) => `En attente du LIVE de @${u}`],
+  [/^Checking that @(.+) is really LIVE…$/, (u) => `Vérification que @${u} est vraiment en LIVE…`],
+  [/^@(.+) is LIVE — recording is manual$/, (u) => `@${u} est en LIVE — enregistrement manuel`],
   [/^TikTok connector unavailable: (.+)$/, (e) => `Connecteur TikTok indisponible : ${e}`],
 ];
 

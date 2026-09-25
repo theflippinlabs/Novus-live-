@@ -29,6 +29,12 @@ const TEXT = {
     noGroup: "No group",
     groupOf: (u: string) => `Group of @${u}`,
     emptyGroup: "Empty — pick this group next to an account below.",
+    liveNotRecorded: "LIVE · NOT RECORDED",
+    auto: "AUTO",
+    manual: "MANUAL",
+    modeTitle: (u: string, manual: boolean) =>
+      manual ? `@${u}: manual — each LIVE is detected, recorded only when you start it. Tap for automatic.` : `@${u}: automatic — every LIVE is recorded, app open or not. Tap for manual.`,
+    modesHint: "AUTO records every LIVE of the account from start to end, even with the app closed. MANUAL only detects the LIVE: you start the recording yourself from the LIVE screen.",
   },
   fr: {
     title: "Comptes TikTok suivis",
@@ -54,11 +60,18 @@ const TEXT = {
     noGroup: "Sans groupe",
     groupOf: (u: string) => `Groupe de @${u}`,
     emptyGroup: "Vide — choisis ce groupe à côté d'un compte ci-dessous.",
+    liveNotRecorded: "EN LIVE · NON ENREGISTRÉ",
+    auto: "AUTO",
+    manual: "MANUEL",
+    modeTitle: (u: string, manual: boolean) =>
+      manual ? `@${u} : manuel — chaque LIVE est détecté, enregistré seulement quand tu le lances. Touche pour passer en automatique.` : `@${u} : automatique — chaque LIVE est enregistré, appli ouverte ou non. Touche pour passer en manuel.`,
+    modesHint: "AUTO enregistre chaque LIVE du compte du début à la fin, même appli fermée. MANUEL détecte seulement le LIVE : tu lances l'enregistrement toi-même depuis l'écran du LIVE.",
   },
 };
 
 const NO_PROFILES: string[] = [];
 const NO_GROUPS: TikTokGroup[] = [];
+const NO_MANUAL: string[] = [];
 const clean = (s: string) => s.trim().replace(/^@/, "");
 const valid = (s: string) => /^[A-Za-z0-9._]{2,64}$/.test(s);
 const newId = () => `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -69,6 +82,7 @@ export function TikTokProfiles() {
   const tx = TEXT[lang];
   const profiles = useStore((s) => s.settings.tiktokProfiles) ?? NO_PROFILES;
   const groups = useStore((s) => s.settings.tiktokGroups) ?? NO_GROUPS;
+  const manualList = useStore((s) => s.settings.tiktokManual) ?? NO_MANUAL;
   const rooms = useStore((s) => s.rooms);
   const current = useStore((s) => s.room);
   const [draft, setDraft] = useState("");
@@ -135,20 +149,38 @@ export function TikTokProfiles() {
     void saveGroups(groups.map((g) => ({ ...g, members: g.id === groupId ? [...g.members.filter((m) => m !== u), u] : g.members.filter((m) => m !== u) })));
   };
 
+  const isManual = (username: string) => manualList.includes(username.toLowerCase());
+  const toggleMode = (username: string) =>
+    run(async () => {
+      const u = username.toLowerCase();
+      const next = isManual(u) ? manualList.filter((x) => x !== u) : [...manualList, u];
+      setState({ settings: await api.saveSettings({ tiktokManual: next }), rooms: (await api.rooms()).rooms });
+    });
+
   const groupOf = (username: string) => groups.find((g) => g.members.includes(username.toLowerCase()))?.id ?? "";
 
   const row = (p: string) => {
     const id = `tt:${p.toLowerCase()}`;
     const room = rooms.find((r) => r.id === id);
-    const badge = room?.live ? { cls: "bad", text: tx.live } : room?.state === "ERROR" ? { cls: "bad", text: tx.error } : { cls: "gold", text: tx.waiting };
+    const badge = room?.live
+      ? { cls: "bad", text: tx.live }
+      : room?.detected
+        ? { cls: "bad", text: tx.liveNotRecorded }
+        : room?.state === "ERROR"
+          ? { cls: "bad", text: tx.error }
+          : { cls: "gold", text: tx.waiting };
+    const manual = isManual(p);
     return (
       <div key={p} className="list-row">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>@{p}</div>
-          <div className="row" style={{ gap: 6, marginTop: 4 }}>
+          <div className="row wrap" style={{ gap: 6, marginTop: 4 }}>
             <span className={`state-badge ${badge.cls}`} style={{ fontSize: 10, whiteSpace: "nowrap", flex: "none" }}>
               {badge.text}
             </span>
+            <button className={`mode-toggle ${manual ? "manual" : ""}`} onClick={() => void toggleMode(p)} disabled={busy} title={tx.modeTitle(p, manual)} aria-label={tx.modeTitle(p, manual)}>
+              {manual ? `✋ ${tx.manual}` : `⟳ ${tx.auto}`}
+            </button>
             {groups.length ? (
               <select className="group-select" value={groupOf(p)} onChange={(e) => moveTo(p, e.target.value)} disabled={busy} aria-label={tx.groupOf(p)}>
                 <option value="">{tx.noGroup}</option>
@@ -227,6 +259,8 @@ export function TikTokProfiles() {
       </div>
       <div className="small muted" style={{ marginTop: 6 }}>
         {tx.hint}
+        <br />
+        {tx.modesHint}
       </div>
 
       <div className="card-title" style={{ marginTop: 14 }}>

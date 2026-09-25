@@ -14,6 +14,7 @@ import { defaultConnectionFactory, TikTokLiveWatcher } from "./platform/TikTokLi
 import { RealtimeHub } from "./realtime/RealtimeHub";
 import { MAIN_ROOM, RoomRegistry, tiktokRoomId, type Room } from "./core/Rooms";
 import { EulerChatSender } from "./chat/EulerChat";
+import { LiveRecorder } from "./core/LiveRecorder";
 
 async function main() {
   const config = loadConfig();
@@ -76,22 +77,27 @@ async function main() {
 
     // One room per followed TikTok account, all watched at the same time with the optional
     // unofficial, read-only live connector (TIKTOK_LIVE_CONNECTOR=off disables watching).
+    let onRoomsChanged = () => undefined as void;
     const createTikTokRoom = async (username: string): Promise<Room> => {
       const id = tiktokRoomId(username);
       const tiktok = new TikTokAdapter(false);
       tiktok.unofficialLiveConnector = config.tiktokLiveConnector;
       await tiktok.connect(username);
       const { runtime, hub } = await buildRoom(tiktok, undefined, username);
+      const recorder = new LiveRecorder(username, runtime, {
+        waiting: (detail) => {
+          tiktok.noteWaiting(detail);
+          hub.pushExtras({ tiktok: tiktok.status() });
+        },
+        changed: () => onRoomsChanged(),
+      });
       let watcher: TikTokLiveWatcher | null = null;
       if (config.tiktokLiveConnector) {
         watcher = new TikTokLiveWatcher(
           defaultConnectionFactory(config.eulerApiKey, (m) => console.log(m)),
           {
             push: async (events) => {
-              // Only one session per LIVE: a late "started" marker must not reset a running session.
-              const live = runtime.session?.status === "live" && runtime.session.source === "tiktok";
-              const batch = (events as unknown as LiveEvent[]).filter((e) => !(live && e.type === "stream_status" && e.status === "started"));
-              if (batch.length) await runtime.ingestExternal(batch, "tiktok");
+              await recorder.push(events as unknown as LiveEvent[]);
               hub.pushExtras({ tiktok: tiktok.status() });
             },
             waiting: (detail) => {
@@ -117,6 +123,10 @@ async function main() {
         hub,
         tiktok,
         liveRoomId: () => watcher?.roomId,
+        detected: () => recorder.detected,
+        mode: () => recorder.mode,
+        setRecording: (on) => recorder.setRecording(on),
+        applySettings: (settings) => recorder.apply((settings.tiktokManual ?? []).includes(username.toLowerCase())),
         dispose: async () => {
           watcher?.stop();
           await runtime.endSession().catch(() => undefined);
@@ -128,6 +138,8 @@ async function main() {
     };
 
     const rooms = new RoomRegistry(mainRoom, createTikTokRoom);
+    // Room badges (LIVE detected, recording) refresh right away when a LIVE starts or ends.
+    onRoomsChanged = () => rooms.broadcastSummaries();
     // Older installs stored a single followed account; fold it into the profile list.
     const legacy = main.runtime.settings.tiktokUsername;
     const profiles = main.runtime.settings.tiktokProfiles ?? [];

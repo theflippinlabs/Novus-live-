@@ -12,12 +12,14 @@ import {
   ingestBatchSchema,
   loginSchema,
   MAX_PROFILES,
+  recordingSchema,
   sendChatSchema,
   settingsPatchSchema,
   tiktokConnectSchema,
 } from "../shared/schemas";
 import type { ActionType, DemoSpeed, LiveEvent, Settings, ViewerFlag } from "../shared/types";
 import type { Config } from "./config";
+import { RecordingError } from "./core/LiveRecorder";
 import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
 import { ChatSendError, EulerChatSender } from "./chat/EulerChat";
 import { chatCsv, chatTxt, HistoryService } from "./history/History";
@@ -418,6 +420,24 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   );
 
   api.get("/rooms", h((req) => ({ rooms: sp(req).rooms.summaries() })));
+  // Start / stop recording the LIVE of a followed account (manual mode, or stopping early).
+  api.post(
+    "/rooms/recording",
+    h(async (req) => {
+      const { action } = parse(recordingSchema, req.body);
+      const { rooms } = sp(req);
+      const room = roomOf(rooms, req);
+      if (!room.setRecording) throw new HttpError(409, "not_a_followed_account");
+      try {
+        await room.setRecording(action === "start");
+      } catch (e) {
+        if (e instanceof RecordingError) throw new HttpError(409, e.message);
+        throw e;
+      }
+      rooms.broadcastSummaries(true);
+      return { session: room.runtime.session, rooms: rooms.summaries() };
+    }),
+  );
 
   // ---------------------------------------------------------------- LIVE history & exports
   api.get(

@@ -94,6 +94,12 @@ describe("TikTok live watcher", () => {
 
     mode = "live";
     await vi.advanceTimersByTimeAsync(60_000);
+    // Connected, but not a LIVE until the room shows activity.
+    expect(watcher.isLive).toBe(false);
+    expect(runtime.session).toBeNull();
+    await vi.advanceTimersByTimeAsync(6_000);
+    current!.emit("roomUser", { viewerCount: 12 });
+    await vi.advanceTimersByTimeAsync(10);
     expect(watcher.isLive).toBe(true);
     expect(runtime.session?.source).toBe("tiktok");
     expect(runtime.session?.title).toBe("@w_amanda_g LIVE");
@@ -118,6 +124,68 @@ describe("TikTok live watcher", () => {
     expect(runtime.session?.id).toBe(sessionId);
     expect(runtime.session?.status).toBe("ended");
     expect(tiktok.state()).toBe("LIVE_ENDED");
+    watcher.stop();
+  });
+
+  const sinkFor = (runtime: ReturnType<typeof createRuntime>["runtime"]) => ({
+    push: async (events: unknown[]) => {
+      const live = runtime.session?.status === "live";
+      const batch = (events as LiveEvent[]).filter((e) => !(live && e.type === "stream_status" && e.status === "started"));
+      if (batch.length) await runtime.ingestExternal(batch, "tiktok");
+    },
+    waiting: () => undefined,
+    error: () => undefined,
+    alive: () => undefined,
+  });
+
+  it("does not count a room that shows no activity as a LIVE (even with a burst replayed at connect)", async () => {
+    vi.useFakeTimers();
+    const { runtime } = createRuntime({ account: "jordan.pause6" });
+    let current: FakeConnection | null = null;
+    let attempts = 0;
+    const watcher = new TikTokLiveWatcher(
+      async () => {
+        attempts++;
+        return (current = new FakeConnection("live"));
+      },
+      sinkFor(runtime),
+      { pollMs: 60_000, errorBackoffMs: 180_000 },
+    );
+    watcher.watch("jordan.pause6");
+    await vi.advanceTimersByTimeAsync(10);
+    // Old messages replayed right at connect time do not prove the LIVE is running.
+    current!.emit("chat", chat("old_fan", "message from the previous LIVE"));
+    await vi.advanceTimersByTimeAsync(89_000);
+    expect(watcher.isLive).toBe(false);
+    expect(runtime.session).toBeNull();
+    // After the confirmation window it gives up and polls again later.
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(attempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(attempts).toBe(2);
+    expect(runtime.session).toBeNull();
+    watcher.stop();
+  });
+
+  it("closes a LIVE that goes silent without TikTok sending 'stream end'", async () => {
+    vi.useFakeTimers();
+    const { runtime } = createRuntime({ account: "someone" });
+    let current: FakeConnection | null = null;
+    const watcher = new TikTokLiveWatcher(async () => (current = new FakeConnection("live")), sinkFor(runtime), { pollMs: 60_000, errorBackoffMs: 180_000 });
+    watcher.watch("someone");
+    await vi.advanceTimersByTimeAsync(6_000);
+    current!.emit("roomUser", { viewerCount: 40 });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(runtime.session?.status).toBe("live");
+    // Activity keeps it open…
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    current!.emit("like", {});
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    expect(runtime.session?.status).toBe("live");
+    // …silence closes it.
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(watcher.isLive).toBe(false);
+    expect(runtime.session?.status).toBe("ended");
     watcher.stop();
   });
 
