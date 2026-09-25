@@ -46,6 +46,19 @@ describe("TikTok payload mapping", () => {
 
     expect(mapViewerCount({ viewerCount: 412 })).toMatchObject({ type: "viewer_count", count: 412 });
   });
+
+  it("reads the v3 protobuf shapes emitted by tiktok-live-connector 2.x", () => {
+    const user = { id: "7301", displayId: "night_owl", nickname: "Night Owl", avatarThumb: { urlList: ["https://p16.example/a.jpg"] } };
+    const c = mapChat({ common: { msgId: "m1" }, user, content: "salut tout le monde" }) as Extract<LiveEvent, { type: "comment" }>;
+    expect(c).toMatchObject({ type: "comment", id: "tt:m1", text: "salut tout le monde" });
+    expect(c.viewer).toMatchObject({ id: "tt:7301", username: "night_owl", displayName: "Night Owl", avatarUrl: "https://p16.example/a.jpg" });
+
+    const streak = { user, gift: { id: "5655", name: "Rose", type: 1, diamondCount: 1 }, repeatCount: 7, repeatEnd: 0 };
+    expect(mapGift(streak)).toBeNull();
+    expect(mapGift({ ...streak, repeatEnd: 1 })).toMatchObject({ type: "gift", giftName: "Rose", count: 7, value: 1 });
+
+    expect(mapViewerCount({ total: "321", totalUser: "5400" })).toMatchObject({ type: "viewer_count", count: 321 });
+  });
 });
 
 describe("TikTok live watcher", () => {

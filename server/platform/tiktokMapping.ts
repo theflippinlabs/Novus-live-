@@ -44,7 +44,8 @@ function base(raw: Raw): { id: string; timestamp: number } {
 
 export function mapChat(raw: Raw): Draft | null {
   const viewer = mapViewer(raw);
-  const text = str(raw?.comment)?.slice(0, 500);
+  // tiktok-live-connector v2 decodes TikTok's v3 protobuf, where the text is `content` (older: `comment`).
+  const text = (str(raw?.content) ?? str(raw?.comment))?.slice(0, 500);
   if (!viewer || !text) return null;
   return { ...base(raw), type: "comment", viewer, text } as Draft;
 }
@@ -54,7 +55,7 @@ export function mapGift(raw: Raw): Draft | null {
   const viewer = mapViewer(raw);
   if (!viewer) return null;
   const details = obj(raw?.giftDetails) ?? obj(raw?.gift);
-  const giftType = num(details?.giftType);
+  const giftType = num(details?.giftType) ?? num(details?.type);
   if (giftType === 1 && raw?.repeatEnd !== true && raw?.repeatEnd !== 1) return null;
   const count = Math.max(1, Math.min(100_000, num(raw?.repeatCount) ?? 1));
   const giftName = (str(details?.giftName) ?? str(details?.name) ?? `Gift ${str(raw?.giftId) ?? ""}`).slice(0, 64);
@@ -63,7 +64,8 @@ export function mapGift(raw: Raw): Draft | null {
 }
 
 export function mapViewerCount(raw: Raw): Draft | null {
-  const count = num(raw?.viewerCount) ?? num(raw?.totalUser);
+  // `total` is the current audience in the v3 protobuf; `totalUser` is cumulative.
+  const count = num(raw?.viewerCount) ?? num(raw?.total) ?? num(raw?.totalUser);
   if (count === undefined) return null;
   return { ...base(raw), type: "viewer_count", count: Math.max(0, Math.round(count)) } as Draft;
 }
