@@ -7,6 +7,7 @@ import { ChatStream } from "../components/ChatStream";
 import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
 import { actionLabel, errorText, tr, useLang, useT } from "../i18n";
 import { navigate, openViewer, switchRoom, toast, useStore } from "../store";
+import { useCan } from "../permissions";
 
 const SPEEDS: { value: DemoSpeed; label: string }[] = [
   { value: 1, label: "1x" },
@@ -57,6 +58,7 @@ function DemoCard({ secondary }: { secondary: boolean }) {
 function LiveNotRecorded({ username, mode }: { username: string; mode?: "auto" | "manual" }) {
   const lang = useLang();
   const [busy, setBusy] = useState(false);
+  const canManage = useCan("manage_accounts");
   const fr = lang === "fr";
   const start = async () => {
     setBusy(true);
@@ -88,9 +90,11 @@ function LiveNotRecorded({ username, mode }: { username: string; mode?: "auto" |
             ? "L'enregistrement de ce LIVE a été arrêté. Tu peux le relancer."
             : "Recording of this LIVE was stopped. You can start it again."}
       </p>
-      <button className="btn gold" onClick={start} disabled={busy}>
-        {busy ? "…" : fr ? "● Démarrer l'enregistrement" : "● Start recording"}
-      </button>
+      {canManage ? (
+        <button className="btn gold" onClick={start} disabled={busy}>
+          {busy ? "…" : fr ? "● Démarrer l'enregistrement" : "● Start recording"}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -181,6 +185,7 @@ function CriticalStrip() {
   const alerts = useStore((s) => s.alerts);
   const top = useMemo(() => alerts.find((a) => a.status === "open" && a.severity === "critical" && !(a.resolution?.status === "manual_required" && !a.resolution.confirmedAt)), [alerts]);
   const [busy, setBusy] = useState(false);
+  const canModerate = useCan("moderate");
   if (!top) return null;
   const primary = top.recommendedAction === "report" || top.recommendedAction === "block" ? "block" : top.recommendedAction === "warn" ? "warn" : "mute";
   const run = async (action: "mute" | "block" | "warn" | "dismiss") => {
@@ -208,7 +213,7 @@ function CriticalStrip() {
       <div className="small" style={{ color: "var(--text-2)", marginTop: 2 }}>
         {top.reasons.slice(0, 3).map((r) => tr(r, lang)).join(" · ")}
       </div>
-      <div className="grid-3" style={{ marginTop: 8 }}>
+      <div className="grid-3" style={{ marginTop: 8, display: canModerate ? undefined : "none" }}>
         <button className="act" disabled={busy} onClick={() => run("dismiss")}>
           {actionLabel("dismiss", lang)}
         </button>
@@ -243,6 +248,8 @@ export function LiveView() {
   const session = useStore((s) => s.session);
   const demo = useStore((s) => s.demo);
   const room = useStore((s) => s.room);
+  const canManage = useCan("manage_accounts");
+  const canModerate = useCan("moderate");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
 
   if (!session || session.status !== "live") return <StartPanel />;
@@ -283,7 +290,7 @@ export function LiveView() {
           onChange={(v) => setFlaggedOnly(v === "flagged")}
         />
         <span className="spacer" />
-        <button className="end-btn" onClick={end} aria-label={endLabel} title={endLabel}>
+        <button className="end-btn" onClick={end} aria-label={endLabel} title={endLabel} style={{ display: (followedRoom ? canManage : canModerate) ? undefined : "none" }}>
           ■ {t("endShort")}
         </button>
       </div>

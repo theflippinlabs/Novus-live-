@@ -6,6 +6,7 @@ import { ago } from "../format";
 import { runAlertAction } from "../actions";
 import { openViewer, serverNow, toast, upsertAlert } from "../store";
 import { SendToChatButton } from "./SendToChat";
+import { useCan } from "../permissions";
 import { Avatar, SeverityBadge } from "./ui";
 
 const ACTIONS: ActionType[] = ["watch", "warn", "mute", "block", "report", "dismiss"];
@@ -31,6 +32,7 @@ function recommendedSet(rec: RecommendedAction): ActionType[] {
 export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: ModerationAlert; compact?: boolean }) {
   const t = useT();
   const lang = useLang();
+  const canModerate = useCan("moderate");
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const rec = recommendedSet(alert.recommendedAction);
@@ -151,9 +153,11 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
               </button>{" "}
             </>
           ) : null}
-          <button className="btn gold sm" onClick={confirm} disabled={busy !== null}>
-            ✓ {t("doneInTikTok")}
-          </button>
+          {canModerate ? (
+            <button className="btn gold sm" onClick={confirm} disabled={busy !== null}>
+              ✓ {t("doneInTikTok")}
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -164,7 +168,7 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
         </div>
       ) : null}
 
-      {!closed && !pendingManual ? (
+      {!closed && !pendingManual && canModerate ? (
         <div className="action-grid">
           {ACTIONS.map((a) => (
             <button

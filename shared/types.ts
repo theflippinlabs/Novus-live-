@@ -489,6 +489,8 @@ export interface ModerationLogEntry {
 export interface HistoryEntry {
   sessionId: string;
   title: string;
+  /** Followed TikTok account of this LIVE (none for demos). */
+  account?: string;
   source: LiveSessionInfo["source"];
   /** "interrupted": the server restarted during the LIVE; stats up to the last save are kept. */
   status: "live" | "ended" | "interrupted";
@@ -567,4 +569,35 @@ export interface RealtimeBatch {
   settings?: Settings;
   rooms?: RoomSummary[];
   reset?: boolean;
+}
+
+// ---------------------------------------------------------------- agency team
+
+/** What a team member is allowed to do (the founder can do everything). */
+export const PERMISSIONS = ["moderate", "send_chat", "manage_accounts", "settings", "history", "team"] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
+export type TeamRole = "director" | "manager" | "moderator";
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  role: TeamRole;
+  permissions: Permission[];
+  /** Streamers this member can see (lowercase handles); null = all of them. */
+  accounts: string[] | null;
+  disabled: boolean;
+  createdAt: number;
+  /** "founder" or the id of the member who added them. */
+  createdBy: string;
+}
+
+/** Who is logged in (GET /api/auth/me). */
+export interface Me {
+  kind: "founder" | "member";
+  /** Team features need access codes on the server. */
+  teamEnabled: boolean;
+  member?: TeamMember;
+  permissions: Permission[];
+  accounts: string[] | null;
 }

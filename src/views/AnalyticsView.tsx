@@ -3,6 +3,7 @@ import type { AnalyticsSummary, Category, HistoryEntry } from "../../shared/type
 import { api, fetchExport, saveFile } from "../api";
 import { BarChart, LineChart } from "../components/Charts";
 import { Avatar, Segmented } from "../components/ui";
+import { useCan } from "../permissions";
 import { categoryLabel, severityLabel, tr, useLang, useT } from "../i18n";
 import { duration, hm } from "../format";
 import { openViewer, toast, useStore } from "../store";
@@ -488,6 +489,16 @@ export function AnalyticsView() {
   const tx = TX[useLang()];
   const [tab, setTab] = useState<"current" | "history">("current");
   const [openId, setOpenId] = useState<string | null>(null);
+  const canHistory = useCan("history");
+
+  if (!canHistory)
+    return (
+      <div className="scroll">
+        <div className="narrow stack">
+          <CurrentLive />
+        </div>
+      </div>
+    );
 
   return (
     <div className="scroll">

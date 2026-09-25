@@ -3,6 +3,7 @@ import type { ActionRecord } from "../../shared/types";
 import { api, ApiError } from "../api";
 import { errorText, useLang, useT } from "../i18n";
 import { refreshChatSender } from "../chatSender";
+import { useCan } from "../permissions";
 import { setState, toast, useStore } from "../store";
 
 /**
@@ -16,10 +17,11 @@ export function SendToChatButton({ record, text, onSent }: { record: ActionRecor
   const sender = useStore((s) => s.chatSender);
   const room = useStore((s) => s.room);
   const live = useStore((s) => s.session?.status === "live");
+  const allowed = useCan("send_chat");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(Boolean(record.sentToChatAt));
 
-  if (!sender?.connected || !room.startsWith("tt:") || !live) return null;
+  if (!allowed || !sender?.connected || !room.startsWith("tt:") || !live) return null;
   if (sent)
     return (
       <span className="small" style={{ color: "var(--gold)" }}>

@@ -8,6 +8,10 @@ import type {
   DemoSpeed,
   HistoryEntry,
   LiveSessionInfo,
+  Me,
+  Permission,
+  TeamMember,
+  TeamRole,
   ModerationAlert,
   RoomSummary,
   Settings,
@@ -21,6 +25,13 @@ import { getState } from "./store";
 
 // Thin typed client. The browser only ever talks to the Novus server —
 // never to Anthropic, Supabase or TikTok, and never holds a secret.
+
+export interface MemberDraft {
+  name: string;
+  role: TeamRole;
+  permissions: Permission[];
+  accounts: string[] | null;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -57,6 +68,12 @@ export const api = {
   authStatus: () => request<{ required: boolean; authenticated: boolean }>("GET", "/auth/status"),
   login: (key: string) => request<{ ok: boolean }>("POST", "/auth/login", { key }),
   logout: () => request<{ ok: boolean }>("POST", "/auth/logout"),
+  me: () => request<Me>("GET", "/auth/me"),
+  team: () => request<{ members: TeamMember[] }>("GET", "/team"),
+  addMember: (m: MemberDraft) => request<{ member: TeamMember; code: string }>("POST", "/team", m),
+  updateMember: (id: string, patch: Partial<MemberDraft> & { disabled?: boolean }) => request<{ member: TeamMember }>("PATCH", `/team/${encodeURIComponent(id)}`, patch),
+  newMemberCode: (id: string) => request<{ member: TeamMember; code: string }>("POST", `/team/${encodeURIComponent(id)}/code`),
+  removeMember: (id: string) => request<{ ok: boolean }>("DELETE", `/team/${encodeURIComponent(id)}`),
 
   startDemo: (speed: DemoSpeed) => request<{ session: LiveSessionInfo }>("POST", "/demo/start", { speed }),
   setDemoSpeed: (speed: DemoSpeed) => request<{ ok: boolean }>("POST", "/demo/speed", { speed }),

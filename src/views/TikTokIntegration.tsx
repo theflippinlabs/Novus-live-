@@ -4,6 +4,7 @@ import { api } from "../api";
 import { refreshChatSender } from "../chatSender";
 import { ChatSenderCard } from "../components/SendToChat";
 import { TikTokProfiles } from "../components/TikTokProfiles";
+import { useIsFounder } from "../permissions";
 import { tiktokStateLabel, tr, useLang, useT } from "../i18n";
 import { ago } from "../format";
 import { setState, useStore } from "../store";
@@ -60,6 +61,7 @@ export function TikTokIntegration() {
   const t = useT();
   const lang = useLang();
   const status = useStore((s) => s.tiktok);
+  const founder = useIsFounder();
 
   useEffect(() => {
     api
@@ -100,7 +102,7 @@ export function TikTokIntegration() {
       </div>
 
       <TikTokProfiles />
-      <ChatSenderCard />
+      {founder ? <ChatSenderCard /> : null}
       <div className="small muted" style={{ marginTop: 6 }}>
         {status.source === "unofficial_live_connector"
           ? lang === "fr"

@@ -5,6 +5,7 @@ import type {
   AIStatus,
   AnalyzedComment,
   ChatSenderStatus,
+  Me,
   DemoStatus,
   LiveSessionInfo,
   LiveStats,
@@ -42,6 +43,8 @@ export interface AppState {
   tiktok: TikTokIntegrationStatus | null;
   /** "Send in chat": the moderator's TikTok account connected through Euler OAuth. */
   chatSender: ChatSenderStatus | null;
+  /** Who is logged in: the founder, or a team member with limited rights. */
+  me: Me | null;
   selectedViewerId: string | null;
   toast: { id: number; text: string; tone: "info" | "ok" | "warn" } | null;
   serverOffset: number;
@@ -76,6 +79,7 @@ let state: AppState = {
   demo: { running: false, speed: 1, demoSecond: 0 },
   tiktok: null,
   chatSender: null,
+  me: null,
   selectedViewerId: null,
   toast: null,
   serverOffset: 0,
@@ -98,6 +102,12 @@ function sessionStorageGet(key: string): string | null {
 }
 
 const listeners = new Set<() => void>();
+
+/** A team member limited to some streamers only sees their rooms (the server enforces it too). */
+export function visible(rooms: RoomSummary[]): RoomSummary[] {
+  const scope = state.me?.accounts;
+  return scope ? rooms.filter((r) => r.kind !== "tiktok" || (r.username && scope.includes(r.username.toLowerCase()))) : rooms;
+}
 
 export function getState(): AppState {
   return state;
@@ -187,7 +197,7 @@ function applySnapshot(s: Snapshot): void {
   reloadIfOutdated(s.build);
   setState({
     room: s.room,
-    rooms: s.rooms,
+    rooms: visible(s.rooms),
     session: s.session,
     stats: s.stats,
     comments: s.comments,
@@ -233,7 +243,7 @@ function applyBatch(b: RealtimeBatch): void {
     const device = localGet("novus:lang");
     patch.settings = device === "en" || device === "fr" ? { ...b.settings, language: device } : b.settings;
   }
-  if (b.rooms) patch.rooms = b.rooms;
+  if (b.rooms) patch.rooms = visible(b.rooms);
   if (Object.keys(patch).length) setState(patch);
 }
 

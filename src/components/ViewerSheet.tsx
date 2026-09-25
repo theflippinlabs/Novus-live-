@@ -5,6 +5,7 @@ import { actionCopy, actionLabel, categoryLabel, pick, useLang, useT, word } fro
 import { clock, hm } from "../format";
 import { openViewer, toast, useStore } from "../store";
 import { SendToChatButton } from "./SendToChat";
+import { useCan } from "../permissions";
 import { Sparkline } from "./Charts";
 import { Avatar, Segmented, SeverityBadge, Sheet } from "./ui";
 
@@ -17,6 +18,7 @@ export function ViewerSheet() {
 }
 
 function ViewerSheetInner({ id }: { id: string }) {
+  const canModerate = useCan("moderate");
   const t = useT();
   const lang = useLang();
   const [profile, setProfile] = useState<ViewerProfile | null>(null);
@@ -95,7 +97,7 @@ function ViewerSheetInner({ id }: { id: string }) {
         </div>
       </div>
 
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 12, display: canModerate ? undefined : "none" }}>
         <Segmented
           label={t("viewerStatus")}
           gold
@@ -212,7 +214,7 @@ function ViewerSheetInner({ id }: { id: string }) {
         </div>
       ) : null}
 
-      <div className="action-grid" style={{ padding: "12px 0 0" }}>
+      <div className="action-grid" style={{ padding: "12px 0 0", display: canModerate ? undefined : "none" }}>
         {ACTIONS.map((x) => (
           <button key={x} className={`act ${x === a?.recommendedAction ? "rec" : ""} ${["mute", "block", "report"].includes(x) ? "danger" : ""}`} disabled={busy} onClick={() => act(x)} style={{ fontSize: 11.5 }}>
             {actionLabel(x, lang)}

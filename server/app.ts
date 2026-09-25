@@ -12,12 +12,14 @@ import {
   ingestBatchSchema,
   loginSchema,
   MAX_PROFILES,
+  memberCreateSchema,
+  memberUpdateSchema,
   recordingSchema,
   sendChatSchema,
   settingsPatchSchema,
   tiktokConnectSchema,
 } from "../shared/schemas";
-import type { ActionType, DemoSpeed, LiveEvent, Settings, ViewerFlag } from "../shared/types";
+import { PERMISSIONS, type ActionType, type DemoSpeed, type LiveEvent, type Me, type Permission, type Settings, type ViewerFlag } from "../shared/types";
 import type { Config } from "./config";
 import { RecordingError } from "./core/LiveRecorder";
 import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
@@ -25,11 +27,12 @@ import { ChatSendError, EulerChatSender } from "./chat/EulerChat";
 import { chatCsv, chatTxt, HistoryService } from "./history/History";
 import { buildReportPdf } from "./reports/pdf";
 import { OWNER_TENANT } from "./persistence/Repository";
-import { accessKeys, AUTH_COOKIE, authKey, isAuthenticated, matchKey, rateLimit, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
+import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
+import { can, canSeeAccount, TeamError, TeamStore, type MemberInput, type Principal } from "./team/Team";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
-    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens">>;
+    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens" | "sessionSecret">>;
   /** Single-space mode (tests, open access): every key opens these rooms. */
   rooms?: RoomRegistry;
   /** "Send in chat" through Euler Stream OAuth (optional). */
@@ -43,6 +46,8 @@ export interface Space {
   id: string;
   rooms: RoomRegistry;
   chat: EulerChatSender;
+  /** Agency team (members with their own access codes and permissions). */
+  team?: TeamStore;
 }
 
 class HttpError extends Error {
@@ -104,16 +109,95 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     (singleRooms ? [{ id: OWNER_TENANT, rooms: singleRooms, chat: singleChat ?? new EulerChatSender({}, singleRooms.main.runtime.repository) }] : []);
   if (!spaces.length) throw new Error("createApp needs rooms or spaces");
   const owner = spaces[0];
-  const byId = new Map(spaces.map((s) => [s.id, { ...s, history: new HistoryService(s.rooms.main.runtime.repository, s.rooms) }]));
   const keys = accessKeys(config.accessToken, config.accessTokens, owner.id);
-  /** The space of the logged-in key. In single-space mode every key opens the owner's space. */
-  const sp = (req: Request) => {
-    if (!spaceList || !keys.length) return byId.get(owner.id)!;
-    const space = byId.get(authKey(req, keys)?.tenant ?? "");
-    if (!space) throw new HttpError(403, "no_space");
-    return space;
+  // Team sessions are signed with a server secret (never sent to the browser).
+  const sessionSecret = config.sessionSecret ?? (config.accessToken ? sessionCookieValue(`team:${config.accessToken}`) : randomUUID());
+  const byId = new Map(
+    spaces.map((s) => [
+      s.id,
+      { ...s, team: s.team ?? new TeamStore(s.id, s.rooms.main.runtime.repository, sessionSecret), history: new HistoryService(s.rooms.main.runtime.repository, s.rooms) },
+    ]),
+  );
+  // Teams load once; auth waits for them so members are not logged out right after a restart.
+  const teamsReady = Promise.all([...byId.values()].map((s) => s.team.init())).catch((e) => console.error("[novus] team load failed", e));
+  type SpaceCtx = NonNullable<ReturnType<typeof byId.get>>;
+
+  /** Who is logged in and in which space (null: not logged in). */
+  const whoIs = (req: Request): { space: SpaceCtx; principal: Principal } | null => {
+    if (!keys.length) {
+      const space = byId.get(owner.id)!;
+      return { space, principal: { kind: "founder", spaceId: space.id } };
+    }
+    const key = authKey(req, keys);
+    if (key) {
+      // In single-space mode every key opens the owner's space.
+      const space = spaceList ? byId.get(key.tenant) : byId.get(owner.id);
+      return space ? { space, principal: { kind: "founder", spaceId: space.id } } : null;
+    }
+    const cookie = readCookie(req, AUTH_COOKIE);
+    if (cookie?.startsWith("m.")) {
+      const space = byId.get(cookie.split(".")[1] ?? "");
+      const member = space?.team.memberFromCookie(cookie);
+      if (space && member) return { space, principal: { kind: "member", spaceId: space.id, member } };
+    }
+    return null;
   };
-  const snapshotOf = (room: Room, rooms: RoomRegistry) => ({ ...room.runtime.snapshot(), room: room.id, rooms: rooms.summaries(), build });
+  const ctx = (req: Request) => {
+    const c = (req.res?.locals as { who?: ReturnType<typeof whoIs> } | undefined)?.who ?? whoIs(req);
+    if (!c) throw new HttpError(401, "unauthorized");
+    return c;
+  };
+  /** The space of the logged-in person. */
+  const sp = (req: Request) => ctx(req).space;
+  const principal = (req: Request) => ctx(req).principal;
+  /** Refuse unless the logged-in person has this permission. */
+  const need = (req: Request, perm: Permission) => {
+    if (!can(principal(req), perm)) throw new HttpError(403, "forbidden");
+  };
+  const founderOnly = (req: Request) => {
+    if (principal(req).kind !== "founder") throw new HttpError(403, "forbidden");
+  };
+  /** The requested room, if this person may see it (a member can be limited to some streamers). */
+  const roomIn = (req: Request): Room => {
+    const room = roomOf(sp(req).rooms, req);
+    if (room.kind === "tiktok" && !canSeeAccount(principal(req), room.username)) throw new HttpError(404, "room_not_found");
+    return room;
+  };
+  const visibleRooms = (req: Request) => {
+    const p = principal(req);
+    return sp(req).rooms.summaries().filter((r) => r.kind !== "tiktok" || canSeeAccount(p, r.username));
+  };
+  const snapshotOf = (room: Room, req: Request) => ({ ...room.runtime.snapshot(), room: room.id, rooms: visibleRooms(req), build });
+  /** Adding or removing followed accounts: needs "manage_accounts" over every streamer. */
+  const needAllAccounts = (req: Request) => {
+    need(req, "manage_accounts");
+    const p = principal(req);
+    if (p.kind === "member" && p.member.accounts) throw new HttpError(403, "forbidden");
+  };
+  /** Which permission a settings change needs (the language alone is free). */
+  const checkSettingsPatch = (req: Request, patch: Partial<Settings>) => {
+    const keys = Object.keys(patch) as (keyof Settings)[];
+    const accountKeys: (keyof Settings)[] = ["tiktokProfiles", "tiktokGroups", "tiktokUsername"];
+    if (keys.some((k) => accountKeys.includes(k))) needAllAccounts(req);
+    if (patch.tiktokManual) {
+      need(req, "manage_accounts");
+      // A member limited to some streamers may only switch the mode of those.
+      const p = principal(req);
+      if (p.kind === "member" && p.member.accounts) {
+        const before = new Set(sp(req).rooms.settings.tiktokManual ?? []);
+        const after = new Set(patch.tiktokManual.map((u) => u.toLowerCase()));
+        const changed = [...new Set([...before, ...after])].filter((u) => before.has(u) !== after.has(u));
+        if (changed.some((u) => !canSeeAccount(p, u))) throw new HttpError(403, "forbidden");
+      }
+    }
+    if (keys.some((k) => k !== "language" && k !== "tiktokManual" && !accountKeys.includes(k))) need(req, "settings");
+  };
+  /** A LIVE of the history, if this person may see its streamer. */
+  const historyDetail = async (req: Request, id: string) => {
+    const detail = await sp(req).history.detail(id);
+    return detail && canSeeAccount(principal(req), detail.entry.account) ? detail : null;
+  };
+  const teamError = (e: unknown) => (e instanceof TeamError ? new HttpError(e.status, e.code) : e);
   // The token-protected connector ingestion and /health belong to the owner's main room.
   const { runtime, tiktok } = owner.rooms.main;
   /** OAuth redirect back to this app: PUBLIC_URL when set, else the request's own origin. */
@@ -151,17 +235,32 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   // ---------------------------------------------------------------- public
   api.get("/health", h(() => ({ ok: true, build, session: runtime.session?.status ?? "idle", ai: runtime.aiQueue.status().state })));
 
-  api.get("/auth/status", h((req) => ({ required: keys.length > 0, authenticated: isAuthenticated(req, keys) })));
+  api.get(
+    "/auth/status",
+    h(async (req) => {
+      await teamsReady;
+      return { required: keys.length > 0, authenticated: Boolean(whoIs(req)) };
+    }),
+  );
 
   api.post(
     "/auth/login",
     rateLimit("login", 10),
-    h((req, res) => {
+    h(async (req, res) => {
       const { key } = parse(loginSchema, req.body);
       if (!keys.length) return { ok: true };
+      await teamsReady;
       const matched = matchKey(key, keys);
-      if (!matched) throw new HttpError(401, "invalid_key");
-      res.cookie(AUTH_COOKIE, sessionCookieValue(matched.key), {
+      // A founder's code, or a team member's own code.
+      let value = matched ? sessionCookieValue(matched.key) : undefined;
+      if (!value) {
+        for (const s of byId.values()) {
+          const member = s.team.findByCode(key);
+          if (member) value = s.team.cookieFor(member);
+        }
+      }
+      if (!value) throw new HttpError(401, "invalid_key");
+      res.cookie(AUTH_COOKIE, value, {
         httpOnly: true,
         sameSite: "strict",
         secure: config.production,
@@ -246,17 +345,90 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.use("/ingest", ingest);
 
   // ---------------------------------------------------------------- authenticated app API
-  api.use((req, _res, next) => {
-    if (!isAuthenticated(req, keys)) return next(new HttpError(401, "unauthorized"));
-    next();
+  api.use((req, res, next) => {
+    void teamsReady.then(() => {
+      const who = whoIs(req);
+      if (!who) return next(new HttpError(401, "unauthorized"));
+      res.locals.who = who;
+      next();
+    });
   });
 
-  api.get("/state", h((req) => snapshotOf(roomOf(sp(req).rooms, req), sp(req).rooms)));
+  // ---------------------------------------------------------------- who am I & team
+  api.get(
+    "/auth/me",
+    h((req): Me => {
+      const p = principal(req);
+      return p.kind === "founder"
+        ? { kind: "founder", teamEnabled: keys.length > 0, permissions: [...PERMISSIONS], accounts: null }
+        : { kind: "member", teamEnabled: true, member: p.member, permissions: p.member.permissions, accounts: p.member.accounts };
+    }),
+  );
+  const needTeam = (req: Request) => {
+    if (!keys.length) throw new HttpError(409, "team_requires_access_code");
+    need(req, "team");
+  };
+  api.get(
+    "/team",
+    h((req) => {
+      needTeam(req);
+      return { members: sp(req).team.list() };
+    }),
+  );
+  api.post(
+    "/team",
+    h(async (req) => {
+      needTeam(req);
+      const input = parse(memberCreateSchema, req.body);
+      try {
+        return await sp(req).team.create(principal(req), input as MemberInput);
+      } catch (e) {
+        throw teamError(e);
+      }
+    }),
+  );
+  api.patch(
+    "/team/:id",
+    h(async (req) => {
+      needTeam(req);
+      const patch = parse(memberUpdateSchema, req.body);
+      try {
+        return { member: await sp(req).team.update(principal(req), param(req, "id"), patch as Partial<MemberInput>) };
+      } catch (e) {
+        throw teamError(e);
+      }
+    }),
+  );
+  api.post(
+    "/team/:id/code",
+    h(async (req) => {
+      needTeam(req);
+      try {
+        return await sp(req).team.regenerate(principal(req), param(req, "id"));
+      } catch (e) {
+        throw teamError(e);
+      }
+    }),
+  );
+  api.delete(
+    "/team/:id",
+    h(async (req) => {
+      needTeam(req);
+      try {
+        await sp(req).team.remove(principal(req), param(req, "id"));
+        return { ok: true };
+      } catch (e) {
+        throw teamError(e);
+      }
+    }),
+  );
+
+  api.get("/state", h((req) => snapshotOf(roomIn(req), req)));
 
   api.get("/stream", (req, res, next) => {
     try {
-      const room = roomOf(sp(req).rooms, req);
-      room.hub.addClient(res, snapshotOf(room, sp(req).rooms));
+      const room = roomIn(req);
+      room.hub.addClient(res, snapshotOf(room, req));
     } catch (err) {
       next(err);
     }
@@ -266,7 +438,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     "/demo/start",
     h(async (req) => {
       const { speed } = parse(demoStartSchema, req.body);
-      const session = await mainOnly(roomOf(sp(req).rooms, req)).runtime.startDemo((speed ?? 1) as DemoSpeed);
+      const session = await mainOnly(roomIn(req)).runtime.startDemo((speed ?? 1) as DemoSpeed);
       return { session };
     }),
   );
@@ -274,14 +446,15 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     "/demo/speed",
     h((req) => {
       const { speed } = parse(demoSpeedSchema, req.body);
-      mainOnly(roomOf(sp(req).rooms, req)).runtime.setDemoSpeed(speed as DemoSpeed);
+      mainOnly(roomIn(req)).runtime.setDemoSpeed(speed as DemoSpeed);
       return { ok: true };
     }),
   );
   api.post(
     "/session/end",
     h(async (req) => {
-      const { runtime } = roomOf(sp(req).rooms, req);
+      need(req, roomIn(req).kind === "tiktok" ? "manage_accounts" : "moderate");
+      const { runtime } = roomIn(req);
       const report = await runtime.endSession();
       return { session: runtime.session, report };
     }),
@@ -289,12 +462,13 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
 
   api.get(
     "/alerts",
-    h((req) => ({ alerts: roomOf(sp(req).rooms, req).runtime.sortedAlerts() })),
+    h((req) => ({ alerts: roomIn(req).runtime.sortedAlerts() })),
   );
   api.post(
     "/alerts/:id/action",
     h(async (req) => {
-      const { runtime } = roomOf(sp(req).rooms, req);
+      need(req, "moderate");
+      const { runtime } = roomIn(req);
       const { action, note } = parse(actionRequestSchema, req.body);
       const out = await runtime.actOnAlert(param(req, "id"), action as ActionType, note);
       if (!out) throw new HttpError(404, "alert_not_found");
@@ -304,7 +478,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.post(
     "/actions/:id/confirm",
     h((req) => {
-      const record = roomOf(sp(req).rooms, req).runtime.confirmManualAction(param(req, "id"));
+      need(req, "moderate");
+      const record = roomIn(req).runtime.confirmManualAction(param(req, "id"));
       if (!record) throw new HttpError(404, "manual_action_not_found");
       return { record };
     }),
@@ -315,6 +490,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.post(
     "/chat-sender/connect",
     h((req) => {
+      founderOnly(req);
       try {
         return { url: sp(req).chat.authorizeUrl(oauthRedirect(req)).url };
       } catch (e) {
@@ -325,6 +501,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.post(
     "/chat-sender/disconnect",
     h(async (req) => {
+      founderOnly(req);
       const { chat } = sp(req);
       await chat.disconnect();
       return chat.status();
@@ -334,7 +511,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     "/actions/:id/send-chat",
     rateLimit("chat", 30),
     h(async (req) => {
-      const room = roomOf(sp(req).rooms, req);
+      need(req, "send_chat");
+      const room = roomIn(req);
       const { text } = parse(sendChatSchema, req.body);
       const id = param(req, "id");
       if (!room.runtime.manualAction(id)) throw new HttpError(404, "manual_action_not_found");
@@ -355,13 +533,13 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const q = typeof req.query.q === "string" ? req.query.q.slice(0, 64) : undefined;
       const sort = ["risk", "messages", "recent"].includes(String(req.query.sort)) ? (req.query.sort as "risk") : "risk";
       const filter = ["trusted", "watchlist", "ignored", "flagged", "all"].includes(String(req.query.filter)) ? (req.query.filter as "all") : "all";
-      return { viewers: roomOf(sp(req).rooms, req).runtime.viewerList({ q, sort, filter }) };
+      return { viewers: roomIn(req).runtime.viewerList({ q, sort, filter }) };
     }),
   );
   api.get(
     "/viewers/:id",
     h((req) => {
-      const { runtime } = roomOf(sp(req).rooms, req);
+      const { runtime } = roomIn(req);
       const id = param(req, "id");
       const profile = runtime.viewerProfile(id);
       if (!profile) throw new HttpError(404, "viewer_not_found");
@@ -371,8 +549,9 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.post(
     "/viewers/:id/flag",
     h(async (req) => {
+      need(req, "moderate");
       const { flag } = parse(flagRequestSchema, req.body);
-      const profile = await roomOf(sp(req).rooms, req).runtime.setViewerFlag(param(req, "id"), flag as ViewerFlag | null);
+      const profile = await roomIn(req).runtime.setViewerFlag(param(req, "id"), flag as ViewerFlag | null);
       if (!profile) throw new HttpError(404, "viewer_not_found");
       return { profile };
     }),
@@ -380,7 +559,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.post(
     "/viewers/:id/action",
     h(async (req) => {
-      const { runtime } = roomOf(sp(req).rooms, req);
+      need(req, "moderate");
+      const { runtime } = roomIn(req);
       const { action, note } = parse(actionRequestSchema, req.body);
       const record = await runtime.actOnViewer(param(req, "id"), action as ActionType, note);
       if (!record) throw new HttpError(404, "viewer_not_found");
@@ -388,11 +568,11 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     }),
   );
 
-  api.get("/assistant/pulse", h((req) => roomOf(sp(req).rooms, req).runtime.pulse()));
+  api.get("/assistant/pulse", h((req) => roomIn(req).runtime.pulse()));
   api.post(
     "/assistant/catchup",
     h(async (req) => {
-      const { runtime } = roomOf(sp(req).rooms, req);
+      const { runtime } = roomIn(req);
       const { since, lang } = parse(catchUpRequestSchema, req.body);
       const fallback = runtime.session?.startedAt ?? Date.now() - 10 * 60_000;
       return runtime.catchUp(since ?? fallback, lang ?? sp(req).rooms.settings.language);
@@ -401,32 +581,35 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.post(
     "/assistant/questions/:id/answered",
     h((req) => {
+      need(req, "moderate");
       const answered = req.body?.answered !== false;
-      if (!roomOf(sp(req).rooms, req).runtime.markQuestionAnswered(param(req, "id"), answered)) throw new HttpError(404, "question_not_found");
+      if (!roomIn(req).runtime.markQuestionAnswered(param(req, "id"), answered)) throw new HttpError(404, "question_not_found");
       return { ok: true };
     }),
   );
 
-  api.get("/analytics", h((req) => roomOf(sp(req).rooms, req).runtime.analyticsSummary()));
-  api.get("/report", h((req) => roomOf(sp(req).rooms, req).runtime.report()));
+  api.get("/analytics", h((req) => roomIn(req).runtime.analyticsSummary()));
+  api.get("/report", h((req) => roomIn(req).runtime.report()));
 
   api.get("/settings", h((req) => sp(req).rooms.settings));
   api.put(
     "/settings",
     h(async (req) => {
       const patch = parse(settingsPatchSchema, req.body) as Partial<Settings>;
+      checkSettingsPatch(req, patch);
       return sp(req).rooms.updateSettings(patch);
     }),
   );
 
-  api.get("/rooms", h((req) => ({ rooms: sp(req).rooms.summaries() })));
+  api.get("/rooms", h((req) => ({ rooms: visibleRooms(req) })));
   // Start / stop recording the LIVE of a followed account (manual mode, or stopping early).
   api.post(
     "/rooms/recording",
     h(async (req) => {
+      need(req, "manage_accounts");
       const { action } = parse(recordingSchema, req.body);
       const { rooms } = sp(req);
-      const room = roomOf(rooms, req);
+      const room = roomIn(req);
       if (!room.setRecording) throw new HttpError(409, "not_a_followed_account");
       try {
         await room.setRecording(action === "start");
@@ -443,14 +626,16 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.get(
     "/history",
     h(async (req) => {
+      need(req, "history");
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
-      return { entries: await sp(req).history.list(limit, roomOf(sp(req).rooms, req)) };
+      return { entries: await sp(req).history.list(limit, roomIn(req)) };
     }),
   );
   api.get(
     "/history/:id",
     h(async (req) => {
-      const detail = await sp(req).history.detail(param(req, "id"));
+      need(req, "history");
+      const detail = await historyDetail(req, param(req, "id"));
       if (!detail) throw new HttpError(404, "session_not_found");
       return detail;
     }),
@@ -458,8 +643,9 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.get(
     "/history/:id/messages.csv",
     h(async (req, res) => {
+      need(req, "history");
       const id = param(req, "id");
-      const detail = await sp(req).history.detail(id);
+      const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
       const csv = chatCsv(await sp(req).history.chat(id), timeZone, langOf(req));
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -472,8 +658,9 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.get(
     "/history/:id/chat.txt",
     h(async (req, res) => {
+      need(req, "history");
       const id = param(req, "id");
-      const detail = await sp(req).history.detail(id);
+      const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
       const txt = chatTxt(detail.entry, await sp(req).history.chat(id), timeZone, langOf(req));
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -486,8 +673,9 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     "/history/:id/chat.pdf",
     rateLimit("pdf-chat", 20),
     h(async (req, res) => {
+      need(req, "history");
       const id = param(req, "id");
-      const detail = await sp(req).history.detail(id);
+      const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
       const pdf = await buildReportPdf({
         entry: detail.entry,
@@ -508,8 +696,9 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     "/history/:id/report.pdf",
     rateLimit("pdf", 20),
     h(async (req, res) => {
+      need(req, "history");
       const id = param(req, "id");
-      const detail = await sp(req).history.detail(id);
+      const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
       const pdf = await buildReportPdf({
         entry: detail.entry,
@@ -526,10 +715,11 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     }),
   );
 
-  api.get("/integrations/tiktok", h((req) => roomOf(sp(req).rooms, req).tiktok.status()));
+  api.get("/integrations/tiktok", h((req) => roomIn(req).tiktok.status()));
   api.post(
     "/integrations/tiktok/connect",
     h(async (req) => {
+      needAllAccounts(req);
       // Adds the account to the followed profiles; it gets its own room, watched alongside the others.
       const { rooms } = sp(req);
       const { tiktok } = rooms.main;
@@ -547,6 +737,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.post(
     "/integrations/tiktok/disconnect",
     h(async (req) => {
+      needAllAccounts(req);
       const { rooms } = sp(req);
       const { tiktok } = rooms.main;
       const room = roomOf(rooms, req);

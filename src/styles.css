@@ -433,6 +433,56 @@ button {
   appearance: none;
 }
 
+.team-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.check-row input {
+  margin-top: 2px;
+  accent-color: var(--gold);
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.member-row {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.code-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.code-box .code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--gold);
+  user-select: all;
+  word-break: break-all;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

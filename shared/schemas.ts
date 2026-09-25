@@ -156,3 +156,15 @@ export const sendChatSchema = z
   .strict();
 
 export const recordingSchema = z.object({ action: z.enum(["start", "stop"]) }).strict();
+
+const memberFields = {
+  name: z.string().trim().min(1).max(40),
+  role: z.enum(["director", "manager", "moderator"]),
+  permissions: z.array(z.enum(["moderate", "send_chat", "manage_accounts", "settings", "history", "team"])).max(6),
+  accounts: z.array(tiktokHandle.pipe(z.string().min(2))).max(MAX_PROFILES).nullable(),
+};
+export const memberCreateSchema = z.object(memberFields).strict();
+export const memberUpdateSchema = z
+  .object({ ...memberFields, disabled: z.boolean() })
+  .partial()
+  .strict();

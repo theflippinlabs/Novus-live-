@@ -6,6 +6,8 @@ import { Segmented, Toggle } from "../components/ui";
 import { categoryLabel, errorText, setLanguage, severityLabel, useLang, useT } from "../i18n";
 import { getState, setState, toast, useStore } from "../store";
 import { TikTokIntegration } from "./TikTokIntegration";
+import { TeamSection } from "../components/TeamSection";
+import { useCan } from "../permissions";
 
 async function save(patch: Partial<Settings>, okText: string) {
   try {
@@ -88,11 +90,36 @@ function ThresholdEditor({ initial }: { initial: Thresholds }) {
   );
 }
 
+/** A team member sees who they are logged in as and what they can do. */
+function MeCard() {
+  const lang = useLang();
+  const me = useStore((s) => s.me);
+  if (!me || me.kind !== "member" || !me.member) return null;
+  const roles = { director: { en: "Director", fr: "Directeur" }, manager: { en: "Manager", fr: "Manager" }, moderator: { en: "Moderator", fr: "Modérateur" } };
+  return (
+    <div className="card" style={{ marginTop: 4 }}>
+      <div className="card-title">{lang === "fr" ? "Mon accès" : "My access"}</div>
+      <div style={{ fontWeight: 700 }}>
+        {me.member.name} · {roles[me.member.role][lang]}
+      </div>
+      <div className="small muted" style={{ marginTop: 4 }}>
+        {lang === "fr"
+          ? "Accès donné par le fondateur de l'agence. Certaines options sont masquées selon tes autorisations."
+          : "Access given by the agency founder. Some options are hidden depending on your permissions."}
+        {me.accounts ? ` ${lang === "fr" ? "Livers :" : "Streamers:"} ${me.accounts.map((a) => `@${a}`).join(", ")}` : ""}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsView() {
   const t = useT();
   const lang = useLang();
   const settings = useStore((s) => s.settings);
   const ai = useStore((s) => s.ai);
+  const canSettings = useCan("settings");
+  const canTeam = useCan("team");
+  const teamEnabled = useStore((s) => s.me?.teamEnabled ?? false);
   const [streamer, setStreamer] = useState(settings.streamerName);
   const [authRequired, setAuthRequired] = useState(false);
 
@@ -115,6 +142,9 @@ export function SettingsView() {
   return (
     <div className="scroll">
       <div className="narrow">
+        <MeCard />
+        {canSettings ? (
+          <>
         <div className="section-title" style={{ marginTop: 4 }}>
           {t("sensitivity")}
         </div>
@@ -144,6 +174,9 @@ export function SettingsView() {
         <div style={{ height: 12 }} />
         <ListEditor label={t("watchlist")} items={settings.watchlist} placeholder={t("handlePlaceholder")} onChange={(v) => save({ watchlist: v }, ok)} />
 
+          </>
+        ) : null}
+
         <div className="section-title">{t("language")}</div>
         <div className="card">
           <Segmented
@@ -159,6 +192,8 @@ export function SettingsView() {
           <div className="small muted" style={{ marginTop: 8 }}>
             {t("languageHint")}
           </div>
+          {canSettings ? (
+            <>
           <div className="card-title" style={{ marginTop: 14 }}>
             {t("streamer")}
           </div>
@@ -171,8 +206,12 @@ export function SettingsView() {
           <div className="small muted" style={{ marginTop: 6 }}>
             {t("streamerHint")}
           </div>
+            </>
+          ) : null}
         </div>
 
+        {canSettings ? (
+          <>
         <div className="section-title">{t("aiAnalysis")}</div>
         <div className="card">
           <div className="row">
@@ -187,8 +226,18 @@ export function SettingsView() {
           </div>
         </div>
 
+          </>
+        ) : null}
+
         <div className="section-title">{t("tiktokIntegration")}</div>
         <TikTokIntegration />
+
+        {teamEnabled && canTeam ? (
+          <>
+            <div className="section-title">{lang === "fr" ? "Équipe" : "Team"}</div>
+            <TeamSection />
+          </>
+        ) : null}
 
         <div className="section-title">{t("install")}</div>
         <div className="card">

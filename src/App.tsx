@@ -7,6 +7,7 @@ import { LangToggle } from "./components/LangToggle";
 import { ViewerSheet } from "./components/ViewerSheet";
 import { useT } from "./i18n";
 import { handleChatSenderReturn, refreshChatSender } from "./chatSender";
+import { loadMe } from "./permissions";
 import { connectRealtime, useStore } from "./store";
 import { AlertsView } from "./views/AlertsView";
 import { AnalyticsView } from "./views/AnalyticsView";
@@ -98,6 +99,7 @@ export function App() {
     if (auth !== "ok") return;
     handleChatSenderReturn();
     void refreshChatSender();
+    void loadMe();
     const onVisible = () => {
       if (document.visibilityState === "visible") void refreshChatSender();
     };

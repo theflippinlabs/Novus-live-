@@ -34,6 +34,7 @@ export class HistoryService {
     return {
       sessionId: session.id,
       title: session.title,
+      account: session.account,
       source: session.source,
       status,
       startedAt: session.startedAt,

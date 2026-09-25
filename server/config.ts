@@ -42,6 +42,8 @@ export interface Config {
   eulerOAuthAuthorizeUrl?: string;
   /** Public https origin of the app (OAuth redirect), e.g. https://novus-live-production.up.railway.app */
   publicUrl?: string;
+  /** Signs team members' sessions (SESSION_SECRET; derived from APP_ACCESS_TOKEN when unset). */
+  sessionSecret?: string;
   /** Time zone used for dates in LIVE reports and exports. */
   reportTimeZone: string;
 }
@@ -90,6 +92,7 @@ export function loadConfig(): Config {
     eulerClientSecret: str("EULER_CLIENT_SECRET"),
     eulerOAuthAuthorizeUrl: str("EULER_OAUTH_AUTHORIZE_URL"),
     publicUrl: str("PUBLIC_URL")?.replace(/\/+$/, ""),
+    sessionSecret: str("SESSION_SECRET"),
     reportTimeZone: validTimeZone(str("REPORT_TIMEZONE")) ?? "Europe/Paris",
   };
 }
