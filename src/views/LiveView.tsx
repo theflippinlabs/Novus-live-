@@ -5,7 +5,7 @@ import { runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
 import { Avatar, BrandLogo, Logo, Segmented, SeverityBadge } from "../components/ui";
-import { useLang, useT } from "../i18n";
+import { actionLabel, tr, useLang, useT } from "../i18n";
 import { navigate, openViewer, switchRoom, toast, useStore } from "../store";
 
 const SPEEDS: { value: DemoSpeed; label: string }[] = [
@@ -23,7 +23,7 @@ function DemoCard({ secondary }: { secondary: boolean }) {
     try {
       await api.startDemo(speed);
     } catch {
-      toast("Could not start demo", "warn");
+      toast(t("demoStartFailed"), "warn");
     } finally {
       setBusy(false);
     }
@@ -55,6 +55,7 @@ function DemoCard({ secondary }: { secondary: boolean }) {
 
 function WaitingForLive({ username }: { username: string }) {
   const t = useT();
+  const lang = useLang();
   const tiktok = useStore((s) => s.tiktok);
   const failing = tiktok?.state === "ERROR";
   return (
@@ -69,7 +70,7 @@ function WaitingForLive({ username }: { username: string }) {
       <h2 className="chrome-text" style={{ letterSpacing: "0.06em", textTransform: "none" }}>
         @{username}
       </h2>
-      <p>{failing ? `${t("tiktokRetryingHint")}${tiktok?.error ? ` (${tiktok.error})` : ""}` : t("waitingForLiveHint")}</p>
+      <p>{failing ? `${t("tiktokRetryingHint")}${tiktok?.error ? ` (${tr(tiktok.error, lang)})` : ""}` : t("waitingForLiveHint")}</p>
       <button className="btn sm" onClick={() => navigate("settings")}>
         {t("tiktokIntegration")} →
       </button>
@@ -156,17 +157,17 @@ function CriticalStrip() {
       </div>
       <div className="txt">“{top.text}”</div>
       <div className="small" style={{ color: "var(--text-2)", marginTop: 2 }}>
-        {top.reasons.slice(0, 3).join(" · ")}
+        {top.reasons.slice(0, 3).map((r) => tr(r, lang)).join(" · ")}
       </div>
       <div className="grid-3" style={{ marginTop: 8 }}>
         <button className="act" disabled={busy} onClick={() => run("dismiss")}>
-          DISMISS
+          {actionLabel("dismiss", lang)}
         </button>
         <button className="act danger" disabled={busy} onClick={() => run(primary === "mute" ? "warn" : "mute")}>
-          {primary === "mute" ? "WARN" : "MUTE"}
+          {actionLabel(primary === "mute" ? "warn" : "mute", lang)}
         </button>
         <button className="act rec danger" disabled={busy} onClick={() => run(primary)}>
-          {primary.toUpperCase()}
+          {actionLabel(primary, lang)}
         </button>
       </div>
     </div>
@@ -189,6 +190,7 @@ function SideQueue() {
 
 export function LiveView() {
   const t = useT();
+  const lang = useLang();
   const session = useStore((s) => s.session);
   const demo = useStore((s) => s.demo);
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -215,10 +217,10 @@ export function LiveView() {
             }}
           />
         ) : (
-          <span className="small muted">{session.title}</span>
+          <span className="small muted">{tr(session.title, lang)}</span>
         )}
         <Segmented
-          label="Filter"
+          label={t("filterLabel")}
           value={flaggedOnly ? "flagged" : "all"}
           options={[
             { value: "all", label: t("allMessages") },
@@ -228,7 +230,7 @@ export function LiveView() {
         />
         <span className="spacer" />
         <button className="end-btn" onClick={end} aria-label={t("endLive")} title={t("endLive")}>
-          ■ END
+          ■ {t("endShort")}
         </button>
       </div>
       <div className="live-split">

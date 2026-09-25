@@ -34,7 +34,7 @@ export function AlertsView() {
     <div className="scroll">
       <div className="narrow">
         <Segmented
-          label="Alert filter"
+          label={t("alertFilter")}
           value={filter}
           onChange={(f) => {
             setFilter(f);

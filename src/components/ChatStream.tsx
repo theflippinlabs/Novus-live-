@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AnalyzedComment } from "../../shared/types";
-import { useT } from "../i18n";
+import { tr, useLang, useT } from "../i18n";
 import { clock } from "../format";
 import { openViewer, useStore } from "../store";
 import { Avatar, SeverityBadge } from "./ui";
@@ -10,8 +10,10 @@ import { Avatar, SeverityBadge } from "./ui";
 // comment object, so a batch of new messages renders only the new rows.
 
 const ChatRow = memo(function ChatRow({ c, host }: { c: AnalyzedComment; host: boolean }) {
+  const lang = useLang();
   const a = c.analysis;
   const flagged = a.severity !== "normal";
+  const ai = lang === "fr" ? "IA" : "AI";
   return (
     <div className={`msg ${a.severity}`} onClick={() => openViewer(c.viewer.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && openViewer(c.viewer.id)}>
       <Avatar viewer={c.viewer} />
@@ -19,7 +21,7 @@ const ChatRow = memo(function ChatRow({ c, host }: { c: AnalyzedComment; host: b
         <div className="msg-head">
           <span className={`msg-user ${host ? "host" : ""}`}>@{c.viewer.username}</span>
           {flagged ? <SeverityBadge severity={a.severity} score={a.riskScore} /> : null}
-          {a.stage === "ai" ? <span className="ai-tag">AI</span> : a.aiPending ? <span className="ai-tag muted">AI…</span> : null}
+          {a.stage === "ai" ? <span className="ai-tag">{ai}</span> : a.aiPending ? <span className="ai-tag muted">{ai}…</span> : null}
           <span className="msg-time">{clock(c.timestamp)}</span>
         </div>
         <div className="msg-text">{c.text}</div>
@@ -27,7 +29,7 @@ const ChatRow = memo(function ChatRow({ c, host }: { c: AnalyzedComment; host: b
           <div className="msg-reasons">
             {a.reasons.slice(0, 3).map((r) => (
               <span key={r} className="reason">
-                {r}
+                {tr(r, lang)}
               </span>
             ))}
           </div>
@@ -83,7 +85,7 @@ export function ChatStream({ flaggedOnly }: { flaggedOnly: boolean }) {
 
   return (
     <div className="chat-wrap">
-      <div className="chat-scroll" ref={scrollRef} onScroll={onScroll} aria-live="off" aria-label="Live chat">
+      <div className="chat-scroll" ref={scrollRef} onScroll={onScroll} aria-live="off" aria-label={t("chatLabel")}>
         {comments.length === 0 ? <div className="empty">{t("emptyChat")}</div> : null}
         <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
           {virtualizer.getVirtualItems().map((item) => {

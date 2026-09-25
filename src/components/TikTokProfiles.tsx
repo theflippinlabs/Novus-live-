@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, ApiError } from "../api";
-import { useLang } from "../i18n";
+import { errorText, useLang } from "../i18n";
 import { setState, switchRoom, toast, useStore } from "../store";
 
 const TEXT = {
@@ -53,7 +53,7 @@ export function TikTokProfiles() {
     try {
       await fn();
     } catch (e) {
-      toast(e instanceof ApiError ? e.code : "Error", "warn");
+      toast(errorText(e instanceof ApiError ? e.code : "internal_error", lang), "warn");
     } finally {
       setBusy(false);
     }

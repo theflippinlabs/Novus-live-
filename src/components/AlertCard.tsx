@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import type { ActionType, ModerationAlert, RecommendedAction } from "../../shared/types";
 import { api } from "../api";
-import { categoryLabel, useLang, useT } from "../i18n";
+import { actionCopy, actionLabel, categoryLabel, pick, severityLabel, tr, useLang, useT, word } from "../i18n";
 import { ago } from "../format";
 import { runAlertAction } from "../actions";
 import { openViewer, serverNow, toast, upsertAlert } from "../store";
@@ -36,6 +36,7 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
   const closed = alert.status === "resolved" || alert.status === "dismissed";
   const res = alert.resolution;
   const pendingManual = res?.status === "manual_required" && !res.confirmedAt;
+  const copyOfRes = res ? actionCopy(res, lang) : null;
 
   const act = async (action: ActionType) => {
     setBusy(action);
@@ -71,7 +72,10 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
   };
 
   return (
-    <article className={`alert-card ${alert.severity} ${closed ? "closed" : ""}`} aria-label={`${alert.severity} alert for ${alert.viewer.username}`}>
+    <article
+      className={`alert-card ${alert.severity} ${closed ? "closed" : ""}`}
+      aria-label={lang === "fr" ? `Alerte ${severityLabel(alert.severity, lang).toLowerCase()} pour @${alert.viewer.username}` : `${alert.severity} alert for @${alert.viewer.username}`}
+    >
       <div className="alert-head">
         <SeverityBadge severity={alert.severity} />
         <button className="row" style={{ gap: 8, minWidth: 0 }} onClick={() => openViewer(alert.viewer.id)}>
@@ -92,11 +96,11 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
         <div className="chips">
           {alert.reasons.slice(0, compact ? 3 : 6).map((r) => (
             <span key={r} className="reason">
-              {r}
+              {tr(r, lang)}
             </span>
           ))}
           {alert.occurrences > 1 ? <span className="reason">×{alert.occurrences}</span> : null}
-          {alert.stage === "ai" ? <span className="reason" style={{ color: "var(--gold)" }}>AI</span> : null}
+          {alert.stage === "ai" ? <span className="reason" style={{ color: "var(--gold)" }}>{lang === "fr" ? "IA" : "AI"}</span> : null}
         </div>
         {alert.accounts?.length ? (
           <div className="chips" style={{ marginTop: 6 }}>
@@ -111,31 +115,31 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
             {alert.accounts.length > 6 ? <span className="small muted">+{alert.accounts.length - 6}</span> : null}
           </div>
         ) : null}
-        {!compact ? <div className="expl">{alert.explanation}</div> : null}
+        {!compact ? <div className="expl">{pick(alert.explanation, alert.explanationI18n, lang)}</div> : null}
         <div className="alert-rec">
           {t("recommended").toUpperCase()}
-          <b>{rec.length ? rec.map((a) => a.toUpperCase()).join(" / ") : "—"}</b>
+          <b>{rec.length ? rec.map((a) => actionLabel(a, lang)).join(" / ") : "—"}</b>
         </div>
         <div className="alert-sub">
           {alert.categories.slice(0, 3).map((c) => categoryLabel(c, lang)).join(" · ")} · {ago(alert.createdAt, serverNow())} · {Math.round(alert.confidence * 100)}%
         </div>
       </div>
 
-      {pendingManual && res ? (
+      {pendingManual && res && copyOfRes ? (
         <div className="manual" role="status">
           <h4>{t("manualRequired")}</h4>
-          <div className="small">{res.message}</div>
-          {res.instructions?.length ? (
+          <div className="small">{copyOfRes.message}</div>
+          {copyOfRes.instructions?.length ? (
             <ol>
-              {res.instructions.map((s) => (
+              {copyOfRes.instructions.map((s) => (
                 <li key={s}>{s}</li>
               ))}
             </ol>
           ) : null}
-          {res.suggestedMessage ? (
+          {copyOfRes.suggestedMessage ? (
             <>
-              <div className="suggested">{res.suggestedMessage}</div>
-              <button className="btn sm" onClick={() => copy(res.suggestedMessage!)}>
+              <div className="suggested">{copyOfRes.suggestedMessage}</div>
+              <button className="btn sm" onClick={() => copy(copyOfRes.suggestedMessage!)}>
                 {copied ? t("copied") : t("copyMessage")}
               </button>{" "}
             </>
@@ -148,8 +152,8 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
 
       {closed && res ? (
         <div className="resolution">
-          {res.action.toUpperCase()} · {res.status === "simulated" ? t("simulated") : res.status.replace("_", " ")}
-          {res.confirmedAt ? ` · ${t("confirmed")}` : ""} — {res.message}
+          {actionLabel(res.action, lang)} · {res.status === "simulated" ? t("simulated") : word(res.status, lang)}
+          {res.confirmedAt ? ` · ${t("confirmed")}` : ""} — {copyOfRes?.message}
         </div>
       ) : null}
 
@@ -161,9 +165,9 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
               className={`act ${rec.includes(a) ? "rec" : ""} ${DANGER.includes(a) ? "danger" : ""}`}
               onClick={() => act(a)}
               disabled={busy !== null || (a === "watch" && alert.status === "watching")}
-              aria-label={`${a} @${alert.viewer.username}`}
+              aria-label={`${actionLabel(a, lang)} @${alert.viewer.username}`}
             >
-              {busy === a ? "…" : a.toUpperCase()}
+              {busy === a ? "…" : actionLabel(a, lang)}
             </button>
           ))}
         </div>

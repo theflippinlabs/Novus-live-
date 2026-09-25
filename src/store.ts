@@ -67,7 +67,8 @@ let state: AppState = {
   comments: [],
   alerts: [],
   lastActions: [],
-  settings: defaultSettings(),
+  // The device's language applies until the server settings arrive (e.g. on the login screen).
+  settings: { ...defaultSettings(), language: localGet("novus:lang") === "fr" ? "fr" : localGet("novus:lang") === "en" ? "en" : defaultSettings().language },
   ai: { state: "local_only", provider: "local", queued: 0, analyzed: 0 },
   demo: { running: false, speed: 1, demoSecond: 0 },
   tiktok: null,
@@ -147,6 +148,19 @@ export function sortAlerts(list: ModerationAlert[]): ModerationAlert[] {
   );
 }
 
+/** The language picked on this device wins over the saved one (it may have been chosen on the login screen). */
+function withDeviceLanguage(settings: Settings): Settings {
+  const device = localGet("novus:lang");
+  if ((device !== "en" && device !== "fr") || device === settings.language) return settings;
+  void fetch("/api/settings", {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language: device }),
+  }).catch(() => undefined);
+  return { ...settings, language: device };
+}
+
 function applySnapshot(s: Snapshot): void {
   setState({
     room: s.room,
@@ -155,7 +169,7 @@ function applySnapshot(s: Snapshot): void {
     stats: s.stats,
     comments: s.comments,
     alerts: sortAlerts(s.alerts),
-    settings: s.settings,
+    settings: withDeviceLanguage(s.settings),
     ai: s.ai,
     demo: s.demo,
     tiktok: s.tiktok,
@@ -192,7 +206,10 @@ function applyBatch(b: RealtimeBatch): void {
   if (b.ai) patch.ai = b.ai;
   if (b.demo) patch.demo = b.demo;
   if (b.tiktok) patch.tiktok = b.tiktok;
-  if (b.settings) patch.settings = b.settings;
+  if (b.settings) {
+    const device = localGet("novus:lang");
+    patch.settings = device === "en" || device === "fr" ? { ...b.settings, language: device } : b.settings;
+  }
   if (b.rooms) patch.rooms = b.rooms;
   if (Object.keys(patch).length) setState(patch);
 }

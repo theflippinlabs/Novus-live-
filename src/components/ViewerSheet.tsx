@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ActionRecord, ActionType, Category, ModerationAlert, ViewerFlag, ViewerProfile } from "../../shared/types";
 import { api } from "../api";
-import { categoryLabel, useLang, useT } from "../i18n";
+import { actionCopy, actionLabel, categoryLabel, pick, useLang, useT, word } from "../i18n";
 import { clock, hm } from "../format";
 import { openViewer, toast, useStore } from "../store";
 import { Sparkline } from "./Charts";
@@ -53,7 +53,7 @@ function ViewerSheetInner({ id }: { id: string }) {
       const r = await api.viewerAction(id, action);
       setProfile(r.profile);
       if (r.record.status === "manual_required") setLastManual(r.record);
-      else toast(`${action.toUpperCase()} · ${r.record.status === "simulated" ? t("simulated") : r.record.message}`, "ok");
+      else toast(`${actionLabel(action, lang)} · ${r.record.status === "simulated" ? t("simulated") : actionCopy(r.record, lang).message}`, "ok");
     } finally {
       setBusy(false);
     }
@@ -61,14 +61,14 @@ function ViewerSheetInner({ id }: { id: string }) {
 
   if (missing) {
     return (
-      <Sheet onClose={close} label="Viewer">
-        <div className="empty">Viewer not found in this LIVE.</div>
+      <Sheet onClose={close} label={t("viewerLabel")}>
+        <div className="empty">{t("viewerNotFound")}</div>
       </Sheet>
     );
   }
   if (!profile) {
     return (
-      <Sheet onClose={close} label="Viewer">
+      <Sheet onClose={close} label={t("viewerLabel")}>
         <div className="empty">…</div>
       </Sheet>
     );
@@ -79,7 +79,7 @@ function ViewerSheetInner({ id }: { id: string }) {
   const cats = Object.entries(p.categories).sort((x, y) => (y[1] ?? 0) - (x[1] ?? 0)) as [Category, number][];
 
   return (
-    <Sheet onClose={close} label={`Viewer @${p.viewer.username}`}>
+    <Sheet onClose={close} label={`${t("viewerLabel")} @${p.viewer.username}`}>
       <div className="row" style={{ paddingRight: 44 }}>
         <Avatar viewer={p.viewer} size="lg" />
         <div style={{ minWidth: 0 }}>
@@ -96,7 +96,7 @@ function ViewerSheetInner({ id }: { id: string }) {
 
       <div style={{ marginTop: 12 }}>
         <Segmented
-          label="Viewer status"
+          label={t("viewerStatus")}
           gold
           value={p.flag ?? "none"}
           onChange={setFlag}
@@ -128,11 +128,11 @@ function ViewerSheetInner({ id }: { id: string }) {
         </div>
         <div className="stat">
           <div className="v">{p.maxRisk}</div>
-          <div className="l">Max {t("risk")}</div>
+          <div className="l">{t("maxRisk")}</div>
         </div>
         <div className="stat">
           <div className="v">{p.actions.length}</div>
-          <div className="l">Actions</div>
+          <div className="l">{t("actions")}</div>
         </div>
       </div>
 
@@ -143,12 +143,12 @@ function ViewerSheetInner({ id }: { id: string }) {
             <span className="spacer" />
             <SeverityBadge severity={a.severity} score={a.riskScore} />
           </div>
-          <div style={{ fontSize: 14 }}>{a.explanation}</div>
+          <div style={{ fontSize: 14 }}>{pick(a.explanation, a.explanationI18n, lang)}</div>
           <div className="alert-rec">
-            {t("recommended").toUpperCase()} <b>{a.recommendedAction.toUpperCase()}</b>
+            {t("recommended").toUpperCase()} <b>{actionLabel(a.recommendedAction, lang)}</b>
             <span className="spacer" />
             <span className="mono small">
-              {a.stage === "ai" ? "AI" : "Local"} · {Math.round(a.confidence * 100)}%
+              {a.stage === "ai" ? t("stageAi") : t("stageLocal")} · {Math.round(a.confidence * 100)}%
             </span>
           </div>
         </div>
@@ -176,13 +176,13 @@ function ViewerSheetInner({ id }: { id: string }) {
       {lastManual ? (
         <div className="manual" style={{ margin: "12px 0 0" }}>
           <h4>{t("manualRequired")}</h4>
-          <div className="small">{lastManual.message}</div>
+          <div className="small">{actionCopy(lastManual, lang).message}</div>
           <ol>
-            {lastManual.instructions?.map((s) => (
+            {actionCopy(lastManual, lang).instructions?.map((s) => (
               <li key={s}>{s}</li>
             ))}
           </ol>
-          {lastManual.suggestedMessage ? <div className="suggested">{lastManual.suggestedMessage}</div> : null}
+          {actionCopy(lastManual, lang).suggestedMessage ? <div className="suggested">{actionCopy(lastManual, lang).suggestedMessage}</div> : null}
           <button
             className="btn gold sm"
             onClick={async () => {
@@ -197,10 +197,10 @@ function ViewerSheetInner({ id }: { id: string }) {
         </div>
       ) : null}
 
-      <div className="action-grid" style={{ padding: "12px 0 0", gridTemplateColumns: "repeat(5, 1fr)" }}>
+      <div className="action-grid" style={{ padding: "12px 0 0" }}>
         {ACTIONS.map((x) => (
           <button key={x} className={`act ${x === a?.recommendedAction ? "rec" : ""} ${["mute", "block", "report"].includes(x) ? "danger" : ""}`} disabled={busy} onClick={() => act(x)} style={{ fontSize: 11.5 }}>
-            {x.toUpperCase()}
+            {actionLabel(x, lang)}
           </button>
         ))}
       </div>
@@ -226,7 +226,7 @@ function ViewerSheetInner({ id }: { id: string }) {
               <div key={al.id} className="list-row">
                 <SeverityBadge severity={al.severity} score={al.riskScore} compact />
                 <span style={{ flex: 1, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>“{al.text}”</span>
-                <span className="small muted">{al.status}</span>
+                <span className="small muted">{word(al.status, lang)}</span>
               </div>
             ))}
           </div>
@@ -239,9 +239,9 @@ function ViewerSheetInner({ id }: { id: string }) {
         {p.actions.map((r) => (
           <div key={r.id} className="list-row">
             <span className="mono small muted">{clock(r.performedAt)}</span>
-            <b style={{ fontSize: 13 }}>{r.action.toUpperCase()}</b>
+            <b style={{ fontSize: 13 }}>{actionLabel(r.action, lang)}</b>
             <span className="small" style={{ flex: 1, color: r.status === "manual_required" && !r.confirmedAt ? "var(--gold)" : "var(--text-2)" }}>
-              {r.status === "manual_required" ? (r.confirmedAt ? `manual · ${t("confirmed")}` : t("manualRequired")) : r.status}
+              {r.status === "manual_required" ? (r.confirmedAt ? `${t("manual")} · ${t("confirmed")}` : t("manualRequired")) : word(r.status, lang)}
             </span>
           </div>
         ))}

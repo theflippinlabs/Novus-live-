@@ -1,3 +1,4 @@
+import { word } from "../../shared/i18n";
 import type { AnalyticsSummary, ChatLine, HistoryEntry, LiveSessionInfo } from "../../shared/types";
 import type { RoomRegistry } from "../core/Rooms";
 import type { Repository } from "../persistence/Repository";
@@ -81,11 +82,14 @@ export class HistoryService {
 }
 
 /** Chat as CSV (Excel-friendly: BOM, quoted fields). */
-export function chatCsv(lines: ChatLine[], timeZone: string): string {
-  const fmt = new Intl.DateTimeFormat("fr-FR", { timeZone, dateStyle: "short", timeStyle: "medium" });
+export function chatCsv(lines: ChatLine[], timeZone: string, lang: "en" | "fr" = "en"): string {
+  const fmt = new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : "en-GB", { timeZone, dateStyle: "short", timeStyle: "medium" });
   // Neutralize spreadsheet formulas (CSV injection): a cell must not start with = + - @.
   const q = (v: string) => `"${(/^[=+\-@\t\r]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"`;
-  const rows = [["time", "username", "message", "severity", "risk"].join(",")];
-  for (const l of lines) rows.push([q(fmt.format(l.t)), q(l.username), q(l.text), l.severity, String(l.riskScore)].join(","));
+  const header = lang === "fr" ? ["heure", "pseudo", "message", "gravité", "risque"] : ["time", "username", "message", "severity", "risk"];
+  // French spreadsheets expect ";" as the separator.
+  const sep = lang === "fr" ? ";" : ",";
+  const rows = [header.join(sep)];
+  for (const l of lines) rows.push([q(fmt.format(l.t)), q(l.username), q(l.text), word(l.severity, lang), String(l.riskScore)].join(sep));
   return "\uFEFF" + rows.join("\r\n") + "\r\n";
 }

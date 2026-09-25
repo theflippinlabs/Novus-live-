@@ -3,7 +3,7 @@ import type { AnalyticsSummary, Category, HistoryEntry } from "../../shared/type
 import { api, fetchExport, saveFile } from "../api";
 import { BarChart, LineChart } from "../components/Charts";
 import { Avatar, Segmented } from "../components/ui";
-import { categoryLabel, useLang, useT } from "../i18n";
+import { categoryLabel, severityLabel, tr, useLang, useT } from "../i18n";
 import { duration, hm } from "../format";
 import { openViewer, toast, useStore } from "../store";
 
@@ -100,7 +100,7 @@ function ExportCard({ sessionId }: { sessionId: string }) {
     setBusy(kind);
     setReady(null);
     try {
-      const path = kind === "pdf" ? `/history/${encodeURIComponent(sessionId)}/report.pdf` : `/history/${encodeURIComponent(sessionId)}/messages.csv`;
+      const path = `/history/${encodeURIComponent(sessionId)}/${kind === "pdf" ? "report.pdf" : "messages.csv"}?lang=${lang}`;
       const file = await fetchExport(path, `novus-live.${kind}`);
       try {
         await saveFile(file);
@@ -151,7 +151,7 @@ function AnalyticsBody({ d, sessionId, interactive }: { d: AnalyticsSummary; ses
     <>
       <div className="card">
         <div className="card-title">
-          <span className="gold">◆</span> {d.session ? d.session.title : "—"}
+          <span className="gold">◆</span> {d.session ? tr(d.session.title, lang) : "—"}
           <span className="spacer" />
           <span className="mono">{duration(d.durationMs)}</span>
         </div>
@@ -160,8 +160,8 @@ function AnalyticsBody({ d, sessionId, interactive }: { d: AnalyticsSummary; ses
           <Kpi v={n(d.totals.uniqueChatters)} l={t("uniqueChatters")} />
           <Kpi v={d.peak ? `${d.peak.messages}` : "—"} l={`${t("peak")}${d.peak ? ` ${hm(d.peak.t)}` : ""}`} />
           <Kpi v={d.totals.alerts} l={t("alerts")} />
-          <Kpi v={d.totals.critical} l="Critical" />
-          <Kpi v={d.totals.warnings} l="Warning" />
+          <Kpi v={d.totals.critical} l={severityLabel("critical", lang)} />
+          <Kpi v={d.totals.warnings} l={severityLabel("warning", lang)} />
           <Kpi v={d.totals.muteRecommendations} l={t("muteRecs")} />
           <Kpi v={d.totals.blockRecommendations + d.totals.reportRecommendations} l={t("blockRecs")} />
           <Kpi v={d.avgResponseTimeMs !== null ? `${(d.avgResponseTimeMs / 1000).toFixed(1)}s` : "—"} l={t("responseTime")} />
@@ -228,7 +228,7 @@ function AnalyticsBody({ d, sessionId, interactive }: { d: AnalyticsSummary; ses
       <div className="row">
         <span className="spacer" />
         <Segmented
-          label="Display"
+          label={t("displayLabel")}
           value={mode}
           onChange={setMode}
           options={[
@@ -242,7 +242,7 @@ function AnalyticsBody({ d, sessionId, interactive }: { d: AnalyticsSummary; ses
         <>
           <div className="card">
             <div className="card-title">{t("msgPerMinute")}</div>
-            <BarChart label={t("msgPerMinute")} data={d.buckets.map((b) => ({ t: b.t, v: b.messages }))} format={(p) => `${hm(p.t)} · ${p.v} msg`} />
+            <BarChart label={t("msgPerMinute")} data={d.buckets.map((b) => ({ t: b.t, v: b.messages }))} format={(p) => `${hm(p.t)} · ${p.v} ${t("msgShort")}`} />
           </div>
           {hasViewers ? (
             <div className="card">
@@ -260,12 +260,12 @@ function AnalyticsBody({ d, sessionId, interactive }: { d: AnalyticsSummary; ses
           <table className="data-table">
             <thead>
               <tr>
-                <th>Min</th>
+                <th>{t("colMinute")}</th>
                 {hasViewers ? <th>{tx.viewersChart}</th> : null}
-                <th>Msgs</th>
-                <th>Alerts</th>
-                <th>Toxic %</th>
-                <th>Avg risk</th>
+                <th>{t("colMessages")}</th>
+                <th>{t("alerts")}</th>
+                <th>{t("colToxic")}</th>
+                <th>{t("colAvgRisk")}</th>
               </tr>
             </thead>
             <tbody>
@@ -412,7 +412,7 @@ function HistoryList({ onOpen }: { onOpen: (id: string) => void }) {
       {shown.map((e) => (
         <button key={e.sessionId} className="card history-row" onClick={() => onOpen(e.sessionId)}>
           <div className="row" style={{ gap: 8 }}>
-            <b style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</b>
+            <b style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tr(e.title, lang)}</b>
             <StatusBadge e={e} />
           </div>
           <div className="small muted" style={{ marginTop: 2 }}>
@@ -459,6 +459,7 @@ function HistoryDetail({ id, onBack }: { id: string; onBack: () => void }) {
 }
 
 export function AnalyticsView() {
+  const t = useT();
   const tx = TX[useLang()];
   const [tab, setTab] = useState<"current" | "history">("current");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -467,7 +468,7 @@ export function AnalyticsView() {
     <div className="scroll">
       <div className="narrow stack">
         <Segmented
-          label="Analytics"
+          label={t("analytics")}
           value={tab}
           onChange={(v) => {
             setTab(v);

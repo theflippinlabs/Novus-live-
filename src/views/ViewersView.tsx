@@ -42,7 +42,7 @@ export function ViewersView() {
         <input className="input" type="search" placeholder={t("searchViewers")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("searchViewers")} autoCapitalize="off" autoCorrect="off" />
         <div style={{ marginTop: 8 }}>
           <Segmented
-            label="Sort"
+            label={t("sortLabel")}
             value={sort}
             onChange={setSort}
             options={[
@@ -73,7 +73,7 @@ export function ViewersView() {
                     {v.flag ? <span className={`chip ${v.flag === "trusted" ? "on" : ""}`} style={{ minHeight: 20, fontSize: 10.5 }}>{t(v.flag)}</span> : null}
                   </div>
                   <div className="small muted">
-                    {v.messageCount} msg · {ago(v.lastSeen, now)}
+                    {v.messageCount} {t("msgShort")} · {ago(v.lastSeen, now)}
                     {v.warnings ? ` · ${v.warnings} ⚠` : ""}
                     {topCat ? ` · ${categoryLabel(topCat, lang)}` : ""}
                   </div>

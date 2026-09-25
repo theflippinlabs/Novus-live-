@@ -18,7 +18,7 @@ export function BottomNav() {
   const open = useStore((s) => s.stats.openAlerts);
   const critical = useStore((s) => s.stats.criticalAlerts);
   return (
-    <nav className="bottom-nav" aria-label="Main">
+    <nav className="bottom-nav" aria-label={t("mainNav")}>
       {TABS.map(({ view: v, label, Icon }) => (
         <button key={v} className={`nav-btn ${view === v ? "active" : ""}`} onClick={() => navigate(v)} aria-current={view === v ? "page" : undefined}>
           <Icon />

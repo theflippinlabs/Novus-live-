@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import { CATEGORY_LABELS } from "../../shared/settings";
+import { tr, word } from "../../shared/i18n";
 import type { AnalyticsSummary, Category, ChatLine, HistoryEntry } from "../../shared/types";
 
 /*
@@ -156,7 +157,7 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
     size: "A4",
     margins: { top: 48, bottom: 56, left: 44, right: 44 },
     bufferPages: true,
-    info: { Title: `NOVUS LIVE — ${pdfText(entry.title)}`, Author: "NOVUS LIVE", Subject: t.title },
+    info: { Title: `NOVUS LIVE — ${pdfText(tr(entry.title, lang))}`, Author: "NOVUS LIVE", Subject: t.title },
   });
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
@@ -233,7 +234,7 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
   doc.font("Helvetica-Bold").fontSize(24).fillColor("#e0b877").text("NOVUS", textX, 30, { characterSpacing: 5, lineBreak: false });
   doc.font("Helvetica").fontSize(12).fillColor("#e8dcc6").text("LIVE", textX + 132, 40, { characterSpacing: 6, lineBreak: false });
   doc.font("Helvetica").fontSize(11).fillColor("#b2aaa0").text(t.title, textX, 64, { lineBreak: false });
-  doc.font("Helvetica-Bold").fontSize(13).fillColor("#f1ece4").text(pdfText(entry.title), textX, 81, { width: width - (textX - left), lineBreak: false, ellipsis: true });
+  doc.font("Helvetica-Bold").fontSize(13).fillColor("#f1ece4").text(pdfText(tr(entry.title, lang)), textX, 81, { width: width - (textX - left), lineBreak: false, ellipsis: true });
 
   doc.y = 136;
   doc.x = left;
@@ -367,7 +368,7 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
     if (a.topTopics.length) {
       doc.moveDown(0.5);
       doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(t.topics, left);
-      para(a.topTopics.map((tp) => `${pdfText(tp.topic)} (${tp.count})`).join("   ·   "), { color: INK });
+      para(a.topTopics.map((tp) => `${pdfText(tr(tp.topic, lang))} (${tp.count})`).join("   ·   "), { color: INK });
     }
   }
 
@@ -390,9 +391,9 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
     for (const inc of a.incidents) {
       ensure(30);
       const color = inc.severity === "critical" ? RED : inc.severity === "warning" ? ORANGE : MUTED;
-      doc.font("Helvetica-Bold").fontSize(8.5).fillColor(color).text(`${inc.severity.toUpperCase()} ${inc.riskScore}`, left, doc.y, { continued: true });
-      doc.fillColor(INK).text(`   ${fmtTime.format(inc.t)}  @${pdfText(inc.username)}  »  ${inc.recommendedAction.toUpperCase()} (${inc.status})`);
-      doc.font("Helvetica").fontSize(8.5).fillColor(MUTED).text(`“${pdfText(inc.text)}” — ${pdfText(inc.reasons.join(", "))}`, left + 10, doc.y, { width: width - 10 });
+      doc.font("Helvetica-Bold").fontSize(8.5).fillColor(color).text(`${word(inc.severity, lang).toUpperCase()} ${inc.riskScore}`, left, doc.y, { continued: true });
+      doc.fillColor(INK).text(`   ${fmtTime.format(inc.t)}  @${pdfText(inc.username)}  »  ${word(inc.recommendedAction, lang).toUpperCase()} (${word(inc.status, lang)})`);
+      doc.font("Helvetica").fontSize(8.5).fillColor(MUTED).text(`“${pdfText(inc.text)}” — ${pdfText(inc.reasons.map((r) => tr(r, lang)).join(", "))}`, left + 10, doc.y, { width: width - 10 });
       doc.moveDown(0.3);
       doc.x = left;
     }
@@ -403,7 +404,7 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
     doc.moveDown(0.2);
     for (const l of a.moderationLog) {
       ensure(14);
-      para(`${fmtTime.format(l.t)}   ${l.action.toUpperCase()}   @${pdfText(l.username)}   ${l.status}${l.confirmed ? ` (${t.confirmed})` : ""}`, { color: INK, size: 8.5 });
+      para(`${fmtTime.format(l.t)}   ${word(l.action, lang).toUpperCase()}   @${pdfText(l.username)}   ${word(l.status, lang)}${l.confirmed ? ` (${t.confirmed})` : ""}`, { color: INK, size: 8.5 });
     }
   }
 
@@ -432,7 +433,7 @@ export function buildReportPdf(input: PdfInput): Promise<Buffer> {
     doc.page.margins.bottom = 0;
     const y = doc.page.height - 36;
     doc.font("Helvetica").fontSize(7.5).fillColor(MUTED);
-    doc.text(`${t.generated} · ${pdfText(entry.title)}`, left, y, { width: width - 80, lineBreak: false, ellipsis: true });
+    doc.text(`${t.generated} · ${pdfText(tr(entry.title, lang))}`, left, y, { width: width - 80, lineBreak: false, ellipsis: true });
     doc.text(`${t.page} ${i + 1}/${range.count}`, left + width - 80, y, { width: 80, align: "right", lineBreak: false });
   }
   doc.end();

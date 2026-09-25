@@ -1,5 +1,7 @@
 import type { ActionType } from "../../shared/types";
+import { tr } from "../../shared/i18n";
 import {
+  bilingual,
   warningMessage,
   type ActionCapability,
   type ActionResult,
@@ -9,14 +11,10 @@ import {
 
 // Local-only actions (watch / dismiss) are pure bookkeeping inside Novus.
 const local = {
-  watch: async (t: ActionTarget): Promise<ActionResult> => ({
-    status: "recorded",
-    message: t.language === "fr" ? `@${t.viewer.username} ajouté à la surveillance.` : `@${t.viewer.username} is now being watched.`,
-  }),
-  dismiss: async (t: ActionTarget): Promise<ActionResult> => ({
-    status: "recorded",
-    message: t.language === "fr" ? "Alerte ignorée." : `Alert for @${t.viewer.username} dismissed.`,
-  }),
+  watch: async (t: ActionTarget): Promise<ActionResult> =>
+    bilingual("recorded", t.language, { message: `@${t.viewer.username} is now being watched.` }, { message: `@${t.viewer.username} ajouté à la surveillance.` }),
+  dismiss: async (t: ActionTarget): Promise<ActionResult> =>
+    bilingual("recorded", t.language, { message: `Alert for @${t.viewer.username} dismissed.` }, { message: `Alerte de @${t.viewer.username} ignorée.` }),
 };
 
 /** Demo mode: actions apply to the mock platform only and are labelled as simulated. */
@@ -29,19 +27,27 @@ export class SimulatedActionAdapter implements ModerationActionAdapter {
     return { watch: "local", dismiss: "local", warn: "simulated", mute: "simulated", block: "simulated", report: "simulated" };
   }
 
-  private sim(action: ActionType, t: ActionTarget, extra: Partial<ActionResult> = {}): ActionResult {
+  private sim(action: ActionType, t: ActionTarget, withWarning = false): ActionResult {
     this.onApply?.(action, t);
-    return {
-      status: "simulated",
-      message: `${action.toUpperCase()} applied to @${t.viewer.username} on the demo platform (simulation — nothing was sent to TikTok).`,
-      ...extra,
-    };
+    const FR_ACTION: Record<ActionType, string> = { warn: "AVERTISSEMENT", mute: "SOURDINE", block: "BLOCAGE", report: "SIGNALEMENT", watch: "SURVEILLANCE", dismiss: "IGNORER" };
+    return bilingual(
+      "simulated",
+      t.language,
+      {
+        message: `${action.toUpperCase()} applied to @${t.viewer.username} on the demo platform (simulation — nothing was sent to TikTok).`,
+        ...(withWarning ? { suggestedMessage: warningMessage(t.viewer.username, "en") } : {}),
+      },
+      {
+        message: `${FR_ACTION[action]} appliqué à @${t.viewer.username} sur la plateforme de démo (simulation — rien n'a été envoyé à TikTok).`,
+        ...(withWarning ? { suggestedMessage: warningMessage(t.viewer.username, "fr") } : {}),
+      },
+    );
   }
 
   watch = local.watch;
   dismiss = local.dismiss;
   async warn(t: ActionTarget) {
-    return this.sim("warn", t, { suggestedMessage: warningMessage(t.viewer.username, t.language) });
+    return this.sim("warn", t, true);
   }
   async mute(t: ActionTarget) {
     return this.sim("mute", t);
@@ -70,9 +76,13 @@ export class TikTokManualActionAdapter implements ModerationActionAdapter {
   watch = local.watch;
   dismiss = local.dismiss;
 
-  private manual(t: ActionTarget, en: { msg: string; steps: string[] }, fr: { msg: string; steps: string[] }, suggestedMessage?: string): ActionResult {
-    const copy = t.language === "fr" ? fr : en;
-    return { status: "manual_required", message: copy.msg, instructions: copy.steps, suggestedMessage };
+  private manual(t: ActionTarget, en: { msg: string; steps: string[] }, fr: { msg: string; steps: string[] }, withWarning = false): ActionResult {
+    return bilingual(
+      "manual_required",
+      t.language,
+      { message: en.msg, instructions: en.steps, ...(withWarning ? { suggestedMessage: warningMessage(t.viewer.username, "en") } : {}) },
+      { message: fr.msg, instructions: fr.steps, ...(withWarning ? { suggestedMessage: warningMessage(t.viewer.username, "fr") } : {}) },
+    );
   }
 
   async warn(t: ActionTarget) {
@@ -87,7 +97,7 @@ export class TikTokManualActionAdapter implements ModerationActionAdapter {
         msg: `ACTION MANUELLE REQUISE — avertis ${u} dans le chat du LIVE TikTok.`,
         steps: ["Ouvre le chat du LIVE TikTok.", "Touche le champ de commentaire.", `Colle l'avertissement suggéré pour ${u} et envoie-le.`],
       },
-      warningMessage(t.viewer.username, t.language),
+      true,
     );
   }
 
@@ -143,7 +153,7 @@ export class TikTokManualActionAdapter implements ModerationActionAdapter {
 
   async report(t: ActionTarget) {
     const u = `@${t.viewer.username}`;
-    const reason = t.reasons?.[0] ?? "the most relevant reason";
+    const reason = t.reasons?.[0];
     return this.manual(
       t,
       {
@@ -151,7 +161,7 @@ export class TikTokManualActionAdapter implements ModerationActionAdapter {
         steps: [
           `In the TikTok LIVE chat, tap ${u}'s comment or username.`,
           "Tap Report.",
-          `Pick the category matching: ${reason}.`,
+          `Pick the category matching: ${reason ?? "the most relevant reason"}.`,
           "Submit, then block the viewer if they are still active.",
           "If someone is in immediate danger, contact local emergency services.",
         ],
@@ -161,7 +171,7 @@ export class TikTokManualActionAdapter implements ModerationActionAdapter {
         steps: [
           `Dans le chat du LIVE TikTok, touche le commentaire ou le pseudo de ${u}.`,
           "Touche « Signaler ».",
-          `Choisis la catégorie correspondant à : ${reason}.`,
+          `Choisis la catégorie correspondant à : ${reason ? tr(reason, "fr") : "le motif le plus pertinent"}.`,
           "Envoie, puis bloque la personne si elle est encore active.",
           "En cas de danger immédiat, contacte les services d'urgence.",
         ],

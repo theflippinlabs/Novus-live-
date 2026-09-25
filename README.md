@@ -198,6 +198,14 @@ The single remaining external dependency is **authorized access to your LIVE's e
 automated actions, an authorized moderation API). Details and integration points:
 **[docs/TIKTOK_INTEGRATION.md](docs/TIKTOK_INTEGRATION.md)**.
 
+## English / French
+
+The whole app switches between English and French with the **EN | FR** switch in the header (also on
+the login screen and in Settings); the choice is remembered on the device. Server-generated text is
+stored once in English and translated where it is shown (`shared/i18n.ts`), so alerts, reasons,
+history and exports read correctly in either language: heuristic and AI explanations are kept in
+both languages, moderation actions carry both copies, and PDF/CSV exports take `?lang=en|fr`.
+
 ## LIVE history and exports
 
 Every LIVE (followed TikTok accounts and demos) is kept in **Analytics › History**: audience

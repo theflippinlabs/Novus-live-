@@ -1,4 +1,4 @@
-import type { ActionStatus, ActionType, ViewerRef } from "../../shared/types";
+import type { ActionCopy, ActionStatus, ActionType, ViewerRef } from "../../shared/types";
 
 // Every moderation action goes through an adapter. An adapter must NEVER report
 // success for something it could not actually do on the platform: when there is
@@ -16,6 +16,14 @@ export interface ActionResult {
   message: string;
   instructions?: string[];
   suggestedMessage?: string;
+  /** The same copy in both languages, so history can be shown in either. */
+  i18n?: Partial<Record<"en" | "fr", ActionCopy>>;
+}
+
+/** Build a result from copy in both languages; `message`/`instructions` use the active language. */
+export function bilingual(status: ActionStatus, language: "en" | "fr", en: ActionCopy, fr: ActionCopy): ActionResult {
+  const cur = language === "fr" ? fr : en;
+  return { status, ...cur, i18n: { en, fr } };
 }
 
 export type ActionCapability = "automated" | "simulated" | "manual" | "local";

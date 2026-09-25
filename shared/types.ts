@@ -99,6 +99,8 @@ export interface ModerationAnalysis {
   severity: Severity;
   categories: Category[];
   explanation: string;
+  /** The explanation in both languages (absent on rows saved by older versions). */
+  explanationI18n?: { en: string; fr: string };
   recommendedAction: RecommendedAction;
   confidence: number;
   /** Human readable, compact reason indicators ("Targeted threat", "Repeated 4x"). */
@@ -125,6 +127,7 @@ export interface ModerationAlert {
   categories: Category[];
   reasons: string[];
   explanation: string;
+  explanationI18n?: { en: string; fr: string };
   recommendedAction: RecommendedAction;
   confidence: number;
   stage: "heuristic" | "ai";
@@ -164,12 +167,20 @@ export interface ActionRecord {
   instructions?: string[];
   /** Suggested chat text (e.g. for a warning) the moderator can paste. */
   suggestedMessage?: string;
+  /** Message, steps and suggested text in both languages. */
+  i18n?: Partial<Record<"en" | "fr", ActionCopy>>;
   note?: string;
   performedAt: number;
   /** ms between alert creation and this action. */
   responseTimeMs?: number;
   /** Set when the moderator confirms a manual action was done in-app. */
   confirmedAt?: number;
+}
+
+export interface ActionCopy {
+  message: string;
+  instructions?: string[];
+  suggestedMessage?: string;
 }
 
 export type ViewerFlag = "trusted" | "watchlist" | "ignored";

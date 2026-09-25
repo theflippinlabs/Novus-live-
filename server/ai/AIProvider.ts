@@ -24,6 +24,8 @@ export interface AIVerdict {
   severity: Severity;
   categories: Category[];
   explanation: string;
+  /** Same explanation in the other language, when the provider returns both. */
+  explanationFr?: string;
   recommendedAction: RecommendedAction;
   confidence: number;
 }

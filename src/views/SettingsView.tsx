@@ -3,8 +3,8 @@ import { PRESET_THRESHOLDS } from "../../shared/settings";
 import { CATEGORIES, type Sensitivity, type Settings, type Thresholds } from "../../shared/types";
 import { api, ApiError } from "../api";
 import { Segmented, Toggle } from "../components/ui";
-import { categoryLabel, useLang, useT } from "../i18n";
-import { setState, toast, useStore } from "../store";
+import { categoryLabel, errorText, setLanguage, severityLabel, useLang, useT } from "../i18n";
+import { getState, setState, toast, useStore } from "../store";
 import { TikTokIntegration } from "./TikTokIntegration";
 
 async function save(patch: Partial<Settings>, okText: string) {
@@ -13,7 +13,7 @@ async function save(patch: Partial<Settings>, okText: string) {
     setState({ settings: s });
     toast(okText, "ok");
   } catch (e) {
-    toast(e instanceof ApiError ? e.code : "Save failed", "warn");
+    toast(errorText(e instanceof ApiError ? e.code : "save_failed", getState().settings.language), "warn");
   }
 }
 
@@ -50,7 +50,7 @@ function ListEditor({ label, items, onChange, placeholder }: { label: string; it
           {items.map((i) => (
             <span key={i} className="chip">
               {i}
-              <button aria-label={`Remove ${i}`} onClick={() => onChange(items.filter((x) => x !== i))}>
+              <button aria-label={`${t("remove")} ${i}`} onClick={() => onChange(items.filter((x) => x !== i))}>
                 ×
               </button>
             </span>
@@ -63,12 +63,13 @@ function ListEditor({ label, items, onChange, placeholder }: { label: string; it
 
 function ThresholdEditor({ initial }: { initial: Thresholds }) {
   const t = useT();
+  const lang = useLang();
   const [th, setTh] = useState(initial);
   const valid = th.watch < th.warning && th.warning < th.critical;
   const slider = (key: keyof Thresholds, color: string) => (
     <label className="row" style={{ marginTop: 8 }}>
-      <span style={{ width: 80, fontSize: 13, fontWeight: 700, color }}>{key.toUpperCase()}</span>
-      <input type="range" min={1} max={100} value={th[key]} onChange={(e) => setTh({ ...th, [key]: Number(e.target.value) })} style={{ flex: 1, accentColor: "#c9a55a" }} aria-label={`${key} threshold`} />
+      <span style={{ width: 110, fontSize: 12, fontWeight: 700, color }}>{severityLabel(key, lang)}</span>
+      <input type="range" min={1} max={100} value={th[key]} onChange={(e) => setTh({ ...th, [key]: Number(e.target.value) })} style={{ flex: 1, accentColor: "#c9a55a" }} aria-label={`${t("thresholdOf")} ${severityLabel(key, lang)}`} />
       <span className="mono" style={{ width: 32, textAlign: "right" }}>
         {th[key]}
       </span>
@@ -81,7 +82,7 @@ function ThresholdEditor({ initial }: { initial: Thresholds }) {
       {slider("warning", "var(--r-warning)")}
       {slider("critical", "#ff8b98")}
       <button className="btn gold block" style={{ marginTop: 10 }} disabled={!valid} onClick={() => save({ sensitivity: "custom", customThresholds: th }, t("saved"))}>
-        {valid ? t("save") : "watch < warning < critical"}
+        {valid ? t("save") : `${severityLabel("watch", lang)} < ${severityLabel("warning", lang)} < ${severityLabel("critical", lang)}`}
       </button>
     </div>
   );
@@ -104,9 +105,9 @@ export function SettingsView() {
 
   const ok = t("saved");
   const sensitivityOptions: { value: Sensitivity; label: string }[] = [
-    { value: "low", label: "LOW" },
-    { value: "balanced", label: "BALANCED" },
-    { value: "strict", label: "STRICT" },
+    { value: "low", label: t("sensLow").toUpperCase() },
+    { value: "balanced", label: t("sensBalanced").toUpperCase() },
+    { value: "strict", label: t("sensStrict").toUpperCase() },
     { value: "custom", label: t("custom").toUpperCase() },
   ];
   const presetInfo = settings.sensitivity !== "custom" ? PRESET_THRESHOLDS[settings.sensitivity] : settings.customThresholds;
@@ -120,7 +121,7 @@ export function SettingsView() {
         <div className="card">
           <Segmented label={t("sensitivity")} value={settings.sensitivity} options={sensitivityOptions} gold onChange={(v) => (v === "custom" ? setState({ settings: { ...settings, sensitivity: "custom" } }) : save({ sensitivity: v }, ok))} />
           <div className="small muted" style={{ marginTop: 8 }}>
-            watch ≥ {presetInfo.watch} · warning ≥ {presetInfo.warning} · critical ≥ {presetInfo.critical}
+            {severityLabel("watch", lang).toLowerCase()} ≥ {presetInfo.watch} · {severityLabel("warning", lang).toLowerCase()} ≥ {presetInfo.warning} · {severityLabel("critical", lang).toLowerCase()} ≥ {presetInfo.critical}
           </div>
           {settings.sensitivity === "custom" ? <ThresholdEditor initial={settings.customThresholds} key={JSON.stringify(settings.customThresholds)} /> : null}
         </div>
@@ -136,12 +137,12 @@ export function SettingsView() {
         </div>
 
         <div className="section-title">{t("bannedPhrases")}</div>
-        <ListEditor label={t("bannedPhrases")} items={settings.bannedPhrases} placeholder="e.g. spoiler" onChange={(v) => save({ bannedPhrases: v }, ok)} />
+        <ListEditor label={t("bannedPhrases")} items={settings.bannedPhrases} placeholder={t("bannedPlaceholder")} onChange={(v) => save({ bannedPhrases: v }, ok)} />
 
         <div className="section-title">{t("trustedUsers")}</div>
-        <ListEditor label={t("trustedUsers")} items={settings.trustedUsers} placeholder="@username" onChange={(v) => save({ trustedUsers: v }, ok)} />
+        <ListEditor label={t("trustedUsers")} items={settings.trustedUsers} placeholder={t("handlePlaceholder")} onChange={(v) => save({ trustedUsers: v }, ok)} />
         <div style={{ height: 12 }} />
-        <ListEditor label={t("watchlist")} items={settings.watchlist} placeholder="@username" onChange={(v) => save({ watchlist: v }, ok)} />
+        <ListEditor label={t("watchlist")} items={settings.watchlist} placeholder={t("handlePlaceholder")} onChange={(v) => save({ watchlist: v }, ok)} />
 
         <div className="section-title">{t("language")}</div>
         <div className="card">
@@ -153,10 +154,10 @@ export function SettingsView() {
               { value: "en", label: "English" },
               { value: "fr", label: "Français" },
             ]}
-            onChange={(v) => save({ language: v }, v === "fr" ? "Enregistré" : "Saved")}
+            onChange={(v) => void setLanguage(v)}
           />
           <div className="small muted" style={{ marginTop: 8 }}>
-            Chat languages are detected automatically (EN, FR, ES, DE, PT, IT, AR, RU, JA, KO, ZH…).
+            {t("languageHint")}
           </div>
           <div className="card-title" style={{ marginTop: 14 }}>
             {t("streamer")}
@@ -168,7 +169,7 @@ export function SettingsView() {
             </button>
           </div>
           <div className="small muted" style={{ marginTop: 6 }}>
-            Used to spot look-alike impersonation accounts and to detect the host answering questions.
+            {t("streamerHint")}
           </div>
         </div>
 
@@ -176,12 +177,10 @@ export function SettingsView() {
         <div className="card">
           <div className="row">
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>{ai.state === "local_only" ? "Local deterministic moderation" : `${ai.provider} · ${ai.model ?? ""}`}</div>
+              <div style={{ fontWeight: 700 }}>{ai.state === "local_only" ? t("aiLocalTitle") : `${ai.provider} · ${ai.model ?? ""}`}</div>
               <div className="small muted">
-                {ai.state === "local_only"
-                  ? "No ANTHROPIC_API_KEY on the server — stage 1 heuristics handle everything."
-                  : `Only suspicious or ambiguous messages are sent for contextual review. Reviewed: ${ai.analyzed}.`}
-                {ai.lastError ? ` Last error: ${ai.lastError}` : ""}
+                {ai.state === "local_only" ? t("aiLocalHint2") : t("aiReviewHint").replace("{n}", String(ai.analyzed))}
+                {ai.lastError ? ` ${t("lastError")} ${ai.lastError}` : ""}
               </div>
             </div>
             {ai.state !== "local_only" ? <Toggle label={t("aiAnalysis")} on={settings.aiEnabled} onChange={(v) => save({ aiEnabled: v }, ok)} /> : null}
@@ -209,7 +208,7 @@ export function SettingsView() {
           </button>
         ) : null}
         <div className="small muted" style={{ textAlign: "center", margin: "24px 0 8px" }}>
-          NOVUS LIVE · Part of the Novarys / Pulse Engine ecosystem
+          NOVUS LIVE · {t("ecosystem")}
         </div>
       </div>
     </div>

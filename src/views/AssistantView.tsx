@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CatchUp, ChatPulse } from "../../shared/types";
 import { api } from "../api";
 import { LineChart } from "../components/Charts";
-import { useT } from "../i18n";
+import { tr, useLang, useT } from "../i18n";
 import { ago, compact, hm } from "../format";
 import { navigate, openViewer, serverNow, toast, useStore } from "../store";
 
@@ -27,21 +27,37 @@ function writeLastCheck(t: number) {
 
 function CatchUpCard() {
   const t = useT();
+  const lang = useLang();
   const [result, setResult] = useState<CatchUp | null>(null);
+  const [since, setSince] = useState<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const run = async () => {
     setBusy(true);
     try {
-      const since = readLastCheck();
-      const r = await api.catchUp(since);
+      const from = readLastCheck();
+      const r = await api.catchUp(from, lang);
       setResult(r);
+      setSince(from);
       writeLastCheck(r.until);
     } catch {
-      toast("Catch-up failed", "warn");
+      toast(t("catchUpFailed"), "warn");
     } finally {
       setBusy(false);
     }
   };
+  // Rebuild the same briefing in the other language when the language changes.
+  useEffect(() => {
+    if (!result) return;
+    let cancelled = false;
+    api
+      .catchUp(since ?? result.since, lang)
+      .then((r) => !cancelled && setResult({ ...r, until: result.until }))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
   return (
     <div className="card catchup-card">
       <button className="btn gold lg block" onClick={run} disabled={busy}>
@@ -68,7 +84,7 @@ function CatchUpCard() {
             </div>
           ))}
           <div className="small muted">
-            {hm(result.since)} → {hm(result.until)} · {result.source === "ai" ? "AI" : "Local"}
+            {hm(result.since)} → {hm(result.until)} · {result.source === "ai" ? t("stageAi") : t("stageLocal")}
           </div>
         </div>
       ) : null}
@@ -78,6 +94,7 @@ function CatchUpCard() {
 
 export function AssistantView() {
   const t = useT();
+  const lang = useLang();
   const sessionId = useStore((s) => s.session?.id);
   const [pulse, setPulse] = useState<ChatPulse | null>(null);
 
@@ -134,7 +151,7 @@ export function AssistantView() {
                 {p.messagesPerMinute} {t("msgMin")} · {compact(p.viewerCount)} {t("viewersShort")}
               </div>
               {p.viewersNeedingAttention > 0 ? (
-                <button className="btn block" style={{ marginTop: 10, borderColor: "rgba(229,38,62,.5)" }} onClick={() => navigate("alerts")}>
+                <button className="btn block" style={{ marginTop: 10, borderColor: "rgba(229,38,62,.5)", whiteSpace: "normal", height: "auto", padding: "10px 12px" }} onClick={() => navigate("alerts")}>
                   <b style={{ color: "#ff8b98" }}>{p.viewersNeedingAttention}</b>&nbsp;{t("needAttention")}
                 </button>
               ) : null}
@@ -161,13 +178,13 @@ export function AssistantView() {
             <div className="card">
               <div className="card-title">{t("trending")}</div>
               {p.trending.length === 0 ? <div className="muted">—</div> : null}
-              {p.trending.map((tr, i) => (
-                <div key={tr.topic} className="rank">
+              {p.trending.map((topic, i) => (
+                <div key={topic.topic} className="rank">
                   <span className="n">{i + 1}</span>
-                  <span className="t">{tr.topic}</span>
+                  <span className="t">{tr(topic.topic, lang)}</span>
                   <span className="c">
-                    {tr.count}
-                    {tr.growth > 0 ? <span className="delta-up"> +{tr.growth}%</span> : null}
+                    {topic.count}
+                    {topic.growth > 0 ? <span className="delta-up"> +{topic.growth}%</span> : null}
                   </span>
                 </div>
               ))}
@@ -195,11 +212,11 @@ export function AssistantView() {
               <div className="card-title">
                 {t("sentiment")}
                 <span className="spacer" />
-                <span style={{ color: p.sentiment.current < -0.08 ? "var(--r-warning)" : "var(--text)" }}>{p.sentiment.label}</span>
+                <span style={{ color: p.sentiment.current < -0.08 ? "var(--r-warning)" : "var(--text)" }}>{tr(p.sentiment.label, lang)}</span>
               </div>
               {p.sentiment.shift ? (
                 <div className="small" style={{ color: "var(--gold)", marginBottom: 6 }}>
-                  ⚡ {p.sentiment.shift} ({p.sentiment.change > 0 ? "+" : ""}
+                  ⚡ {tr(p.sentiment.shift, lang)} ({p.sentiment.change > 0 ? "+" : ""}
                   {p.sentiment.change})
                 </div>
               ) : null}
@@ -233,9 +250,9 @@ export function AssistantView() {
                 <button key={m.commentId} className="list-row" style={{ width: "100%", textAlign: "left", alignItems: "flex-start" }} onClick={() => openViewer(m.viewer.id)}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="small" style={{ color: "var(--gold)" }}>
-                      {m.reason} · @{m.viewer.username}
+                      {tr(m.reason, lang)} · @{m.viewer.username}
                     </div>
-                    <div style={{ fontSize: 14 }}>{m.text}</div>
+                    <div style={{ fontSize: 14 }}>{tr(m.text, lang)}</div>
                   </div>
                   <span className="small muted">{ago(m.t, now)}</span>
                 </button>
@@ -248,7 +265,9 @@ export function AssistantView() {
                 {p.spikes.map((s) => (
                   <div key={s.t} className="rank">
                     <span className="t mono">{hm(s.t)}</span>
-                    <span className="c">{s.messages} msg</span>
+                    <span className="c">
+                      {s.messages} {t("msgShort")}
+                    </span>
                   </div>
                 ))}
               </div>

@@ -2,20 +2,38 @@ import { useEffect } from "react";
 import type { TikTokIntegrationState } from "../../shared/types";
 import { api } from "../api";
 import { TikTokProfiles } from "../components/TikTokProfiles";
-import { useLang, useT } from "../i18n";
+import { tiktokStateLabel, tr, useLang, useT } from "../i18n";
 import { ago } from "../format";
 import { setState, useStore } from "../store";
 
 const STATES: TikTokIntegrationState[] = ["NOT_CONNECTED", "CONNECTOR_AVAILABLE", "CONNECTED", "LIVE_DETECTED", "LIVE_ENDED", "ERROR"];
 
-const EXPLAIN: Record<TikTokIntegrationState, string> = {
-  NOT_CONNECTED: "No authorized connector is configured on the server (INGEST_TOKEN not set). Demo mode works without it.",
-  CONNECTOR_AVAILABLE: "The ingestion endpoint is enabled. Waiting for an authorized TikTok LIVE connector to send events.",
-  CONNECTED: "A connector is sending heartbeats/events. No LIVE activity detected yet.",
-  LIVE_DETECTED: "LIVE events are flowing into Novus in real time.",
-  LIVE_ENDED: "The connector reported that the LIVE ended. A post-LIVE report was generated.",
-  ERROR: "The connector sent invalid data or failed. Check the connector logs.",
+const EXPLAIN: Record<"en" | "fr", Record<TikTokIntegrationState, string>> = {
+  en: {
+    NOT_CONNECTED: "No authorized connector is configured on the server (INGEST_TOKEN not set). Demo mode works without it.",
+    CONNECTOR_AVAILABLE: "The ingestion endpoint is enabled. Waiting for an authorized TikTok LIVE connector to send events.",
+    CONNECTED: "A connector is sending heartbeats/events. No LIVE activity detected yet.",
+    LIVE_DETECTED: "LIVE events are flowing into Novus in real time.",
+    LIVE_ENDED: "The connector reported that the LIVE ended. A post-LIVE report was generated.",
+    ERROR: "The connector sent invalid data or failed. Check the connector logs.",
+  },
+  fr: {
+    NOT_CONNECTED: "Aucun connecteur autorisé n'est configuré sur le serveur (INGEST_TOKEN absent). Le mode démo fonctionne sans.",
+    CONNECTOR_AVAILABLE: "Le point de réception est actif. En attente d'un connecteur TikTok LIVE autorisé qui envoie des événements.",
+    CONNECTED: "Un connecteur envoie des signaux/événements. Aucune activité de LIVE détectée pour l'instant.",
+    LIVE_DETECTED: "Les événements du LIVE arrivent dans Novus en temps réel.",
+    LIVE_ENDED: "Le connecteur a signalé la fin du LIVE. Un rapport post-LIVE a été généré.",
+    ERROR: "Le connecteur a envoyé des données invalides ou a échoué. Vérifie les journaux du connecteur.",
+  },
 };
+
+const CAP_STATUS: Record<string, { en: string; fr: string }> = {
+  implemented: { en: "IMPLEMENTED", fr: "EN PLACE" },
+  requires_authorized_connector: { en: "NEEDS AUTHORIZED CONNECTOR", fr: "CONNECTEUR AUTORISÉ REQUIS" },
+  manual_only: { en: "MANUAL ONLY", fr: "MANUEL UNIQUEMENT" },
+  not_available: { en: "NOT AVAILABLE", fr: "INDISPONIBLE" },
+};
+
 
 const EXPLAIN_LIVE: Record<"en" | "fr", Record<TikTokIntegrationState, string>> = {
   en: {
@@ -55,13 +73,13 @@ export function TikTokIntegration() {
   return (
     <div className="card">
       <div className="row wrap">
-        <span className={`state-badge ${tone}`}>{status.state.replace(/_/g, " ")}</span>
-        {status.lastEventAt ? <span className="small muted">last event {ago(status.lastEventAt, Date.now())} ago</span> : null}
+        <span className={`state-badge ${tone}`}>{tiktokStateLabel(status.state, lang)}</span>
+        {status.lastEventAt ? <span className="small muted">{t("lastEvent").replace("{ago}", ago(status.lastEventAt, Date.now()))}</span> : null}
       </div>
       <p className="small" style={{ color: "var(--text-2)" }}>
-        {status.source === "unofficial_live_connector" ? EXPLAIN_LIVE[lang][status.state] : EXPLAIN[status.state]}
-        {status.detail ? <><br /><b style={{ color: "var(--gold)" }}>{status.detail}</b></> : null}
-        {status.error ? ` (${status.error})` : ""}
+        {status.source === "unofficial_live_connector" ? EXPLAIN_LIVE[lang][status.state] : EXPLAIN[lang][status.state]}
+        {status.detail ? <><br /><b style={{ color: "var(--gold)" }}>{tr(status.detail, lang)}</b></> : null}
+        {status.error ? ` (${tr(status.error, lang)})` : ""}
       </p>
       {status.source === "unofficial_live_connector" ? (
         <p className="small muted" style={{ marginTop: 0 }}>
@@ -70,10 +88,10 @@ export function TikTokIntegration() {
             : "Source: unofficial connector (read-only, never logs in). Not authorized by TikTok: it can stop working at any time."}
         </p>
       ) : null}
-      <div className="chips" aria-label="Integration states">
+      <div className="chips" aria-label={t("integrationStates")}>
         {STATES.map((s) => (
           <span key={s} className={`chip ${s === status.state ? "on" : ""}`} style={{ fontSize: 10.5 }}>
-            {s.replace(/_/g, " ")}
+            {tiktokStateLabel(s, lang)}
           </span>
         ))}
       </div>
@@ -84,7 +102,9 @@ export function TikTokIntegration() {
           ? lang === "fr"
             ? "Novus ne demande jamais ton mot de passe TikTok. Il suit le LIVE public de ce compte ; mute, blocage et signalement restent manuels dans TikTok."
             : "Novus never asks for your TikTok password. It follows this account's public LIVE; mute, block and report stay manual in TikTok."
-          : "Novus never asks for your TikTok password and never calls undocumented TikTok endpoints. The account name tells an authorized connector which LIVE to follow."}
+          : lang === "fr"
+            ? "Novus ne demande jamais ton mot de passe TikTok et n'appelle aucun point d'accès TikTok non documenté. Le nom du compte indique à un connecteur autorisé quel LIVE suivre."
+            : "Novus never asks for your TikTok password and never calls undocumented TikTok endpoints. The account name tells an authorized connector which LIVE to follow."}
       </div>
 
       <div className="card-title" style={{ marginTop: 14 }}>
@@ -93,14 +113,14 @@ export function TikTokIntegration() {
       {status.capabilities.map((c) => (
         <div key={c.capability} className="list-row" style={{ alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.capability}</div>
-            <div className="small muted">{c.detail}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{tr(c.capability, lang)}</div>
+            <div className="small muted">{tr(c.detail, lang)}</div>
           </div>
-          <span className={`cap-status ${c.status}`}>{c.status.replace(/_/g, " ").toUpperCase()}</span>
+          <span className={`cap-status ${c.status}`}>{CAP_STATUS[c.status]?.[lang] ?? c.status.replace(/_/g, " ").toUpperCase()}</span>
         </div>
       ))}
       <div className="small muted" style={{ marginTop: 8 }}>
-        Full details: docs/TIKTOK_INTEGRATION.md
+        {t("fullDetails")} docs/TIKTOK_INTEGRATION.md
       </div>
     </div>
   );

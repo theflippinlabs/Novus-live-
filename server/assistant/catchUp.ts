@@ -1,3 +1,4 @@
+import { tr, word } from "../../shared/i18n";
 import { CATEGORY_LABELS } from "../../shared/settings";
 import type {
   ActionRecord,
@@ -82,7 +83,7 @@ export function buildCatchUp(input: CatchUpInput): CatchUp {
       items: newAlerts
         .sort((a, b) => b.riskScore - a.riskScore)
         .slice(0, 5)
-        .map((a) => `${a.severity.toUpperCase()} · @${a.viewer.username} (${a.riskScore}) — ${a.categories.slice(0, 2).map(lang).join(", ")}: “${clip(a.text)}”${a.occurrences > 1 ? ` ×${a.occurrences}` : ""}`),
+        .map((a) => `${word(a.severity, input.language).toUpperCase()} · @${a.viewer.username} (${a.riskScore}) — ${a.categories.slice(0, 2).map(lang).join(", ")}: “${clip(a.text)}”${a.occurrences > 1 ? ` ×${a.occurrences}` : ""}`),
     });
   }
   if (unresolved.length) {
@@ -90,7 +91,7 @@ export function buildCatchUp(input: CatchUpInput): CatchUp {
       title: t.unresolved,
       items: unresolved.slice(0, 5).map((a) => {
         const pending = a.resolution?.status === "manual_required" && !a.resolution.confirmedAt;
-        return `@${a.viewer.username} — ${a.recommendedAction.toUpperCase()}${pending ? ` (${t.pending})` : ""}`;
+        return `@${a.viewer.username} — ${word(a.recommendedAction, input.language).toUpperCase()}${pending ? ` (${t.pending})` : ""}`;
       }),
     });
   }
@@ -100,16 +101,16 @@ export function buildCatchUp(input: CatchUpInput): CatchUp {
       items: input.questions.slice(0, 4).map((q) => `“${clip(q.question, 60)}” ×${q.count} — ${q.answered ? t.answered : t.unanswered}`),
     });
   }
-  const trendItems = input.trending.slice(0, 3).map((tr) => `${tr.topic} (${tr.count}${tr.growth > 0 ? `, +${tr.growth}%` : ""})`);
-  trendItems.push(`${t.mood}: ${input.sentiment.label}${input.sentiment.shift ? ` — ${input.sentiment.shift}` : ""}`);
+  const trendItems = input.trending.slice(0, 3).map((topic) => `${tr(topic.topic, input.language)} (${topic.count}${topic.growth > 0 ? `, +${topic.growth}%` : ""})`);
+  trendItems.push(`${t.mood}: ${tr(input.sentiment.label, input.language)}${input.sentiment.shift ? ` — ${tr(input.sentiment.shift, input.language)}` : ""}`);
   sections.push({ title: t.trends, items: trendItems });
   if (input.important.length) {
-    sections.push({ title: t.conversation, items: input.important.map((m) => `@${m.viewer.username}: “${clip(m.text)}” — ${m.reason}`) });
+    sections.push({ title: t.conversation, items: input.important.map((m) => `@${m.viewer.username}: “${clip(tr(m.text, input.language))}” — ${tr(m.reason, input.language)}`) });
   }
   if (actions.length) {
     sections.push({
       title: t.actions,
-      items: actions.slice(-6).map((a) => `${a.action.toUpperCase()} @${a.viewer.username} — ${a.status.replace("_", " ")}${a.confirmedAt ? " ✓" : ""}`),
+      items: actions.slice(-6).map((a) => `${word(a.action, input.language).toUpperCase()} @${a.viewer.username} — ${word(a.status, input.language)}${a.confirmedAt ? " ✓" : ""}`),
     });
   }
 

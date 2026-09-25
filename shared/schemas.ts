@@ -114,7 +114,7 @@ export const demoStartSchema = z
 
 export const demoSpeedSchema = z.object({ speed: z.union([z.literal(1), z.literal(5), z.literal(20)]) }).strict();
 
-export const catchUpRequestSchema = z.object({ since: z.number().int().min(0).optional() }).strict();
+export const catchUpRequestSchema = z.object({ since: z.number().int().min(0).optional(), lang: z.enum(["en", "fr"]).optional() }).strict();
 
 export const tiktokConnectSchema = z
   .object({ username: z.string().trim().min(2).max(64).regex(/^@?[A-Za-z0-9._]+$/) })

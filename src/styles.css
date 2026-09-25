@@ -601,7 +601,8 @@ main.view {
 }
 
 .seg button {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 40px;
   padding: 0 6px;
   border-radius: 9px;
@@ -1473,10 +1474,12 @@ main.view {
 .state-badge.bad { color: #ff8b98; }
 
 .cap-status {
+  flex: none;
+  max-width: 38%;
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.08em;
-  white-space: nowrap;
+  text-align: right;
 }
 
 .cap-status.implemented { color: var(--ok); }
@@ -1525,9 +1528,37 @@ main.view {
   }
 }
 
+/* Phones: keep brand, LIVE status, AI state and the EN/FR switch on one row. */
+@media (max-width: 430px) {
+  .ai-chip .ai-label {
+    display: none;
+  }
+
+  .topbar-row {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 400px) {
+  /* Longer French labels: tighten segmented controls instead of clipping them. */
+  .seg {
+    gap: 2px;
+  }
+
+  .seg button {
+    padding: 0 4px;
+    font-size: 12px;
+    letter-spacing: 0;
+  }
+}
+
 @media (max-width: 380px) {
   .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .brand {
+    letter-spacing: 0.16em;
   }
 
   .metric.optional {
@@ -1569,4 +1600,31 @@ main.view {
   font-size: 12.5px;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ language toggle */
+
+.lang-toggle {
+  flex: none;
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--surface);
+}
+
+.lang-toggle button {
+  min-width: 30px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+
+.lang-toggle button.on {
+  color: #1a1107;
+  background: linear-gradient(180deg, #f0cf92, #c99a5b);
 }

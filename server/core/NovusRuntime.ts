@@ -481,6 +481,7 @@ export class NovusRuntime {
         text: headline ? c.text : existing.text,
         commentId: headline ? c.id : existing.commentId,
         explanation: headline ? a.explanation : existing.explanation,
+        explanationI18n: headline ? a.explanationI18n : existing.explanationI18n,
         recommendedAction: headline ? a.recommendedAction : existing.recommendedAction,
         confidence: headline ? a.confidence : existing.confidence,
         stage: headline ? a.stage : existing.stage,
@@ -510,6 +511,7 @@ export class NovusRuntime {
       categories: a.categories,
       reasons: a.reasons,
       explanation: a.explanation,
+      explanationI18n: a.explanationI18n,
       recommendedAction: a.recommendedAction,
       confidence: a.confidence,
       stage: a.stage,
@@ -563,6 +565,7 @@ export class NovusRuntime {
       severity,
       categories,
       explanation: verdict.explanation || heur.explanation,
+      explanationI18n: verdict.explanation ? { en: verdict.explanation, fr: verdict.explanationFr || verdict.explanation } : heur.explanationI18n,
       recommendedAction: severity === verdict.severity ? verdict.recommendedAction : recommendFor(severity, categories, score, warnings),
       confidence: Math.round(verdict.confidence * 100) / 100,
       reasons: [...new Set([...heur.reasons, severity === "normal" && heur.severity !== "normal" ? "Context: likely harmless" : "Context reviewed by AI"])].slice(0, 5),
@@ -612,8 +615,12 @@ export class NovusRuntime {
       const record = this.makeRecord(alert.viewer, "dismiss", {
         status: "recorded",
         message: `Cleared after contextual AI review: ${analysis.explanation}`,
+        i18n: {
+          en: { message: `Cleared after contextual AI review: ${analysis.explanationI18n?.en ?? analysis.explanation}` },
+          fr: { message: `Écartée après vérification du contexte par l'IA : ${analysis.explanationI18n?.fr ?? analysis.explanation}` },
+        },
       }, alert, "novus-ai");
-      this.saveAlert({ ...alert, status: "dismissed", resolution: record, stage: "ai", explanation: analysis.explanation, riskScore: score, severity, updatedAt: this.now() });
+      this.saveAlert({ ...alert, status: "dismissed", resolution: record, stage: "ai", explanation: analysis.explanation, explanationI18n: analysis.explanationI18n, riskScore: score, severity, updatedAt: this.now() });
       return;
     }
     if (alert.commentId === before.id) {
@@ -623,6 +630,7 @@ export class NovusRuntime {
         severity: SEV_RANK[severity] >= SEV_RANK[alert.severity] || alert.occurrences === 1 ? severity : alert.severity,
         categories: [...new Set([...categories, ...alert.categories])],
         explanation: analysis.explanation,
+        explanationI18n: analysis.explanationI18n,
         recommendedAction: analysis.recommendedAction,
         confidence: analysis.confidence,
         stage: "ai",
@@ -648,7 +656,7 @@ export class NovusRuntime {
   private makeRecord(
     viewer: ViewerRef,
     action: ActionType,
-    result: { status: ActionRecord["status"]; message: string; instructions?: string[]; suggestedMessage?: string },
+    result: { status: ActionRecord["status"]; message: string; instructions?: string[]; suggestedMessage?: string; i18n?: ActionRecord["i18n"] },
     alert?: ModerationAlert,
     adapterId?: string,
     note?: string,
@@ -665,6 +673,7 @@ export class NovusRuntime {
       message: result.message,
       instructions: result.instructions,
       suggestedMessage: result.suggestedMessage,
+      i18n: result.i18n,
       note,
       performedAt: now,
       responseTimeMs: alert ? now - alert.createdAt : undefined,
@@ -942,7 +951,7 @@ export class NovusRuntime {
     return this.insights.markAnswered(id, answered);
   }
 
-  async catchUp(since: number) {
+  async catchUp(since: number, lang: "en" | "fr" = this.settings.language) {
     const now = this.now();
     const base = buildCatchUp({
       since,
@@ -955,12 +964,12 @@ export class NovusRuntime {
       sentiment: this.insights.sentiment(now),
       important: this.insights.importantMessages(since, 5),
       newViewers: [...this.viewers.values()].filter((v) => v.firstSeen >= since && v.messageCount > 0).length,
-      language: this.settings.language,
+      language: lang,
     });
     if (this.settings.aiEnabled && this.deps.ai.available() && this.deps.ai.summarize) {
       try {
         const facts = [base.headline, ...base.sections.map((s) => `${s.title}: ${s.items.join(" | ")}`)].join("\n");
-        const narrative = await this.deps.ai.summarize(facts, this.settings.language);
+        const narrative = await this.deps.ai.summarize(facts, lang);
         if (narrative) return { ...base, narrative, source: "ai" as const };
       } catch {
         // Fall back to the deterministic briefing.

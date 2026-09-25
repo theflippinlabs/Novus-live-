@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
+import { LangToggle } from "./LangToggle";
 import { compact, duration } from "../format";
 import { navigate, serverNow, useStore } from "../store";
 import { RoomBar } from "./RoomBar";
@@ -39,11 +40,12 @@ export function TopBar() {
           {live ? t("statusLive") : waiting ? t("statusWaiting") : session?.status === "ended" ? t("statusEnded") : t("statusIdle")}
         </span>
         <span className="spacer" />
-        <span className={`ai-chip ${ai.state}`} title={ai.model ? `${ai.provider} · ${ai.model}${ai.lastError ? ` · ${ai.lastError}` : ""}` : "Deterministic local moderation"}>
+        <span className={`ai-chip ${ai.state}`} aria-label={aiLabel} title={ai.model ? `${ai.provider} · ${ai.model}${ai.lastError ? ` · ${ai.lastError}` : ""}` : t("aiLocalHint")}>
           <span className="dot" />
-          {aiLabel}
+          <span className="ai-label">{aiLabel}</span>
           {ai.queued > 0 ? <span className="mono muted">·{ai.queued}</span> : null}
         </span>
+        <LangToggle />
       </div>
       <RoomBar />
       <div className="metrics">
@@ -66,7 +68,7 @@ export function TopBar() {
           <div className="l">{t("chatters")}</div>
         </div>
         <div className={`metric ${stats.criticalAlerts > 0 ? "alert-hot" : ""}`}>
-          <button onClick={() => navigate("alerts")} aria-label={`${stats.openAlerts} open alerts, ${stats.criticalAlerts} critical`}>
+          <button onClick={() => navigate("alerts")} aria-label={t("alertsAria").replace("{open}", String(stats.openAlerts)).replace("{critical}", String(stats.criticalAlerts))}>
             <div className="v">
               {stats.openAlerts}
               {stats.criticalAlerts > 0 ? <span className="small"> ▲{stats.criticalAlerts}</span> : null}

@@ -75,7 +75,7 @@ export const api = {
     request<{ record: ActionRecord; profile: ViewerProfile }>("POST", `/viewers/${encodeURIComponent(id)}/action`, { action }),
 
   pulse: () => request<ChatPulse>("GET", "/assistant/pulse"),
-  catchUp: (since?: number) => request<CatchUp>("POST", "/assistant/catchup", since ? { since } : {}),
+  catchUp: (since: number | undefined, lang: "en" | "fr") => request<CatchUp>("POST", "/assistant/catchup", since ? { since, lang } : { lang }),
   markAnswered: (id: string, answered: boolean) => request<{ ok: boolean }>("POST", `/assistant/questions/${encodeURIComponent(id)}/answered`, { answered }),
 
   analytics: () => request<AnalyticsSummary>("GET", "/analytics"),

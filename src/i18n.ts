@@ -1,6 +1,10 @@
+import { pick, tr, word } from "../shared/i18n";
 import { CATEGORY_LABELS } from "../shared/settings";
-import type { Category } from "../shared/types";
-import { useStore } from "./store";
+import type { ActionCopy, ActionRecord, ActionType, Category, Severity, TikTokIntegrationState } from "../shared/types";
+import { api } from "./api";
+import { getState, setState, useStore } from "./store";
+
+export { pick, tr, word };
 
 const en = {
   live: "Live",
@@ -129,6 +133,49 @@ const en = {
   durationShort: "Time",
   table: "Table",
   chart: "Chart",
+  actions: "Actions",
+  aiLocalHint: "Deterministic local moderation",
+  aiLocalTitle: "Local deterministic moderation",
+  aiLocalHint2: "No ANTHROPIC_API_KEY on the server — stage 1 heuristics handle everything.",
+  aiReviewHint: "Only suspicious or ambiguous messages are sent for contextual review. Reviewed: {n}.",
+  alertFilter: "Alert filter",
+  alertsAria: "{open} open alerts, {critical} critical",
+  bannedPlaceholder: "e.g. spoiler",
+  catchUpFailed: "Catch-up failed",
+  chatLabel: "Live chat",
+  colAvgRisk: "Avg risk",
+  colMessages: "Msgs",
+  colMinute: "Min",
+  colToxic: "Toxic %",
+  demoStartFailed: "Could not start the demo",
+  displayLabel: "Display",
+  ecosystem: "Part of the Novarys / Pulse Engine ecosystem",
+  endShort: "END",
+  filterLabel: "Filter",
+  fullDetails: "Full details:",
+  integrationStates: "Integration states",
+  invalidKey: "Invalid key",
+  languageHint: "Chat languages are detected automatically (EN, FR, ES, DE, PT, IT, AR, RU, JA, KO, ZH…). The switch at the top of the screen changes the language too.",
+  lastError: "Last error:",
+  lastEvent: "last event {ago} ago",
+  mainNav: "Main",
+  manual: "manual",
+  maxRisk: "Max risk",
+  msgShort: "msg",
+  remove: "Remove",
+  sensBalanced: "Balanced",
+  sensLow: "Low",
+  sensStrict: "Strict",
+  sortLabel: "Sort",
+  stageAi: "AI",
+  stageLocal: "Local",
+  streamerHint: "Used to spot look-alike impersonation accounts and to detect the host answering questions.",
+  thresholdOf: "Threshold",
+  tooManyAttempts: "Too many attempts — wait a minute.",
+  viewerLabel: "Viewer",
+  viewerNotFound: "Viewer not found in this LIVE.",
+  viewerStatus: "Viewer status",
+  handlePlaceholder: "@username",
 };
 
 type Dict = typeof en;
@@ -137,7 +184,7 @@ export type TKey = keyof Dict;
 const fr: Dict = {
   live: "Live",
   alerts: "Alertes",
-  viewers: "Viewers",
+  viewers: "Public",
   assistant: "Assistant",
   analytics: "Stats",
   settings: "Réglages",
@@ -152,11 +199,11 @@ const fr: Dict = {
   statusWaiting: "EN ATTENTE",
   statusEnded: "TERMINÉ",
   msgMin: "msg/min",
-  viewersShort: "viewers",
+  viewersShort: "public",
   chatters: "actifs",
   aiActive: "IA active",
   aiLocal: "IA locale",
-  aiDisabled: "IA off",
+  aiDisabled: "IA coupée",
   aiDegraded: "IA dégradée",
   startDemo: "LANCER LE LIVE DÉMO",
   startDemoHint: "Trafic de chat réaliste avec spam, harcèlement, arnaques, doxxing et raid coordonné — sans identifiants TikTok.",
@@ -204,7 +251,7 @@ const fr: Dict = {
   sortMessages: "Messages",
   sortRecent: "Récents",
   flagged: "Signalés",
-  noViewers: "Aucun viewer pour l'instant.",
+  noViewers: "Aucun spectateur pour l'instant.",
   catchUp: "RÉSUME-MOI",
   catchUpHint: "Tout ce qui compte depuis ta dernière vérification",
   chatPulse: "POULS DU CHAT",
@@ -215,21 +262,21 @@ const fr: Dict = {
   sentiment: "Sentiment",
   important: "Messages importants",
   spikes: "Pics d'activité",
-  needAttention: "viewers nécessitent l'attention d'un modérateur",
+  needAttention: "spectateurs nécessitent l'attention d'un modérateur",
   markAnswered: "Répondu",
   reopen: "Rouvrir",
   activity: "activité",
   totalMessages: "Messages au total",
   uniqueChatters: "Participants uniques",
   peak: "Pic d'activité",
-  muteRecs: "Mutes conseillés",
+  muteRecs: "Sourdines conseillées",
   blockRecs: "Blocages conseillés",
-  responseTime: "Temps de réponse",
+  responseTime: "Temps de réaction",
   msgPerMinute: "Messages par minute",
   toxicityTrend: "Tendance de toxicité (% signalés)",
-  topParticipants: "Top participants",
-  topQuestions: "Top questions",
-  topTopics: "Top sujets",
+  topParticipants: "Participants les plus actifs",
+  topQuestions: "Questions les plus posées",
+  topTopics: "Sujets principaux",
   categories: "Catégories détectées",
   report: "Rapport post-LIVE",
   downloadReport: "Télécharger le rapport (.md)",
@@ -261,6 +308,49 @@ const fr: Dict = {
   durationShort: "Durée",
   table: "Tableau",
   chart: "Graphique",
+  actions: "Actions",
+  aiLocalHint: "Modération locale déterministe",
+  aiLocalTitle: "Modération locale déterministe",
+  aiLocalHint2: "Pas de ANTHROPIC_API_KEY sur le serveur — les règles locales (étape 1) gèrent tout.",
+  aiReviewHint: "Seuls les messages suspects ou ambigus sont envoyés pour une analyse du contexte. Analysés : {n}.",
+  alertFilter: "Filtre des alertes",
+  alertsAria: "{open} alertes ouvertes, {critical} critiques",
+  bannedPlaceholder: "ex. spoiler",
+  catchUpFailed: "Le résumé a échoué",
+  chatLabel: "Chat du LIVE",
+  colAvgRisk: "Risque moy.",
+  colMessages: "Msgs",
+  colMinute: "Min",
+  colToxic: "Toxique %",
+  demoStartFailed: "Impossible de lancer la démo",
+  displayLabel: "Affichage",
+  ecosystem: "Fait partie de l'écosystème Novarys / Pulse Engine",
+  endShort: "FIN",
+  filterLabel: "Filtre",
+  fullDetails: "Tous les détails :",
+  integrationStates: "États de l'intégration",
+  invalidKey: "Clé invalide",
+  languageHint: "Les langues du chat sont détectées automatiquement (EN, FR, ES, DE, PT, IT, AR, RU, JA, KO, ZH…). Le bouton en haut de l'écran change aussi la langue.",
+  lastError: "Dernière erreur :",
+  lastEvent: "dernier événement il y a {ago}",
+  mainNav: "Navigation principale",
+  manual: "manuelle",
+  maxRisk: "Risque max",
+  msgShort: "msg",
+  remove: "Retirer",
+  sensBalanced: "Équilibré",
+  sensLow: "Souple",
+  sensStrict: "Strict",
+  sortLabel: "Tri",
+  stageAi: "IA",
+  stageLocal: "Local",
+  streamerHint: "Sert à repérer les comptes qui imitent le streamer et à détecter quand l'hôte répond aux questions.",
+  thresholdOf: "Seuil",
+  tooManyAttempts: "Trop de tentatives — patiente une minute.",
+  viewerLabel: "Spectateur",
+  viewerNotFound: "Spectateur introuvable dans ce LIVE.",
+  viewerStatus: "Statut du spectateur",
+  handlePlaceholder: "@pseudo",
 };
 
 const DICTS = { en, fr };
@@ -278,3 +368,99 @@ export function useLang(): "en" | "fr" {
 export function categoryLabel(c: Category, lang: "en" | "fr"): string {
   return CATEGORY_LABELS[c]?.[lang] ?? c;
 }
+
+const ACTION_LABELS: Record<ActionType, { en: string; fr: string }> = {
+  watch: { en: "WATCH", fr: "SURVEILLER" },
+  warn: { en: "WARN", fr: "AVERTIR" },
+  mute: { en: "MUTE", fr: "SOURDINE" },
+  block: { en: "BLOCK", fr: "BLOQUER" },
+  report: { en: "REPORT", fr: "SIGNALER" },
+  dismiss: { en: "DISMISS", fr: "IGNORER" },
+};
+
+/** Button label of a moderation action ("MUTE" / "SOURDINE"). */
+export function actionLabel(a: ActionType | "none", lang: "en" | "fr"): string {
+  return a === "none" ? "—" : ACTION_LABELS[a][lang];
+}
+
+const SEVERITY_LABELS: Record<Severity, { en: string; fr: string }> = {
+  normal: { en: "OK", fr: "OK" },
+  watch: { en: "WATCH", fr: "À SURVEILLER" },
+  warning: { en: "WARNING", fr: "AVERTISSEMENT" },
+  critical: { en: "CRITICAL", fr: "CRITIQUE" },
+};
+
+export function severityLabel(s: Severity, lang: "en" | "fr"): string {
+  return SEVERITY_LABELS[s][lang];
+}
+
+/** Message / steps / suggested text of an action record in the display language. */
+export function actionCopy(r: ActionRecord, lang: "en" | "fr"): ActionCopy {
+  const c = r.i18n?.[lang];
+  return c ?? { message: r.message, instructions: r.instructions, suggestedMessage: r.suggestedMessage };
+}
+
+/** Language stored on this device (used before the server settings are loaded, e.g. on the login screen). */
+export function deviceLang(): "en" | "fr" | null {
+  try {
+    const v = localStorage.getItem("novus:lang");
+    return v === "fr" || v === "en" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberLang(lang: "en" | "fr"): void {
+  try {
+    localStorage.setItem("novus:lang", lang);
+  } catch {
+    /* private mode */
+  }
+}
+
+const STATE_LABELS: Record<TikTokIntegrationState, { en: string; fr: string }> = {
+  NOT_CONNECTED: { en: "NOT CONNECTED", fr: "NON CONNECTÉ" },
+  CONNECTOR_AVAILABLE: { en: "CONNECTOR AVAILABLE", fr: "CONNECTEUR DISPONIBLE" },
+  CONNECTED: { en: "CONNECTED", fr: "CONNECTÉ" },
+  LIVE_DETECTED: { en: "LIVE DETECTED", fr: "LIVE DÉTECTÉ" },
+  LIVE_ENDED: { en: "LIVE ENDED", fr: "LIVE TERMINÉ" },
+  ERROR: { en: "ERROR", fr: "ERREUR" },
+};
+
+
+export function tiktokStateLabel(s: TikTokIntegrationState, lang: "en" | "fr"): string {
+  return STATE_LABELS[s][lang];
+}
+
+const ERRORS: Record<string, { en: string; fr: string }> = {
+  invalid_input: { en: "Invalid value — please check what you entered.", fr: "Valeur invalide — vérifie ta saisie." },
+  unauthorized: { en: "Session expired — please log in again.", fr: "Session expirée — reconnecte-toi." },
+  rate_limited: { en: "Too many requests — wait a moment.", fr: "Trop de requêtes — patiente un instant." },
+  not_found: { en: "Not found.", fr: "Introuvable." },
+  room_not_found: { en: "This account is no longer followed.", fr: "Ce compte n'est plus suivi." },
+  session_not_found: { en: "This LIVE was not found.", fr: "Ce LIVE est introuvable." },
+  alert_not_found: { en: "This alert no longer exists.", fr: "Cette alerte n'existe plus." },
+  viewer_not_found: { en: "Viewer not found in this LIVE.", fr: "Spectateur introuvable dans ce LIVE." },
+  demo_main_room_only: { en: "The demo only runs in the Demo space.", fr: "La démo ne fonctionne que dans l'espace Démo." },
+  save_failed: { en: "Save failed.", fr: "Échec de l'enregistrement." },
+  internal_error: { en: "Server error — try again.", fr: "Erreur du serveur — réessaie." },
+};
+
+/** Human message for an API error code. */
+export function errorText(code: string, lang: "en" | "fr"): string {
+  return ERRORS[code]?.[lang] ?? (lang === "fr" ? "Une erreur est survenue." : "Something went wrong.");
+}
+
+/** Switch the whole app (and exports) between English and French. */
+export async function setLanguage(lang: "en" | "fr"): Promise<void> {
+  rememberLang(lang);
+  const prev = getState().settings;
+  if (prev.language === lang) return;
+  setState({ settings: { ...prev, language: lang } });
+  try {
+    setState({ settings: await api.saveSettings({ language: lang }) });
+  } catch {
+    /* not logged in yet (login screen) or offline: the device choice still applies */
+  }
+}
+

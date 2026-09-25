@@ -1,3 +1,4 @@
+import { explainI18n } from "../../shared/i18n";
 import { thresholdsFor } from "../../shared/settings";
 import type {
   Category,
@@ -299,7 +300,8 @@ export function analyzeStage1(input: Stage1Input): Stage1Result {
       riskScore: score,
       severity,
       categories,
-      explanation: explain(categories, severity, flag),
+      explanation: explainI18n(categories, severity, flag).en,
+      explanationI18n: explainI18n(categories, severity, flag),
       recommendedAction,
       confidence: Math.round(confidence * 100) / 100,
       reasons: reasons.slice(0, 5),
@@ -312,49 +314,7 @@ export function analyzeStage1(input: Stage1Input): Stage1Result {
   };
 }
 
-const PHRASES: Record<Category, string> = {
-  threat: "contains a targeted threat",
-  doxxing: "involves personal information (address, phone, identity)",
-  sexual_harassment: "is sexual harassment",
-  hate: "uses hateful or dehumanizing language",
-  harassment: "is hostility aimed at a person",
-  insult: "contains an insult",
-  scam: "looks like a scam",
-  suspicious_link: "includes a suspicious link",
-  impersonation: "may be impersonating the streamer or staff",
-  spam: "is spam / self-promotion",
-  flooding: "is flooding the chat",
-  repetition: "repeats the same message",
-  coordinated_attack: "is part of a coordinated burst across accounts",
-  escalation: "shows hostility escalating over time",
-  banned_phrase: "uses a banned phrase",
-};
-
-// Priority order for the sentence: most serious first.
-const PHRASE_ORDER: Category[] = [
-  "threat",
-  "doxxing",
-  "sexual_harassment",
-  "hate",
-  "scam",
-  "impersonation",
-  "harassment",
-  "coordinated_attack",
-  "escalation",
-  "insult",
-  "banned_phrase",
-  "suspicious_link",
-  "flooding",
-  "repetition",
-  "spam",
-];
-
+/** English explanation (canonical); both languages are in `explanationI18n`. */
 export function explain(categories: Category[], severity: Severity, flag: ViewerFlag | null): string {
-  if (categories.length === 0) return "No risk signals detected.";
-  const parts = PHRASE_ORDER.filter((c) => categories.includes(c)).slice(0, 3).map((c) => PHRASES[c]);
-  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
-  let out = `${severity === "normal" ? "Minor signal: message" : "Message"} ${list}.`;
-  if (flag === "trusted") out += " Viewer is trusted, so stronger evidence was required.";
-  if (flag === "watchlist") out += " Viewer is on the watchlist.";
-  return out;
+  return explainI18n(categories, severity, flag).en;
 }

@@ -1,14 +1,15 @@
 import { memo, useEffect, type ReactNode } from "react";
 import type { Severity, ViewerRef } from "../../shared/types";
+import { severityLabel, useLang } from "../i18n";
 import { IconClose, SevGlyph } from "./Icons";
 
-const SEV_LABEL: Record<Severity, string> = { normal: "OK", watch: "WATCH", warning: "WARNING", critical: "CRITICAL" };
-
 export function SeverityBadge({ severity, score, compact }: { severity: Severity; score?: number; compact?: boolean }) {
+  const lang = useLang();
+  const label = severityLabel(severity, lang);
   return (
-    <span className={`sev ${severity}`} title={`${SEV_LABEL[severity]}${score !== undefined ? ` · risk ${score}` : ""}`}>
+    <span className={`sev ${severity}`} title={`${label}${score !== undefined ? ` · ${lang === "fr" ? "risque" : "risk"} ${score}` : ""}`}>
       <SevGlyph level={severity} />
-      {compact ? null : SEV_LABEL[severity]}
+      {compact ? null : label}
       {score !== undefined ? <span>{score}</span> : null}
     </span>
   );
@@ -33,6 +34,7 @@ export const Avatar = memo(function Avatar({ viewer, size }: { viewer: ViewerRef
 });
 
 export function Sheet({ onClose, children, label }: { onClose: () => void; children: ReactNode; label: string }) {
+  const lang = useLang();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -43,7 +45,7 @@ export function Sheet({ onClose, children, label }: { onClose: () => void; child
       <div className="sheet-backdrop" onClick={onClose} />
       <div className="sheet" role="dialog" aria-modal="true" aria-label={label}>
         <div className="sheet-grip" />
-        <button className="sheet-close" onClick={onClose} aria-label="Close">
+        <button className="sheet-close" onClick={onClose} aria-label={lang === "fr" ? "Fermer" : "Close"}>
           <IconClose width={20} height={20} />
         </button>
         <div className="sheet-body">{children}</div>

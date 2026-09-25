@@ -3,6 +3,7 @@ import { api, ApiError } from "./api";
 import { BottomNav } from "./components/BottomNav";
 import { TopBar } from "./components/TopBar";
 import { BrandLogo } from "./components/ui";
+import { LangToggle } from "./components/LangToggle";
 import { ViewerSheet } from "./components/ViewerSheet";
 import { useT } from "./i18n";
 import { connectRealtime, useStore } from "./store";
@@ -23,11 +24,14 @@ function Login({ onDone }: { onDone: () => void }) {
       await api.login(key);
       onDone();
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 429 ? "Too many attempts — wait a minute." : "Invalid key");
+      setError(e instanceof ApiError && e.status === 429 ? t("tooManyAttempts") : t("invalidKey"));
     }
   };
   return (
     <div className="login">
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <LangToggle />
+      </div>
       <div style={{ textAlign: "center", marginBottom: 20 }}>
         <BrandLogo />
       </div>

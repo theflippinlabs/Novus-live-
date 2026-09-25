@@ -85,6 +85,8 @@ export function createApp({ config, rooms }: AppDeps) {
     }
     return logo ?? undefined;
   };
+  /** Language of an export: `?lang=` from the app, else the saved setting. */
+  const langOf = (req: Request): "en" | "fr" => (req.query.lang === "fr" || req.query.lang === "en" ? req.query.lang : rooms.settings.language);
   /** ASCII file name from a LIVE title and its start date. */
   const fileName = (title: string, startedAt: number, ext: string) => {
     const slug = title.normalize("NFKD").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "live";
@@ -282,9 +284,9 @@ export function createApp({ config, rooms }: AppDeps) {
     "/assistant/catchup",
     h(async (req) => {
       const { runtime } = roomOf(rooms, req);
-      const { since } = parse(catchUpRequestSchema, req.body);
+      const { since, lang } = parse(catchUpRequestSchema, req.body);
       const fallback = runtime.session?.startedAt ?? Date.now() - 10 * 60_000;
-      return runtime.catchUp(since ?? fallback);
+      return runtime.catchUp(since ?? fallback, lang ?? rooms.settings.language);
     }),
   );
   api.post(
@@ -332,7 +334,7 @@ export function createApp({ config, rooms }: AppDeps) {
       const id = param(req, "id");
       const detail = await history.detail(id);
       if (!detail) throw new HttpError(404, "session_not_found");
-      const csv = chatCsv(await history.chat(id), timeZone);
+      const csv = chatCsv(await history.chat(id), timeZone, langOf(req));
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName(detail.entry.title, detail.entry.startedAt, "csv")}"`);
       res.setHeader("Cache-Control", "no-store");
@@ -350,7 +352,7 @@ export function createApp({ config, rooms }: AppDeps) {
         entry: detail.entry,
         analytics: detail.analytics,
         chat: await history.chat(id),
-        lang: rooms.settings.language,
+        lang: langOf(req),
         timeZone,
         logo: reportLogo(),
       });
