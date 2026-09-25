@@ -36,6 +36,8 @@ const FR: Record<string, string> = {
   "Requests personal info": "Demande d'infos perso",
   "Self-harm encouragement": "Incitation à l'automutilation",
   "Self-promotion": "Autopromotion",
+  "Selling in chat": "Vente dans le chat",
+  "Moves viewers to DMs": "Attire vers les messages privés",
   "Sexual harassment": "Harcèlement sexuel",
   "Sexualized remark": "Remarque sexualisée",
   "Shares a phone number": "Partage un numéro de téléphone",

@@ -107,6 +107,18 @@ export const PATTERNS: PatternRule[] = [
   { category: "scam", weight: 0.3, reason: "Giveaway bait", re: /\b(giveaway|winner|you won|tu as gagne|gagnant)\b.*\b(link|click|dm|bio|claim)\b/ },
 
   // ---- spam ----------------------------------------------------------------------
+  {
+    category: "spam",
+    weight: 0.35,
+    reason: "Selling in chat",
+    re: /\b(for sale|to sell|selling (my|a|an|cheap|new|used)|buy (from me|mine|it from me)|cheap (iphones?|phones?|followers|coins|likes)|a vendre|je vends)\b/,
+  },
+  {
+    category: "spam",
+    weight: 0.3,
+    reason: "Moves viewers to DMs",
+    re: /\b(dm me|reach me (on|in|at) (my )?(dm|dms|inbox)|in my dms?|check (my|ur|your) dms?|inbox me|message me (on|in)|add me on (snap|snapchat|insta|instagram|ig|whatsapp|telegram)|my (snap|insta|ig) is|ecris[- ]moi en (mp|dm)|viens en (mp|dm))\b/,
+  },
   { category: "spam", weight: 0.3, reason: "Self-promotion", re: /\b(follow me|check my (profile|page|bio)|f4f|l4l|sub4sub|follow for follow|abonne[- ]toi a moi|va voir mon profil)\b/ },
 
   // ---- impersonation ----------------------------------------------------------

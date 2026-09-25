@@ -15,6 +15,8 @@ export interface AIReviewItem {
 export interface AIReviewContext {
   streamerName: string;
   language: "en" | "fr";
+  /** Moderation sensitivity chosen by the moderator (strict = raise borderline content). */
+  sensitivity?: "low" | "balanced" | "strict" | "custom";
   /** Recent room messages (oldest first) for conversational context. */
   room: { username: string; text: string }[];
 }

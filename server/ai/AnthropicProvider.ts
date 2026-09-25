@@ -34,6 +34,11 @@ Principles:
 - Trusted viewers need clearly stronger evidence before you raise risk.
 - Scams: free coins/diamonds/followers, off-platform lures (WhatsApp, Telegram, DMs), shortened links, fake "official" or look-alike accounts.
 
+Sensitivity: when moderationSensitivity is "strict", the moderator wants borderline content surfaced, not waved through:
+race/ethnicity jokes or remarks about a group, selling or advertising in chat, pushing viewers to DMs or other apps,
+personal/body/relationship questions aimed at the streamer, and veiled put-downs should score at least 50 (warning)
+unless the room context clearly shows harmless banter between friends. Ordinary chat stays low in every mode.
+
 Scoring: riskScore 0-100. severity: normal (<25), watch (25-49), warning (50-74), critical (75+), adjusted for context.
 recommendedAction: none | watch | warn | mute | block | report. Reserve report for threats, doxxing and hate.
 explanation: one short sentence in English a moderator can read in two seconds while the LIVE is running.
@@ -71,6 +76,7 @@ export class AnthropicProvider implements AIProvider {
     const payload = {
       streamer: ctx.streamerName,
       moderatorLanguage: ctx.language,
+      moderationSensitivity: ctx.sensitivity ?? "balanced",
       roomContext: ctx.room.slice(-20),
       messagesToReview: items.map((i) => ({
         id: i.id,

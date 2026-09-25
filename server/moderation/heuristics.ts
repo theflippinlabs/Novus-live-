@@ -157,6 +157,10 @@ function isFlooding(viewer: ViewerContext, now: number): number {
   return viewer.recent.filter((m) => m.t >= now - 10_000).length;
 }
 
+/** Strict mode: topics a human moderator wants a second look at, even without a clear insult. */
+const STRICT_NET_RE =
+  /\b(racist|racism|sexist|nazi|slur|ethnicity|race|black|white people|asian|mexican|gay|trans|religion|kill|die|dead|fuck|fck|shit|bitch|hoe|whore|slut|retard|sell|selling|dm|dms|snap|insta|telegram|whatsapp|cashapp|paypal)\b/;
+
 /** Personal / body questions or shouted demands that a human might find rude. */
 function rudeQuestion(text: string): boolean {
   return /\b(height|weight|how old|age|bra size|body count|single|boyfriend|address|where do you live)\b/i.test(text) || (text.length >= 8 && capsRatio(text) > 0.75 && /[?!]/.test(text));
@@ -296,7 +300,11 @@ export function analyzeStage1(input: Stage1Input): Stage1Result {
   // wrapped in banter ("lol you're such a clown") where only context can tell.
   // Strict: anything with a weak signal or a negative tone gets a second look by the AI, even
   // when it scores below the thresholds (veiled digs, rude questions, misspelled insults).
-  const strictNet = settings.sensitivity === "strict" && severity === "normal" && flag !== "trusted" && (score > 0 || new RegExp(NEGATIVE_RE.source, "u").test(n) || rudeQuestion(text));
+  const strictNet =
+    settings.sensitivity === "strict" &&
+    severity === "normal" &&
+    flag !== "trusted" &&
+    (score > 0 || new RegExp(NEGATIVE_RE.source, "u").test(n) || STRICT_NET_RE.test(n) || rudeQuestion(text));
   const ambiguous =
     (severity !== "normal" &&
       score < 97 &&

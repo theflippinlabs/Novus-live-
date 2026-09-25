@@ -228,3 +228,16 @@ describe("strict mode on real LIVE chat", () => {
     expect(b.analyze("moussitv", "HEIGHT AND WEIGHT?").ambiguous).toBe(false);
   });
 });
+
+describe("real LIVE test messages", () => {
+  it("flags selling + DM lures and sends sensitive topics to the AI in strict mode", async () => {
+    const { defaultSettings } = await import("../shared/settings");
+    const a = createAnalyzer({ ...defaultSettings(), sensitivity: "strict" });
+    const sale = a.analyze("adriserpico", "I have iPhone to sell reach me on my dm");
+    expect(sale.analysis.categories).toContain("spam");
+    expect(sale.analysis.severity).not.toBe("normal");
+    expect(a.analyze("s4mi_.sf", "@Goonmaster does that mean I'm racist ???").ambiguous).toBe(true);
+    expect(a.analyze("notvalvr", "@c0ra I think if I was black my height would increase by 8 cm").ambiguous).toBe(true);
+    expect(a.analyze("alphoisd", "they made me answer the same q twice").ambiguous).toBe(false);
+  });
+});

@@ -150,6 +150,7 @@ export class NovusRuntime {
       () => ({
         streamerName: this.settings.streamerName,
         language: this.settings.language,
+        sensitivity: this.settings.sensitivity,
         room: this.comments.slice(-20).map((c) => ({ username: c.viewer.username, text: c.text })),
       }),
       (item, verdict) => this.applyVerdict(item, verdict),
