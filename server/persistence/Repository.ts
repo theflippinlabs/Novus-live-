@@ -38,6 +38,13 @@ export interface PersistBatch {
   analyses: AIAnalysisRecord[];
 }
 
+/** Which LIVEs a history view shows: one followed account, or the demo/connector space. */
+export interface SessionFilter {
+  account?: string;
+  /** Sessions not tied to a followed account (demos, connector LIVEs). */
+  withoutAccount?: boolean;
+}
+
 export interface Repository {
   readonly kind: "memory" | "supabase";
   init(): Promise<void>;
@@ -51,7 +58,7 @@ export interface Repository {
   listReports(limit: number): Promise<{ sessionId: string; generatedAt: number }[]>;
   getReport(sessionId: string): Promise<StreamReport | null>;
   /** LIVE history: most recent sessions first. */
-  listSessions(limit: number): Promise<LiveSessionInfo[]>;
+  listSessions(limit: number, filter?: SessionFilter): Promise<LiveSessionInfo[]>;
   getSession(sessionId: string): Promise<LiveSessionInfo | null>;
   getReports(sessionIds: string[]): Promise<StreamReport[]>;
   /** Saved chat of a session, oldest first. */

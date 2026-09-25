@@ -255,6 +255,8 @@ export interface LiveSessionInfo {
   status: SessionStatus;
   startedAt: number;
   endedAt?: number;
+  /** TikTok account (without "@") this LIVE belongs to; absent for demo/connector sessions. */
+  account?: string;
 }
 
 export interface LiveStats {

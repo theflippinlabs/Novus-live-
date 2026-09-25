@@ -104,6 +104,8 @@ export interface RuntimeDeps {
   clock?: () => number;
   persistIntervalMs?: number;
   log?: (msg: string) => void;
+  /** TikTok account this runtime's room follows: stamped on every session it records. */
+  account?: string;
 }
 
 export class NovusRuntime {
@@ -216,6 +218,7 @@ export class NovusRuntime {
       platform,
       source,
       title,
+      ...(this.deps.account ? { account: this.deps.account.toLowerCase() } : {}),
       status: "live",
       startedAt: this.now(),
     };
@@ -254,6 +257,8 @@ export class NovusRuntime {
   async ingestExternal(events: LiveEvent[], platform: "tiktok" | "external"): Promise<number> {
     const first = events[0];
     const startsStream = first?.type === "stream_status" && first.status === "started";
+    // A followed account's LIVE only starts on its "started" marker; stray events are dropped.
+    if (this.deps.account && !startsStream && (!this.session || this.session.status !== "live")) return 0;
     if (!this.session || this.session.status !== "live" || this.session.source === "demo" || startsStream) {
       const title = (first?.type === "stream_status" && first.title) || (platform === "tiktok" ? "TikTok LIVE" : "External LIVE");
       await this.startSession(platform === "tiktok" ? "tiktok" : "external", platform, title);

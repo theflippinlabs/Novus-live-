@@ -19,7 +19,7 @@ function makeApp(overrides: { accessToken?: string; ingestToken?: string; apiRat
       ? async (username) => {
           const tt = new TikTokAdapter(false);
           await tt.connect(username);
-          const r = createRuntime();
+          const r = createRuntime({ repo: runtime.repository, account: username });
           await r.runtime.init();
           const id = tiktokRoomId(username);
           return { id, kind: "tiktok", username, runtime: r.runtime, hub: new RealtimeHub(50), tiktok: tt, dispose: async () => void disposed.push(id) };
@@ -151,6 +151,22 @@ describe("HTTP API", () => {
     expect(b.runtime.settings.streamerName).toBe("second.acc");
     await request(app).post("/api/demo/start").set("X-Novus-Room", "tt:amanda_g").send({ speed: 1 }).expect(409);
     await request(app).get("/api/state").set("X-Novus-Room", "tt:nobody").expect(404);
+
+    // History is per account: each account only sees its own LIVEs; demos stay in the demo space.
+    await a.runtime.endSession();
+    await b.runtime.endSession();
+    await rooms.main.runtime.startDemo(1);
+    await rooms.main.runtime.endSession();
+    const histA = await request(app).get("/api/history").set("X-Novus-Room", "tt:amanda_g").expect(200);
+    const histB = await request(app).get("/api/history").set("X-Novus-Room", "tt:second.acc").expect(200);
+    const histMain = await request(app).get("/api/history").expect(200);
+    expect(histA.body.entries.map((e: { title: string }) => e.title)).toEqual(["A"]);
+    expect(histB.body.entries.map((e: { title: string }) => e.title)).toEqual(["B"]);
+    expect(histMain.body.entries.every((e: { source: string }) => e.source === "demo")).toBe(true);
+
+    // A straggler event after a followed account's LIVE ended never opens an empty session.
+    expect(await a.runtime.ingestExternal([{ type: "viewer_count", id: "late", timestamp: Date.now(), count: 3 }] as never, "tiktok")).toBe(0);
+    expect(a.runtime.session?.status).toBe("ended");
 
     // Removing a profile closes its room.
     await request(app).post("/api/integrations/tiktok/disconnect").set("X-Novus-Room", "tt:second.acc").send({}).expect(200);

@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
-import type { PersistBatch, Repository } from "./Repository";
+import type { PersistBatch, Repository, SessionFilter } from "./Repository";
 
 // Supabase/Postgres store. Uses the service-role key, which is only ever read
 // on the server (SUPABASE_SERVICE_ROLE_KEY) — it is never sent to the browser.
@@ -52,6 +52,7 @@ export class SupabaseRepository implements Repository {
         platform: s.platform,
         source: s.source,
         title: s.title,
+        account: s.account ?? null,
         status: s.status,
         started_at: iso(s.startedAt),
         ended_at: iso(s.endedAt),
@@ -233,8 +234,11 @@ export class SupabaseRepository implements Repository {
     return r ? { sessionId: r.session_id, generatedAt: Date.parse(r.generated_at), analytics: r.analytics, markdown: r.markdown } : null;
   }
 
-  async listSessions(limit: number): Promise<LiveSessionInfo[]> {
-    const data = await this.check<SessionRow[]>(this.db.from("live_sessions").select("*").order("started_at", { ascending: false }).limit(limit), "listSessions");
+  async listSessions(limit: number, filter: SessionFilter = {}): Promise<LiveSessionInfo[]> {
+    let q = this.db.from("live_sessions").select("*");
+    if (filter.account) q = q.eq("account", filter.account.toLowerCase());
+    else if (filter.withoutAccount) q = q.is("account", null);
+    const data = await this.check<SessionRow[]>(q.order("started_at", { ascending: false }).limit(limit), "listSessions");
     return (data ?? []).map(toSession);
   }
 
@@ -278,6 +282,7 @@ interface SessionRow {
   platform: LiveSessionInfo["platform"];
   source: LiveSessionInfo["source"];
   title: string;
+  account: string | null;
   status: LiveSessionInfo["status"];
   started_at: string;
   ended_at: string | null;
@@ -289,6 +294,7 @@ function toSession(r: SessionRow): LiveSessionInfo {
     platform: r.platform,
     source: r.source,
     title: r.title,
+    ...(r.account ? { account: r.account } : {}),
     status: r.status,
     startedAt: Date.parse(r.started_at),
     ...(r.ended_at ? { endedAt: Date.parse(r.ended_at) } : {}),

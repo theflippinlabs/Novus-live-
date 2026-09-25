@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
-import type { PersistBatch, Repository } from "./Repository";
+import type { PersistBatch, Repository, SessionFilter } from "./Repository";
 
 interface FileState {
   settings: Settings | null;
@@ -110,8 +110,12 @@ export class MemoryRepository implements Repository {
     return this.state.reports.find((r) => r.sessionId === sessionId) ?? null;
   }
 
-  async listSessions(limit: number): Promise<LiveSessionInfo[]> {
-    return [...this.state.sessions].sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
+  async listSessions(limit: number, filter: SessionFilter = {}): Promise<LiveSessionInfo[]> {
+    const account = filter.account?.toLowerCase();
+    return this.state.sessions
+      .filter((s) => (account ? s.account === account : filter.withoutAccount ? !s.account : true))
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(0, limit);
   }
 
   async getSession(sessionId: string): Promise<LiveSessionInfo | null> {

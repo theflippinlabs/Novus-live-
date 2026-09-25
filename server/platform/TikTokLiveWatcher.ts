@@ -199,7 +199,9 @@ export class TikTokLiveWatcher {
 
     const on = (event: string, map: (raw: never) => Draft | null) =>
       conn.on(event, (raw) => {
-        if (gen !== this.generation) return;
+        // Only while this connection is the live one: stragglers after the LIVE ended
+        // (a last viewer count, a late comment) must not open a new, empty session.
+        if (gen !== this.generation || !this.live || this.conn !== conn) return;
         const ev = map(raw as never);
         if (ev) this.enqueue([ev]);
       });

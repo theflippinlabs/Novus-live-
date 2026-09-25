@@ -325,7 +325,7 @@ export function createApp({ config, rooms }: AppDeps) {
     "/history",
     h(async (req) => {
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
-      return { entries: await history.list(limit) };
+      return { entries: await history.list(limit, roomOf(rooms, req)) };
     }),
   );
   api.get(

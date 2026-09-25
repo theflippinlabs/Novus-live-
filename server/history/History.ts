@@ -47,15 +47,20 @@ export class HistoryService {
     };
   }
 
-  async list(limit = 60): Promise<HistoryEntry[]> {
-    const sessions = await this.repo.listSessions(limit);
+  /** LIVEs of one room: a followed account's own LIVEs, or demos/connector LIVEs for the main room. */
+  async list(limit = 60, room?: { kind: "main" | "tiktok"; username?: string }): Promise<HistoryEntry[]> {
+    const filter = room?.kind === "tiktok" && room.username ? { account: room.username } : room?.kind === "main" ? { withoutAccount: true } : {};
+    const sessions = await this.repo.listSessions(limit, filter);
     const reports = new Map((await this.repo.getReports(sessions.map((s) => s.id))).map((r) => [r.sessionId, r]));
-    return sessions.map((s) => {
-      const room = this.runningRoom(s.id);
-      if (room) return this.toEntry(room.runtime.session ?? s, room.runtime.analyticsSummary(), true);
-      const report = reports.get(s.id);
-      return this.toEntry(s, report?.analytics ?? null, false, report?.generatedAt);
-    });
+    return sessions
+      .map((s) => {
+        const room = this.runningRoom(s.id);
+        if (room) return this.toEntry(room.runtime.session ?? s, room.runtime.analyticsSummary(), true);
+        const report = reports.get(s.id);
+        return this.toEntry(s, report?.analytics ?? null, false, report?.generatedAt);
+      })
+      // Hide empty artifacts (a session opened and closed within seconds with nothing in it).
+      .filter((e) => e.status === "live" || e.messages > 0 || e.gifts > 0 || e.peakViewers > 0 || e.durationMs >= 60_000);
   }
 
   async detail(sessionId: string): Promise<HistoryDetail | null> {

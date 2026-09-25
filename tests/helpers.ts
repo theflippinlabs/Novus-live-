@@ -6,6 +6,7 @@ import { NovusRuntime } from "../server/core/NovusRuntime";
 import { RoomContext, ViewerContextStore } from "../server/moderation/context";
 import { analyzeStage1 } from "../server/moderation/heuristics";
 import { MemoryRepository } from "../server/persistence/MemoryRepository";
+import type { Repository } from "../server/persistence/Repository";
 import { MockLiveAdapter } from "../server/platform/MockLiveAdapter";
 import { TikTokAdapter } from "../server/platform/TikTokAdapter";
 
@@ -54,11 +55,12 @@ export class FakeAIProvider implements AIProvider {
   }
 }
 
-export function createRuntime(opts: { ai?: AIProvider; connector?: boolean; clock?: () => number } = {}) {
+export function createRuntime(opts: { ai?: AIProvider; connector?: boolean; clock?: () => number; repo?: Repository; account?: string } = {}) {
   const tiktok = new TikTokAdapter(opts.connector ?? false);
   const mock = new MockLiveAdapter(7, 50);
   const runtime = new NovusRuntime({
-    repo: new MemoryRepository(),
+    repo: opts.repo ?? new MemoryRepository(),
+    account: opts.account,
     ai: opts.ai ?? new NullAIProvider(),
     tiktok,
     mock,

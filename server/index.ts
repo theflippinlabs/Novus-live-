@@ -34,13 +34,13 @@ async function main() {
   const aiQueueOptions = { batchSize: config.aiBatchSize, flushMs: 1200, maxCallsPerMinute: config.aiMaxCallsPerMinute, maxQueue: 64 };
 
   /** Build one room: its own runtime, realtime hub and TikTok status. */
-  const buildRoom = async (tiktok: TikTokAdapter, mock?: MockLiveAdapter) => {
+  const buildRoom = async (tiktok: TikTokAdapter, mock?: MockLiveAdapter, account?: string) => {
     let runtime: NovusRuntime | null = null;
     const hub = new RealtimeHub(200, () => {
       if (!runtime) return {};
       return { stats: runtime.stats(), ai: runtime.aiQueue.status(), demo: mock?.status(), tiktok: tiktok.status() };
     });
-    runtime = new NovusRuntime({ repo, ai, tiktok, mock, hub, aiQueueOptions });
+    runtime = new NovusRuntime({ repo, ai, tiktok, mock, hub, aiQueueOptions, account });
     await runtime.init();
     hub.start();
     return { runtime, hub };
@@ -71,7 +71,7 @@ async function main() {
     const tiktok = new TikTokAdapter(false);
     tiktok.unofficialLiveConnector = config.tiktokLiveConnector;
     await tiktok.connect(username);
-    const { runtime, hub } = await buildRoom(tiktok);
+    const { runtime, hub } = await buildRoom(tiktok, undefined, username);
     let watcher: TikTokLiveWatcher | null = null;
     if (config.tiktokLiveConnector) {
       watcher = new TikTokLiveWatcher(
