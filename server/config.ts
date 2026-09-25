@@ -42,6 +42,9 @@ export interface Config {
   eulerOAuthAuthorizeUrl?: string;
   /** Public https origin of the app (OAuth redirect), e.g. https://novus-live-production.up.railway.app */
   publicUrl?: string;
+  /** Stripe secret key (server only) and webhook signing secret. */
+  stripeSecretKey?: string;
+  stripeWebhookSecret?: string;
   /** Signs team members' sessions (SESSION_SECRET; derived from APP_ACCESS_TOKEN when unset). */
   sessionSecret?: string;
   /** Time zone used for dates in LIVE reports and exports. */
@@ -93,6 +96,8 @@ export function loadConfig(): Config {
     eulerOAuthAuthorizeUrl: str("EULER_OAUTH_AUTHORIZE_URL"),
     publicUrl: str("PUBLIC_URL")?.replace(/\/+$/, ""),
     sessionSecret: str("SESSION_SECRET"),
+    stripeSecretKey: str("STRIPE_SECRET_KEY"),
+    stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET"),
     reportTimeZone: validTimeZone(str("REPORT_TIMEZONE")) ?? "Europe/Paris",
   };
 }

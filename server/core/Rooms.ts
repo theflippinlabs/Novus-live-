@@ -44,6 +44,11 @@ export class RoomRegistry {
   private summaryTimer: ReturnType<typeof setInterval> | null = null;
   private lastSummary = "";
   private syncing: Promise<void> = Promise.resolve();
+  /**
+   * How many followed accounts the plan lets this space monitor right now (billing).
+   * Accounts beyond it stay in the settings, paused — never deleted.
+   */
+  creatorLimit: () => number = () => Number.POSITIVE_INFINITY;
 
   constructor(
     readonly main: Room,
@@ -62,6 +67,11 @@ export class RoomRegistry {
 
   get settings(): Settings {
     return this.main.runtime.settings;
+  }
+
+  /** Followed accounts not monitored because of the plan's creator limit (or a restricted workspace). */
+  paused(): string[] {
+    return (this.settings.tiktokProfiles ?? []).filter((u) => !this.rooms.has(tiktokRoomId(u)));
   }
 
   summaries(): RoomSummary[] {
@@ -130,7 +140,7 @@ export class RoomRegistry {
 
   private async doSync(): Promise<void> {
     if (!this.createTikTokRoom) return;
-    const wanted = new Map((this.settings.tiktokProfiles ?? []).map((u) => [tiktokRoomId(u), u]));
+    const wanted = new Map((this.settings.tiktokProfiles ?? []).slice(0, Math.max(0, this.creatorLimit())).map((u) => [tiktokRoomId(u), u]));
     for (const room of this.all()) {
       if (room.kind === "tiktok" && !wanted.has(room.id)) {
         this.rooms.delete(room.id);

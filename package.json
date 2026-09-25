@@ -2,7 +2,7 @@
   "name": "novus-live",
   "version": "1.0.0",
   "private": true,
-  "description": "NOVUS LIVE — real-time AI moderation and streamer-assistant cockpit. Part of the Novarys / Pulse Engine ecosystem.",
+  "description": "NOVUS LIVE \u2014 real-time AI moderation and streamer-assistant cockpit. Part of the Novarys / Pulse Engine ecosystem.",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -20,7 +20,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "node scripts/smoke.mjs",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "stripe:setup": "node scripts/stripe-setup.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
@@ -30,6 +31,7 @@
     "pdfkit": "^0.17.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "stripe": "^18.5.0",
     "tiktok-live-connector": "^2.5.0",
     "zod": "^4.6.5"
   },

@@ -7,3 +7,4 @@ data/
 coverage
 .DS_Store
 test-results
+.stripe-webhook-secret

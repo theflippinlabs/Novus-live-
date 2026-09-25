@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import type { ZodType } from "zod";
 import {
   actionRequestSchema,
@@ -14,6 +14,12 @@ import {
   MAX_PROFILES,
   memberCreateSchema,
   memberUpdateSchema,
+  trackSchema,
+  signupSchema,
+  checkoutSchema,
+  changePlanSchema,
+  leadSchema,
+  adminConfigSchema,
   recordingSchema,
   sendChatSchema,
   settingsPatchSchema,
@@ -27,6 +33,9 @@ import { ChatSendError, EulerChatSender } from "./chat/EulerChat";
 import { chatCsv, chatTxt, HistoryService } from "./history/History";
 import { buildReportPdf } from "./reports/pdf";
 import { OWNER_TENANT } from "./persistence/Repository";
+import { BillingError, BillingService } from "./billing/Billing";
+import { MemoryBillingStore } from "./billing/Store";
+import { funnel, saasMetrics, workspaceEconomics } from "./billing/Metrics";
 import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
 import { can, canSeeAccount, TeamError, TeamStore, type MemberInput, type Principal } from "./team/Team";
 
@@ -39,6 +48,10 @@ export interface AppDeps {
   chat?: EulerChatSender;
   /** One separate space per access key: the owner's first. Overrides `rooms`/`chat`. */
   spaces?: Space[];
+  /** Plans, subscriptions, entitlements and usage (defaults to an in-memory, unrestricted setup). */
+  billing?: BillingService;
+  /** Build the space of a new self-serve workspace (signup). */
+  provisionSpace?: (id: string) => Promise<Space>;
 }
 
 /** One person's Novus: their own followed accounts, settings, history and "Send in chat" account. */
@@ -95,7 +108,7 @@ const mainOnly = (room: Room): Room => {
   return room;
 };
 
-export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList }: AppDeps) {
+export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace }: AppDeps) {
   // The hashed app bundle currently served (e.g. "index-0YX36Sc8.js"): lets installed apps notice a new version.
   const build = (() => {
     try {
@@ -112,15 +125,21 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   const keys = accessKeys(config.accessToken, config.accessTokens, owner.id);
   // Team sessions are signed with a server secret (never sent to the browser).
   const sessionSecret = config.sessionSecret ?? (config.accessToken ? sessionCookieValue(`team:${config.accessToken}`) : randomUUID());
-  const byId = new Map(
-    spaces.map((s) => [
-      s.id,
-      { ...s, team: s.team ?? new TeamStore(s.id, s.rooms.main.runtime.repository, sessionSecret), history: new HistoryService(s.rooms.main.runtime.repository, s.rooms) },
-    ]),
-  );
+  const billing = billingDep ?? new BillingService({ store: new MemoryBillingStore() });
+  const ctxFor = (s: Space) => ({ ...s, team: s.team ?? new TeamStore(s.id, s.rooms.main.runtime.repository, sessionSecret), history: new HistoryService(s.rooms.main.runtime.repository, s.rooms) });
+  type SpaceCtx = ReturnType<typeof ctxFor>;
+  const byId = new Map<string, SpaceCtx>(spaces.map((s) => [s.id, ctxFor(s)]));
   // Teams load once; auth waits for them so members are not logged out right after a restart.
   const teamsReady = Promise.all([...byId.values()].map((s) => s.team.init())).catch((e) => console.error("[novus] team load failed", e));
-  type SpaceCtx = NonNullable<ReturnType<typeof byId.get>>;
+  /** A self-serve workspace's space, created at signup. */
+  const addSpace = async (space: Space) => {
+    const c = ctxFor(space);
+    await c.team.init();
+    byId.set(space.id, c);
+    return c;
+  };
+  /** Founder session of a self-serve workspace: signed over its founder code hash. */
+  const workspaceCookie = (id: string, codeHash: string) => `w.${id}.${createHmac("sha256", sessionSecret).update(`novus-ws-v1:${id}:${codeHash}`).digest("base64url")}`;
 
   /** Who is logged in and in which space (null: not logged in). */
   const whoIs = (req: Request): { space: SpaceCtx; principal: Principal } | null => {
@@ -135,6 +154,13 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       return space ? { space, principal: { kind: "founder", spaceId: space.id } } : null;
     }
     const cookie = readCookie(req, AUTH_COOKIE);
+    if (cookie?.startsWith("w.")) {
+      const id = cookie.split(".")[1] ?? "";
+      const ws = billing.workspace(id);
+      const space = byId.get(id);
+      if (ws?.founderCodeHash && space && safeEqual(cookie, workspaceCookie(id, ws.founderCodeHash))) return { space, principal: { kind: "founder", spaceId: id } };
+      return null;
+    }
     if (cookie?.startsWith("m.")) {
       const space = byId.get(cookie.split(".")[1] ?? "");
       const member = space?.team.memberFromCookie(cookie);
@@ -153,6 +179,14 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   /** Refuse unless the logged-in person has this permission. */
   const need = (req: Request, perm: Permission) => {
     if (!can(principal(req), perm)) throw new HttpError(403, "forbidden");
+  };
+  /** The platform owner (the server's own APP_ACCESS_TOKEN): admin dashboards and config. */
+  const isAdmin = (req: Request) => {
+    const c = ctx(req);
+    return c.principal.kind === "founder" && c.space.id === owner.id;
+  };
+  const adminOnly = (req: Request) => {
+    if (!isAdmin(req)) throw new HttpError(403, "forbidden");
   };
   const founderOnly = (req: Request) => {
     if (principal(req).kind !== "founder") throw new HttpError(403, "forbidden");
@@ -192,11 +226,30 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     }
     if (keys.some((k) => k !== "language" && k !== "tiktokManual" && !accountKeys.includes(k))) need(req, "settings");
   };
-  /** A LIVE of the history, if this person may see its streamer. */
+  /** A LIVE of the history, if this person may see its streamer (and it is within the plan's history window). */
   const historyDetail = async (req: Request, id: string) => {
     const detail = await sp(req).history.detail(id);
-    return detail && canSeeAccount(principal(req), detail.entry.account) ? detail : null;
+    if (!detail || !canSeeAccount(principal(req), detail.entry.account)) return null;
+    if (detail.entry.startedAt < historyCutoff(req)) throw planLimit("history_retention");
+    return detail;
   };
+  const billingError = (e: unknown) => (e instanceof BillingError ? new HttpError(e.status, e.code) : e);
+  /** 402 with the reason, so the app can show the right upgrade prompt. */
+  const planLimit = (code: string) => new HttpError(402, code);
+  const effective = (req: Request) => billing.effective(sp(req).id);
+  /** Adding followed accounts beyond the plan's creator limit is refused (existing ones are kept). */
+  const checkCreatorCount = (req: Request, next: number) => {
+    const current = sp(req).rooms.settings.tiktokProfiles?.length ?? 0;
+    if (next > current && next > effective(req).entitlements.creator_limit) throw planLimit(effective(req).access === "restricted" ? "workspace_restricted" : "plan_limit_creators");
+  };
+  /** An export (PDF, CSV, conversation): counted against the plan's monthly allowance. */
+  const useExport = (req: Request) => {
+    if (!billing.allowed(sp(req).id, "export")) throw planLimit("plan_limit_exports");
+    billing.meterAdd(sp(req).id, "exports");
+  };
+  /** LIVEs older than the plan's history window are kept but not shown. */
+  const historyCutoff = (req: Request) => Date.now() - effective(req).entitlements.history_retention_days * 24 * 3600 * 1000;
+  const requestOrigin = (req: Request) => config.publicUrl ?? `${config.production ? "https" : req.protocol}://${req.get("host")}`;
   const teamError = (e: unknown) => (e instanceof TeamError ? new HttpError(e.status, e.code) : e);
   // The token-protected connector ingestion and /health belong to the owner's main room.
   const { runtime, tiktok } = owner.rooms.main;
@@ -227,6 +280,18 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   if (config.trustProxy) app.set("trust proxy", 1);
   app.use(securityHeaders);
 
+  // Stripe webhooks need the raw body for signature verification (before any JSON parser).
+  app.post("/api/billing/webhook", express.raw({ type: "*/*", limit: "1mb" }), (req, res) => {
+    billing
+      .handleWebhook(req.body as Buffer, req.headers["stripe-signature"] as string | undefined)
+      .then((r) => res.json({ received: true, duplicate: r.duplicate }))
+      .catch((e) => {
+        if (e instanceof BillingError) return res.status(e.status).json({ error: e.code });
+        console.error("[billing] webhook failed", e);
+        res.status(500).json({ error: "webhook_failed" });
+      });
+  });
+
   const api = express.Router();
   api.use(rateLimit("api", config.apiRateLimitPerMinute));
   api.use(requireJson);
@@ -251,8 +316,12 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       if (!keys.length) return { ok: true };
       await teamsReady;
       const matched = matchKey(key, keys);
-      // A founder's code, or a team member's own code.
+      // A founder's code (server or self-serve workspace), or a team member's own code.
       let value = matched ? sessionCookieValue(matched.key) : undefined;
+      if (!value) {
+        const ws = billing.findByFounderCode(key);
+        if (ws?.founderCodeHash && byId.has(ws.id)) value = workspaceCookie(ws.id, ws.founderCodeHash);
+      }
       if (!value) {
         for (const s of byId.values()) {
           const member = s.team.findByCode(key);
@@ -301,6 +370,53 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     res.setHeader("Cache-Control", "no-store");
     res.redirect(303, `/?chat=${result}`);
   });
+
+  // ---------------------------------------------------------------- public billing (pricing page, signup)
+  api.get("/billing/plans", h(() => billing.publicPricing()));
+  api.post(
+    "/billing/track",
+    rateLimit("track", 120),
+    h((req) => {
+      const ev = parse(trackSchema, req.body);
+      billing.track({ ...ev, workspaceId: whoIs(req)?.space.id });
+      return { ok: true };
+    }),
+  );
+  api.post(
+    "/billing/signup",
+    rateLimit("signup", 3),
+    h(async (req, res) => {
+      const input = parse(signupSchema, req.body);
+      if (!provisionSpace || !billing.stripeEnabled) throw new HttpError(503, "billing_not_configured");
+      if (input.founding && !(input.plan === "agency" && input.cycle === "month" && billing.foundingAvailable())) throw new HttpError(409, "founding_sold_out");
+      let created;
+      try {
+        created = await billing.signup({ name: input.name, email: input.email, plan: input.plan });
+      } catch (e) {
+        throw billingError(e);
+      }
+      await addSpace(await provisionSpace(created.workspace.id));
+      // Logged in right away as the founder; the code is shown once so they can log in elsewhere.
+      res.cookie(AUTH_COOKIE, workspaceCookie(created.workspace.id, created.workspace.founderCodeHash!), { httpOnly: true, sameSite: "strict", secure: config.production, maxAge: 30 * 24 * 3600 * 1000, path: "/" });
+      let url: string | undefined;
+      try {
+        url = (await billing.startCheckout(created.workspace.id, { plan: input.plan, cycle: input.cycle, founding: input.founding, origin: requestOrigin(req), source: input.source, anonId: input.anonId })).url;
+      } catch (e) {
+        throw billingError(e);
+      }
+      return { workspaceId: created.workspace.id, code: created.code, checkoutUrl: url };
+    }),
+  );
+  api.post(
+    "/billing/lead",
+    rateLimit("lead", 3),
+    h((req) => {
+      const lead = parse(leadSchema, req.body);
+      console.log(`[billing] enterprise lead from ${lead.company} (${lead.creators} creators)`);
+      void billing.recordLead(lead);
+      return { ok: true };
+    }),
+  );
 
   // ---------------------------------------------------------------- connector ingestion (token-protected)
   const ingest = express.Router();
@@ -380,6 +496,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     h(async (req) => {
       needTeam(req);
       const input = parse(memberCreateSchema, req.body);
+      const seats = sp(req).team.list().filter((m) => !m.disabled).length;
+      if (seats >= effective(req).entitlements.team_seat_limit) throw planLimit("plan_limit_seats");
       try {
         return await sp(req).team.create(principal(req), input as MemberInput);
       } catch (e) {
@@ -420,6 +538,88 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       } catch (e) {
         throw teamError(e);
       }
+    }),
+  );
+
+  // ---------------------------------------------------------------- billing (customer)
+  api.get(
+    "/billing/me",
+    h((req) => {
+      const space = sp(req);
+      const p = principal(req);
+      return billing.me(space.id, { creators: space.rooms.settings.tiktokProfiles?.length ?? 0, seats: space.team.list().filter((m) => !m.disabled).length, isFounder: p.kind === "founder" });
+    }),
+  );
+  api.post(
+    "/billing/checkout",
+    h(async (req) => {
+      founderOnly(req);
+      const input = parse(checkoutSchema, req.body);
+      try {
+        return await billing.startCheckout(sp(req).id, { ...input, origin: requestOrigin(req) });
+      } catch (e) {
+        throw billingError(e);
+      }
+    }),
+  );
+  api.post(
+    "/billing/portal",
+    h(async (req) => {
+      founderOnly(req);
+      try {
+        return await billing.portal(sp(req).id, `${requestOrigin(req)}/?view=billing`);
+      } catch (e) {
+        throw billingError(e);
+      }
+    }),
+  );
+  api.post(
+    "/billing/change-plan",
+    h(async (req) => {
+      founderOnly(req);
+      const { plan, cycle } = parse(changePlanSchema, req.body);
+      try {
+        await billing.changePlan(sp(req).id, plan, cycle);
+      } catch (e) {
+        throw billingError(e);
+      }
+      return { ok: true };
+    }),
+  );
+
+  // ---------------------------------------------------------------- admin (platform owner only)
+  api.get(
+    "/admin/overview",
+    h(async (req) => {
+      adminOnly(req);
+      const sizes = (id: string) => {
+        const s = byId.get(id);
+        return { creators: s?.rooms.settings.tiktokProfiles?.length ?? 0, seats: s?.team.list().filter((m) => !m.disabled).length ?? 0 };
+      };
+      const economics = workspaceEconomics(billing, sizes);
+      const events = await billing.events(Date.now() - 200 * 24 * 3600 * 1000);
+      return {
+        metrics: saasMetrics(billing, economics, events),
+        workspaces: economics,
+        funnel: funnel(billing, events.filter((e) => e.at >= Date.now() - 30 * 24 * 3600 * 1000)),
+        leads: events.filter((e) => e.type === "enterprise_lead_detail").slice(-50).reverse().map((e) => ({ at: e.at, ...e.meta })),
+        stripe: billing.stripeEnabled,
+      };
+    }),
+  );
+  api.get(
+    "/admin/config",
+    h((req) => {
+      adminOnly(req);
+      return billing.config;
+    }),
+  );
+  api.put(
+    "/admin/config",
+    h(async (req) => {
+      adminOnly(req);
+      const patch = parse(adminConfigSchema, req.body);
+      return billing.updateConfig(patch);
     }),
   );
 
@@ -520,6 +720,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       if (!roomId) throw new HttpError(409, "chat_not_live");
       try {
         await sp(req).chat.send(roomId, text);
+        billing.meterAdd(sp(req).id, "chat_messages_sent");
       } catch (e) {
         throw chatError(e);
       }
@@ -597,6 +798,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     h(async (req) => {
       const patch = parse(settingsPatchSchema, req.body) as Partial<Settings>;
       checkSettingsPatch(req, patch);
+      if (patch.tiktokProfiles) checkCreatorCount(req, patch.tiktokProfiles.length);
       return sp(req).rooms.updateSettings(patch);
     }),
   );
@@ -628,7 +830,9 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     h(async (req) => {
       need(req, "history");
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
-      return { entries: await sp(req).history.list(limit, roomIn(req)) };
+      const cutoff = historyCutoff(req);
+      const entries = await sp(req).history.list(limit, roomIn(req));
+      return { entries: entries.filter((e) => e.status === "live" || e.startedAt >= cutoff), hiddenOlder: entries.some((e) => e.status !== "live" && e.startedAt < cutoff) };
     }),
   );
   api.get(
@@ -647,6 +851,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const id = param(req, "id");
       const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
+      useExport(req);
       const csv = chatCsv(await sp(req).history.chat(id), timeZone, langOf(req));
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName(detail.entry.title, detail.entry.startedAt, "csv")}"`);
@@ -662,6 +867,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const id = param(req, "id");
       const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
+      useExport(req);
       const txt = chatTxt(detail.entry, await sp(req).history.chat(id), timeZone, langOf(req));
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName(`${detail.entry.title}-chat`, detail.entry.startedAt, "txt")}"`);
@@ -677,6 +883,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const id = param(req, "id");
       const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
+      useExport(req);
       const pdf = await buildReportPdf({
         entry: detail.entry,
         analytics: detail.analytics,
@@ -700,6 +907,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const id = param(req, "id");
       const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
+      useExport(req);
       const pdf = await buildReportPdf({
         entry: detail.entry,
         analytics: detail.analytics,
@@ -725,6 +933,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const { tiktok } = rooms.main;
       const username = parse(tiktokConnectSchema, req.body).username.replace(/^@/, "");
       const profiles = rooms.settings.tiktokProfiles ?? [];
+      if (!profiles.some((p) => p.toLowerCase() === username.toLowerCase())) checkCreatorCount(req, profiles.length + 1);
       if (!profiles.some((p) => p.toLowerCase() === username.toLowerCase())) await rooms.updateSettings({ tiktokProfiles: [...profiles, username].slice(-MAX_PROFILES) });
       const room = rooms.get(tiktokRoomId(username));
       if (room) return { ...room.tiktok.status(), room: room.id };

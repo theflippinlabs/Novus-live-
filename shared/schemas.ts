@@ -168,3 +168,101 @@ export const memberUpdateSchema = z
   .object({ ...memberFields, disabled: z.boolean() })
   .partial()
   .strict();
+
+// ---------------------------------------------------------------- billing
+const planId = z.enum(["moderator_pro", "creator_pro", "agency", "agency_pro", "enterprise"]);
+const selfServePlan = z.enum(["moderator_pro", "creator_pro", "agency", "agency_pro"]);
+const cycle = z.enum(["month", "year"]);
+const anon = z.string().regex(/^[A-Za-z0-9_-]{8,40}$/).optional();
+
+export const trackSchema = z
+  .object({
+    type: z.string().max(40),
+    plan: planId.optional(),
+    cycle: cycle.optional(),
+    source: z.string().max(40).optional(),
+    anonId: anon,
+  })
+  .strict();
+
+export const signupSchema = z
+  .object({
+    name: z.string().trim().min(2).max(60),
+    email: z.string().trim().max(120).email(),
+    plan: selfServePlan,
+    cycle,
+    founding: z.boolean().default(false),
+    source: z.string().max(40).optional(),
+    anonId: anon,
+  })
+  .strict();
+
+export const checkoutSchema = z
+  .object({
+    plan: selfServePlan,
+    cycle,
+    founding: z.boolean().default(false),
+    source: z.string().max(40).optional(),
+    anonId: anon,
+  })
+  .strict();
+
+export const changePlanSchema = z.object({ plan: selfServePlan, cycle }).strict();
+
+export const leadSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    email: z.string().trim().max(120).email(),
+    company: z.string().trim().min(1).max(120),
+    creators: z.number().int().min(0).max(100000),
+    message: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+
+const entitlementPatch = z
+  .object({
+    creator_limit: z.number().int().min(0),
+    team_seat_limit: z.number().int().min(0),
+    ai_requests: z.number().int().min(0),
+    ai_tokens: z.number().int().min(0),
+    live_monitoring_hours: z.number().min(0),
+    recording_hours: z.number().min(0),
+    video_storage_gb: z.number().min(0),
+    video_retention_days: z.number().int().min(0),
+    screenshot_limit: z.number().int().min(0),
+    history_retention_days: z.number().int().min(1),
+    exports_limit: z.number().int().min(0),
+    advanced_analytics: z.boolean(),
+    agency_dashboard: z.boolean(),
+    team_roles: z.boolean(),
+    recording: z.boolean(),
+    screenshots: z.boolean(),
+    priority_support: z.boolean(),
+    api_access: z.boolean(),
+    white_label: z.boolean(),
+  })
+  .partial()
+  .strict();
+
+/** Admin overrides (limits, trials, founding offer, costs, margin thresholds) — prices stay in Stripe. */
+export const adminConfigSchema = z
+  .object({
+    plans: z.partialRecord(planId, z.object({ available: z.boolean(), trialDays: z.number().int().min(0).max(60), entitlements: entitlementPatch, trial: entitlementPatch }).partial().strict()),
+    founding: z.object({ enabled: z.boolean(), capacity: z.number().int().min(0).max(1000) }).partial().strict(),
+    costs: z
+      .object({
+        per_1m_input_tokens: z.number().min(0),
+        per_1m_output_tokens: z.number().min(0),
+        per_provider_request: z.number().min(0),
+        per_live_hour: z.number().min(0),
+        per_recording_hour: z.number().min(0),
+        per_storage_gb_month: z.number().min(0),
+        per_1000_screenshots: z.number().min(0),
+        per_workspace_month: z.number().min(0),
+      })
+      .partial()
+      .strict(),
+    margins: z.object({ target: z.number().min(0).max(100), watch: z.number().min(0).max(100) }).partial().strict(),
+  })
+  .partial()
+  .strict();

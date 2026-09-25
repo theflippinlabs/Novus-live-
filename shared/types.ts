@@ -601,3 +601,65 @@ export interface Me {
   permissions: Permission[];
   accounts: string[] | null;
 }
+
+// ---------------------------------------------------------------- billing
+
+export type WorkspaceStatus = "pending" | "trialing" | "active" | "past_due" | "restricted" | "canceled" | "comped";
+
+/** What the workspace can do right now. */
+export type AccessLevel = "full" | "trial" | "grace" | "restricted";
+
+export interface UsageSnapshot {
+  ai_requests: number;
+  ai_tokens: number;
+  live_monitoring_hours: number;
+  exports: number;
+  provider_calls: number;
+  recording_hours: number;
+  screenshots: number;
+}
+
+/** GET /api/billing/me — the customer's own plan, limits and usage (never internal costs). */
+export interface BillingMe {
+  workspaceId: string;
+  name: string;
+  plan: import("./plans").PlanId;
+  cycle: import("./plans").BillingCycle;
+  status: WorkspaceStatus;
+  access: AccessLevel;
+  /** Why access is restricted, when it is. */
+  reason?: "payment" | "canceled" | "not_started" | "trial_quota";
+  trialEndsAt?: number;
+  currentPeriodEnd?: number;
+  cancelAtPeriodEnd: boolean;
+  founding: boolean;
+  foundingUntil?: number;
+  comped: boolean;
+  canManageBilling: boolean;
+  entitlements: import("./plans").Entitlements;
+  usage: UsageSnapshot;
+  creators: number;
+  seats: number;
+}
+
+/** GET /api/billing/plans — public pricing data. */
+export interface PublicPricing {
+  currency: "EUR";
+  plans: {
+    id: import("./plans").PlanId;
+    monthly: number | null;
+    yearly: number | null;
+    trialDays: number;
+    available: boolean;
+    entitlements: import("./plans").Entitlements;
+  }[];
+  founding: {
+    available: boolean;
+    capacity: number;
+    /** Real remaining slots, or null when it cannot be verified. */
+    remaining: number | null;
+    monthly: number;
+    months: number;
+  };
+  checkoutEnabled: boolean;
+}

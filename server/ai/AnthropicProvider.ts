@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { CATEGORIES } from "../../shared/types";
-import type { AIProvider, AIReviewContext, AIReviewItem, AIVerdict } from "./AIProvider";
+import type { AIProvider, AIReviewContext, AIReviewItem, AIVerdict, UsageCallback } from "./AIProvider";
 
 // Stage-2 contextual moderation through the Anthropic Messages API.
 // The API key is read server-side only (ANTHROPIC_API_KEY) and never reaches the browser.
@@ -72,7 +72,7 @@ export class AnthropicProvider implements AIProvider {
     return true;
   }
 
-  async reviewBatch(items: AIReviewItem[], ctx: AIReviewContext): Promise<Map<string, AIVerdict>> {
+  async reviewBatch(items: AIReviewItem[], ctx: AIReviewContext, meter?: UsageCallback): Promise<Map<string, AIVerdict>> {
     const payload = {
       streamer: ctx.streamerName,
       moderatorLanguage: ctx.language,
@@ -108,6 +108,7 @@ export class AnthropicProvider implements AIProvider {
       },
     });
 
+    meter?.({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens });
     if (response.stop_reason === "refusal" || !response.parsed_output) {
       throw new Error(`AI review unavailable (stop_reason=${response.stop_reason})`);
     }
@@ -122,7 +123,7 @@ export class AnthropicProvider implements AIProvider {
     return out;
   }
 
-  async summarize(facts: string, language: "en" | "fr"): Promise<string> {
+  async summarize(facts: string, language: "en" | "fr", meter?: UsageCallback): Promise<string> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 1200,
@@ -136,6 +137,7 @@ export class AnthropicProvider implements AIProvider {
       ],
       ...(this.effort ? { output_config: { effort: this.effort } } : {}),
     });
+    meter?.({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens });
     if (response.stop_reason === "refusal") throw new Error("AI summary refused");
     return response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")

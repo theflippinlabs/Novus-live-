@@ -37,9 +37,41 @@ export interface AIProvider {
   readonly model?: string;
   /** False when no credentials are configured; the app then runs on stage 1 only. */
   available(): boolean;
-  reviewBatch(items: AIReviewItem[], ctx: AIReviewContext): Promise<Map<string, AIVerdict>>;
+  reviewBatch(items: AIReviewItem[], ctx: AIReviewContext, meter?: UsageCallback): Promise<Map<string, AIVerdict>>;
   /** Optional narrative polish for "Catch me up". */
-  summarize?(facts: string, language: "en" | "fr"): Promise<string>;
+  summarize?(facts: string, language: "en" | "fr", meter?: UsageCallback): Promise<string>;
+}
+
+/** Tokens used by one AI call (for usage metering). */
+export type UsageCallback = (usage: { inputTokens: number; outputTokens: number }) => void;
+
+/**
+ * One workspace's view of the shared AI provider: counts its requests and tokens, and
+ * reports itself unavailable once the plan's AI allowance is used up — Novus then keeps
+ * moderating with its local rules only.
+ */
+export class MeteredAIProvider implements AIProvider {
+  constructor(
+    private inner: AIProvider,
+    private gate: { allowed(): boolean; record(requests: number, input: number, output: number): void },
+  ) {}
+  get name() {
+    return this.inner.name;
+  }
+  get model() {
+    return this.inner.model;
+  }
+  available(): boolean {
+    return this.inner.available() && this.gate.allowed();
+  }
+  reviewBatch(items: AIReviewItem[], ctx: AIReviewContext): Promise<Map<string, AIVerdict>> {
+    return this.inner.reviewBatch(items, ctx, (u) => this.gate.record(1, u.inputTokens, u.outputTokens));
+  }
+  get summarize(): AIProvider["summarize"] {
+    const inner = this.inner.summarize?.bind(this.inner);
+    if (!inner) return undefined;
+    return (facts, language) => inner(facts, language, (u) => this.gate.record(1, u.inputTokens, u.outputTokens));
+  }
 }
 
 export class NullAIProvider implements AIProvider {
