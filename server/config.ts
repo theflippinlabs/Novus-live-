@@ -45,6 +45,8 @@ export interface Config {
   /** Stripe secret key (server only) and webhook signing secret. */
   stripeSecretKey?: string;
   stripeWebhookSecret?: string;
+  /** Customer Portal configuration id (bpc_…), for a Stripe account shared with other apps. */
+  stripePortalConfiguration?: string;
   /** Anthropic Admin API key (sk-ant-admin…): reads the real monthly cost for the admin dashboard. */
   anthropicAdminKey?: string;
   /** Only count this Anthropic workspace's costs ("default" for the default workspace). */
@@ -107,6 +109,7 @@ export function loadConfig(): Config {
     sessionSecret: str("SESSION_SECRET"),
     stripeSecretKey: str("STRIPE_SECRET_KEY"),
     stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET"),
+    stripePortalConfiguration: str("STRIPE_PORTAL_CONFIGURATION"),
     anthropicAdminKey: str("ANTHROPIC_ADMIN_KEY"),
     anthropicCostWorkspace: str("ANTHROPIC_COST_WORKSPACE_ID"),
     resendApiKey: str("RESEND_API_KEY"),

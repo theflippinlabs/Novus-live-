@@ -67,6 +67,8 @@ export interface BillingDeps {
   store: BillingStore;
   stripe?: StripeLike;
   webhookSecret?: string;
+  /** Customer Portal configuration (bpc_…) when the Stripe account is shared with other apps. */
+  portalConfiguration?: string;
   now?: () => number;
   log?: (m: string) => void;
 }
@@ -404,7 +406,8 @@ export class BillingService {
     const ws = this.workspaces.get(id);
     if (!stripe) throw new BillingError("billing_not_configured", 503);
     if (!ws?.stripeCustomerId) throw new BillingError("no_billing_account", 409);
-    return stripe.billingPortal.sessions.create({ customer: ws.stripeCustomerId, return_url: returnUrl });
+    const configuration = this.deps.portalConfiguration;
+    return stripe.billingPortal.sessions.create({ customer: ws.stripeCustomerId, return_url: returnUrl, ...(configuration ? { configuration } : {}) });
   }
 
   /**
