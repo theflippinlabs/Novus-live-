@@ -86,3 +86,41 @@ export function SevGlyph({ level }: { level: "normal" | "watch" | "warning" | "c
     </svg>
   );
 }
+export const IconUser = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21c.9-4 4-6.5 8-6.5s7.1 2.5 8 6.5" />
+  </svg>
+);
+export const IconCard = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+    <path d="M2.5 10h19M6.5 15h4" />
+  </svg>
+);
+export const IconList = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />
+  </svg>
+);
+export const IconGlobe = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="9.5" />
+    <path d="M2.5 12h19M12 2.5c2.6 2.8 3.9 6 3.9 9.5s-1.3 6.7-3.9 9.5c-2.6-2.8-3.9-6-3.9-9.5s1.3-6.7 3.9-9.5Z" />
+  </svg>
+);
+export const IconChevron = (p: P) => (
+  <svg {...base(p)}>
+    <path d="m9 5 7 7-7 7" />
+  </svg>
+);
+export const IconBack = (p: P) => (
+  <svg {...base(p)}>
+    <path d="m15 5-7 7 7 7" />
+  </svg>
+);
+export const IconLogout = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3" />
+  </svg>
+);

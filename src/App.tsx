@@ -8,7 +8,7 @@ import { ViewerSheet } from "./components/ViewerSheet";
 import { useT } from "./i18n";
 import { handleChatSenderReturn, refreshChatSender } from "./chatSender";
 import { loadMe } from "./permissions";
-import { connectRealtime, navigate, useStore } from "./store";
+import { connectRealtime, openSettings, useStore } from "./store";
 import { refreshBilling, showUpgrade } from "./billing";
 import { BillingBanner, UpgradeSheet } from "./components/BillingSection";
 import { AdminView } from "./views/AdminView";
@@ -125,7 +125,7 @@ function AppAuthed() {
     setPlanLimitHandler(showUpgrade);
     // Back from the billing portal or a plan change.
     if (new URLSearchParams(location.search).get("view") === "billing") {
-      navigate("settings");
+      openSettings("billing");
       history.replaceState(null, "", "/");
     }
     const onVisible = () => {

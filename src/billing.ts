@@ -53,6 +53,7 @@ export const billingApi = {
   lead: (b: { name: string; email: string; company: string; creators: number; message?: string }) => call<{ ok: boolean }>("POST", "/billing/lead", b),
   recover: (email: string, lang: "en" | "fr") => call<{ email: boolean; support: string | null }>("POST", "/auth/recover", { email, lang }),
   recoverComplete: (token: string) => call<{ code: string; name: string }>("POST", "/auth/recover/complete", { token }),
+  rename: (name: string) => call<{ ok: boolean }>("PUT", "/billing/profile", { name }),
   changeFounderCode: () => call<{ code: string }>("POST", "/billing/founder-code"),
   adminResetCode: (id: string) => call<{ code: string }>("POST", `/admin/workspaces/${encodeURIComponent(id)}/reset-code`),
   adminOverview: () => call<AdminOverview>("GET", "/admin/overview"),

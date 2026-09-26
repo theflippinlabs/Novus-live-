@@ -23,6 +23,8 @@ import type {
 // messages arrive, and the chat list only receives a new array per batch.
 
 export type View = "live" | "alerts" | "viewers" | "assistant" | "analytics" | "settings" | "admin";
+/** A sub-page of Settings (null = the menu). */
+export type SettingsPage = "profile" | "billing" | "team" | "moderation" | "lists" | "ai" | "tiktok" | "app";
 export type Connection = "connecting" | "live" | "reconnecting" | "unauthorized";
 
 const MAX_CHAT = 1500;
@@ -33,6 +35,7 @@ export interface AppState {
   room: string;
   rooms: RoomSummary[];
   view: View;
+  settingsPage: SettingsPage | null;
   session: LiveSessionInfo | null;
   stats: LiveStats;
   comments: AnalyzedComment[];
@@ -73,6 +76,7 @@ let state: AppState = {
   room: localGet("novus:room") ?? "main",
   rooms: [],
   view: (sessionStorageGet("novus:view") as View) ?? "live",
+  settingsPage: (sessionStorageGet("novus:settings-page") as SettingsPage | null) ?? null,
   session: null,
   stats: emptyStats,
   comments: [],
@@ -140,7 +144,21 @@ export function navigate(view: View): void {
   } catch {
     /* ignore */
   }
+  // Tapping Settings again goes back to its menu.
+  if (view === "settings" && state.view === "settings") return openSettings(null);
   setState({ view });
+}
+
+/** Open Settings on one of its sub-pages (or its menu). */
+export function openSettings(page: SettingsPage | null): void {
+  try {
+    sessionStorage.setItem("novus:view", "settings");
+    if (page) sessionStorage.setItem("novus:settings-page", page);
+    else sessionStorage.removeItem("novus:settings-page");
+  } catch {
+    /* ignore */
+  }
+  setState({ view: "settings", settingsPage: page });
 }
 
 export function openViewer(id: string | null): void {

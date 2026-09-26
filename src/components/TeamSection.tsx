@@ -3,21 +3,8 @@ import { PERMISSIONS, type Permission, type TeamMember, type TeamRole } from "..
 import { api, ApiError, type MemberDraft } from "../api";
 import { errorText, useLang } from "../i18n";
 import { toast, useStore } from "../store";
+import { PERM_LABEL, ROLE_LABEL } from "../permissions";
 
-const PERM_LABEL: Record<Permission, { en: string; fr: string; hintEn: string; hintFr: string }> = {
-  moderate: { en: "Moderate", fr: "Modérer", hintEn: "Act on alerts and viewers (warn, mute…)", hintFr: "Agir sur les alertes et les spectateurs (avertir, mute…)" },
-  send_chat: { en: "Send in chat", fr: "Envoyer dans le chat", hintEn: "Post suggested warnings with the connected TikTok account", hintFr: "Publier les avertissements avec le compte TikTok connecté" },
-  manage_accounts: { en: "Manage streamers", fr: "Gérer les livers", hintEn: "Follow/unfollow, groups, auto/manual, recording", hintFr: "Suivre/retirer, groupes, auto/manuel, enregistrement" },
-  settings: { en: "Moderation settings", fr: "Réglages de modération", hintEn: "Sensitivity, banned words, trusted users, AI", hintFr: "Sensibilité, mots interdits, utilisateurs de confiance, IA" },
-  history: { en: "History & exports", fr: "Historique & exports", hintEn: "Past LIVEs, PDF reports, conversations", hintFr: "LIVE passés, rapports PDF, conversations" },
-  team: { en: "Manage the team", fr: "Gérer l'équipe", hintEn: "Add members (never with more rights than their own)", hintFr: "Ajouter des membres (jamais avec plus de droits que les siens)" },
-};
-
-const ROLE_LABEL: Record<TeamRole, { en: string; fr: string }> = {
-  director: { en: "Director", fr: "Directeur" },
-  manager: { en: "Manager", fr: "Manager" },
-  moderator: { en: "Moderator", fr: "Modérateur" },
-};
 
 const ROLE_PRESET: Record<TeamRole, Permission[]> = {
   director: ["moderate", "send_chat", "manage_accounts", "settings", "history", "team"],

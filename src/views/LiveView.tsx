@@ -6,7 +6,7 @@ import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
 import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
 import { actionLabel, errorText, tr, useLang, useT } from "../i18n";
-import { navigate, openViewer, switchRoom, toast, useStore } from "../store";
+import { navigate, openSettings, openViewer, switchRoom, toast, useStore } from "../store";
 import { useCan } from "../permissions";
 
 const SPEEDS: { value: DemoSpeed; label: string }[] = [
@@ -115,7 +115,7 @@ function WaitingForLive({ username }: { username: string }) {
         @{username}
       </h2>
       <p>{failing ? `${t("tiktokRetryingHint")}${tiktok?.error ? ` (${tr(tiktok.error, lang)})` : ""}` : t("waitingForLiveHint")}</p>
-      <button className="btn sm" onClick={() => navigate("settings")}>
+      <button className="btn sm" onClick={() => openSettings("tiktok")}>
         {t("tiktokIntegration")} →
       </button>
     </div>
@@ -143,7 +143,7 @@ function FollowedAccounts() {
           {t("followAccountHint")}
         </p>
       )}
-      <button className="btn sm" style={{ marginTop: 10 }} onClick={() => navigate("settings")}>
+      <button className="btn sm" style={{ marginTop: 10 }} onClick={() => openSettings("tiktok")}>
         {t("tiktokIntegration")} →
       </button>
     </div>

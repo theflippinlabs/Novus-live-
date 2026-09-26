@@ -572,3 +572,17 @@ describe("Real AI cost (Anthropic Cost API)", () => {
     expect(ai).toMatchObject({ source: "estimate", configured: false, actual: null });
   });
 });
+
+describe("Profile", () => {
+  it("the founder renames the workspace and sees their e-mail; members cannot rename", async () => {
+    const { app, cookieOf } = await makeApp();
+    const signup = await request(app).post("/api/billing/signup").send({ name: "Old Name", email: "pro@x.co", plan: "moderator_pro", cycle: "month" }).expect(200);
+    const founder = cookieOf(signup);
+    await request(app).put("/api/billing/profile").set("Cookie", founder).send({ name: "  New Name  " }).expect(200);
+    const me = (await request(app).get("/api/billing/me").set("Cookie", founder).expect(200)).body;
+    expect(me.name).toBe("New Name");
+    expect(me.email).toBe("pro@x.co");
+    await request(app).put("/api/billing/profile").set("Cookie", founder).send({ name: "x" }).expect(400);
+    await request(app).put("/api/billing/profile").send({ name: "Anon" }).expect(401);
+  });
+});

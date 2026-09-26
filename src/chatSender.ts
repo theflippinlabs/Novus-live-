@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { getState, navigate, setState, toast } from "./store";
+import { getState, openSettings, setState, toast } from "./store";
 
 /** Refresh the "Send in chat" connection status (Settings, alert cards). */
 export async function refreshChatSender(): Promise<void> {
@@ -27,5 +27,5 @@ export function handleChatSenderReturn(): void {
   };
   const [en, frText] = text[result] ?? text.failed;
   toast(fr ? frText : en, result === "connected" ? "ok" : "warn");
-  navigate("settings");
+  openSettings("tiktok");
 }

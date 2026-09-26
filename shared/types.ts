@@ -625,6 +625,8 @@ export interface UsageSnapshot {
 export interface BillingMe {
   workspaceId: string;
   name: string;
+  /** The founder's e-mail (shown to the founder only). */
+  email?: string;
   plan: import("./plans").PlanId;
   cycle: import("./plans").BillingCycle;
   status: WorkspaceStatus;

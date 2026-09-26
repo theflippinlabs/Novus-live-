@@ -20,6 +20,7 @@ import {
   changePlanSchema,
   leadSchema,
   adminConfigSchema,
+  profileSchema,
   recoverCompleteSchema,
   recoverSchema,
   recordingSchema,
@@ -594,6 +595,19 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const space = sp(req);
       const p = principal(req);
       return billing.me(space.id, { creators: space.rooms.settings.tiktokProfiles?.length ?? 0, seats: space.team.list().filter((m) => !m.disabled).length, isFounder: p.kind === "founder" });
+    }),
+  );
+  api.put(
+    "/billing/profile",
+    h(async (req) => {
+      founderOnly(req);
+      const { name } = parse(profileSchema, req.body);
+      try {
+        await billing.rename(sp(req).id, name);
+      } catch (e) {
+        throw billingError(e);
+      }
+      return { ok: true };
     }),
   );
   // The founder changes their own code: other devices are logged out, this one stays in.

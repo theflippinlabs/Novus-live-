@@ -185,6 +185,8 @@ export const trackSchema = z
   })
   .strict();
 
+export const profileSchema = z.object({ name: z.string().trim().min(2).max(60) }).strict();
+
 export const recoverSchema = z.object({ email: z.string().trim().max(120).email(), lang: z.enum(["en", "fr"]).optional() }).strict();
 export const recoverCompleteSchema = z.object({ token: z.string().regex(/^[\w-]{20,100}$/) }).strict();
 

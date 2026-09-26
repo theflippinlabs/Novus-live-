@@ -166,6 +166,14 @@ export class BillingService {
     return found;
   }
 
+  /** The founder renames their workspace (shown in the app and the admin dashboard). */
+  async rename(id: string, name: string): Promise<void> {
+    const ws = this.workspaces.get(id);
+    if (!ws) throw new BillingError("workspace_not_found", 404);
+    ws.name = name;
+    await this.save(ws);
+  }
+
   // ---------------------------------------------------------------- founder code (lost / rotated)
 
   /**
@@ -249,6 +257,7 @@ export class BillingService {
     return {
       workspaceId: id,
       name: ws?.name ?? id,
+      email: opts.isFounder ? ws?.ownerEmail : undefined,
       plan: ws?.plan ?? "enterprise",
       cycle: ws?.cycle ?? "month",
       status: ws?.status ?? "comped",

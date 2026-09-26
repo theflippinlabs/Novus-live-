@@ -5,7 +5,7 @@ import { billingApi, PLAN_NAMES, type AdminOverview } from "../billing";
 import { Segmented } from "../components/ui";
 import { CodeReveal } from "../components/FounderCode";
 import { errorText, useLang } from "../i18n";
-import { navigate, toast } from "../store";
+import { openSettings, toast } from "../store";
 
 // Admin-only (platform owner): SaaS metrics, per-customer profitability, conversion
 // funnel and live configuration. The server refuses these endpoints to anyone else.
@@ -186,7 +186,7 @@ export function AdminView() {
     <div className="scroll">
       <div className="narrow stack">
         <div className="row">
-          <button className="btn sm ghost" onClick={() => navigate("settings")}>
+          <button className="btn sm ghost" onClick={() => openSettings(null)}>
             ← {tx.back}
           </button>
           <b style={{ flex: 1, fontSize: 18 }}>{tx.title}</b>
