@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { memo, useEffect, type ReactNode } from "react";
 import type { Severity, ViewerRef } from "../../shared/types";
 import { severityLabel, useLang } from "../i18n";
@@ -40,7 +41,8 @@ export function Sheet({ onClose, children, label }: { onClose: () => void; child
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  // On the body: a sheet opened inside a scrolling view must not be pinned to that view (iOS Safari).
+  return createPortal(
     <>
       <div className="sheet-backdrop" onClick={onClose} />
       <div className="sheet" role="dialog" aria-modal="true" aria-label={label}>
@@ -50,7 +52,8 @@ export function Sheet({ onClose, children, label }: { onClose: () => void; child
         </button>
         <div className="sheet-body">{children}</div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 

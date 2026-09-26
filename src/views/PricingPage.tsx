@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
 import type { BillingCycle, Entitlements, PlanId } from "../../shared/plans";
 import type { BillingMe, PublicPricing } from "../../shared/types";
@@ -446,8 +447,12 @@ export function PricingPage({ success }: { success?: boolean }) {
 
       <footer className="pricing-foot small muted">NOVUS LIVE · {lang === "fr" ? "Prix TTC en euros. Paiement sécurisé par Stripe." : "Prices in euros, tax included. Secure payment by Stripe."}</footer>
 
-      {flow?.kind === "signup" && pricing ? <SignupSheet plan={flow.plan} founding={flow.founding} cycle={cycle} pricing={pricing} onClose={() => setFlow(null)} /> : null}
-      {flow?.kind === "lead" ? <LeadSheet lang={lang} intro={pricing?.checkoutEnabled ? undefined : tx.checkoutOff} onClose={() => setFlow(null)} /> : null}
+      {/* On the body, not inside the scrolling page: iOS Safari pins "fixed" dialogs inside a
+          scroll container to its top, out of sight once the visitor has scrolled to the plans. */}
+      {flow?.kind === "signup" && pricing
+        ? createPortal(<SignupSheet plan={flow.plan} founding={flow.founding} cycle={cycle} pricing={pricing} onClose={() => setFlow(null)} />, document.body)
+        : null}
+      {flow?.kind === "lead" ? createPortal(<LeadSheet lang={lang} intro={pricing?.checkoutEnabled ? undefined : tx.checkoutOff} onClose={() => setFlow(null)} />, document.body) : null}
     </div>
   );
 }
