@@ -19,6 +19,7 @@ import { LiveView } from "./views/LiveView";
 import { SettingsView } from "./views/SettingsView";
 import { ViewersView } from "./views/ViewersView";
 import { PricingPage } from "./views/PricingPage";
+import { LostCodeLink, RecoverPage } from "./components/FounderCode";
 
 function Login({ onDone }: { onDone: () => void }) {
   const t = useT();
@@ -53,6 +54,7 @@ function Login({ onDone }: { onDone: () => void }) {
         <button className="btn gold block" style={{ marginTop: 12 }} onClick={submit} disabled={!key}>
           {t("login")}
         </button>
+        <LostCodeLink />
       </div>
       <a className="link-btn" href="/pricing?from=login" style={{ display: "block", textAlign: "center", marginTop: 16 }}>
         {t("noAccount")}
@@ -94,6 +96,7 @@ export function App() {
   const path = location.pathname;
   if (path.startsWith("/pricing")) return <PricingPage />;
   if (path.startsWith("/billing/success")) return <PricingPage success />;
+  if (path.startsWith("/recover")) return <RecoverPage />;
   return <AppAuthed />;
 }
 

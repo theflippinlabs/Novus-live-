@@ -45,6 +45,15 @@ export interface Config {
   /** Stripe secret key (server only) and webhook signing secret. */
   stripeSecretKey?: string;
   stripeWebhookSecret?: string;
+  /** Anthropic Admin API key (sk-ant-admin…): reads the real monthly cost for the admin dashboard. */
+  anthropicAdminKey?: string;
+  /** Only count this Anthropic workspace's costs ("default" for the default workspace). */
+  anthropicCostWorkspace?: string;
+  /** Resend API key and sender, for founder code recovery e-mails. */
+  resendApiKey?: string;
+  mailFrom?: string;
+  /** Contact shown when a founder has lost their code and e-mail recovery is off. */
+  supportEmail?: string;
   /** Signs team members' sessions (SESSION_SECRET; derived from APP_ACCESS_TOKEN when unset). */
   sessionSecret?: string;
   /** Time zone used for dates in LIVE reports and exports. */
@@ -98,6 +107,11 @@ export function loadConfig(): Config {
     sessionSecret: str("SESSION_SECRET"),
     stripeSecretKey: str("STRIPE_SECRET_KEY"),
     stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET"),
+    anthropicAdminKey: str("ANTHROPIC_ADMIN_KEY"),
+    anthropicCostWorkspace: str("ANTHROPIC_COST_WORKSPACE_ID"),
+    resendApiKey: str("RESEND_API_KEY"),
+    mailFrom: str("MAIL_FROM"),
+    supportEmail: str("SUPPORT_EMAIL"),
     reportTimeZone: validTimeZone(str("REPORT_TIMEZONE")) ?? "Europe/Paris",
   };
 }

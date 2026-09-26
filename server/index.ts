@@ -5,6 +5,8 @@ import Stripe from "stripe";
 import { MeteredAIProvider, NullAIProvider, type AIProvider } from "./ai/AIProvider";
 import { BillingService, type StripeLike } from "./billing/Billing";
 import { applyPlanToRooms } from "./billing/wire";
+import { AnthropicCostReport } from "./billing/AnthropicCost";
+import { ResendMailer } from "./mail/Mailer";
 import { MemoryBillingStore, SupabaseBillingStore, type BillingStore } from "./billing/Store";
 import { AnthropicProvider } from "./ai/AnthropicProvider";
 import { NovusRuntime } from "./core/NovusRuntime";
@@ -227,10 +229,14 @@ async function main() {
     }
   }, 60_000).unref();
 
+  const mailer = new ResendMailer({ apiKey: config.resendApiKey, from: config.mailFrom });
+  const aiCost = new AnthropicCostReport({ adminKey: config.anthropicAdminKey, workspaceId: config.anthropicCostWorkspace });
   const app = createApp({
     config,
     spaces,
     billing,
+    mailer,
+    aiCost,
     provisionSpace: async (id) => {
       const space = await buildSpace(id);
       byTenant.set(id, space);
@@ -243,6 +249,7 @@ async function main() {
     console.log(`[novus] Persistence: ${repo.kind}${repo.kind === "memory" && config.dataDir ? ` (+ ${config.dataDir})` : ""}`);
     console.log(`[novus] Access token: ${config.accessToken ? `required — spaces: ${spaces.map((x) => x.id).join(", ")}` : "NOT SET (open access — set APP_ACCESS_TOKEN before exposing publicly)"}`);
     console.log(`[novus] Send in chat: ${chat.configured ? "Euler OAuth configured" : "off (set EULER_CLIENT_ID / EULER_CLIENT_SECRET)"}`);
+    console.log(`[novus] Real AI cost: ${aiCost.configured ? "Anthropic Cost API on" : "estimate only (set ANTHROPIC_ADMIN_KEY)"} · Code recovery e-mail: ${mailer.enabled ? "on" : "off (set RESEND_API_KEY / MAIL_FROM)"}`);
     console.log(`[novus] Billing: ${billing.stripeEnabled ? `Stripe on${config.stripeWebhookSecret ? "" : " (STRIPE_WEBHOOK_SECRET missing)"}` : "Stripe off (set STRIPE_SECRET_KEY)"} · ${billing.all().length} workspace(s)`);
     console.log(`[novus] Connector ingestion: ${config.ingestToken ? "enabled" : "disabled (set INGEST_TOKEN)"}`);
   });

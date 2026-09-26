@@ -1,12 +1,14 @@
 import { PLAN_IDS, type PlanId } from "../../shared/plans";
 import { monthKey } from "./Entitlements";
 import type { BillingService } from "./Billing";
+import type { AICostStatus } from "./AnthropicCost";
 import type { BillingEvent, Workspace } from "./Store";
 
 /*
  * Admin-only economics: per-workspace profitability and SaaS metrics.
- * Costs are ESTIMATES from the admin's cost assumptions × metered usage; they are
- * never sent to customers.
+ * Costs come from the admin's cost assumptions × metered usage. When the real Anthropic
+ * bill is available (Admin API), AI costs are scaled so their total matches it.
+ * Never sent to customers.
  */
 
 export type MarginHealth = "healthy" | "watch" | "at_risk" | "n/a";
@@ -18,6 +20,8 @@ export interface WorkspaceEconomics {
   cycle: string;
   status: string;
   founding: boolean;
+  /** Logs in with a stored founder code (the admin can reset it). */
+  ownCode: boolean;
   mrr: number;
   arr: number;
   creators: number;
@@ -35,7 +39,13 @@ export interface WorkspaceEconomics {
 const eur = (cents: number) => Math.round(cents) / 100;
 
 /** Profitability of each workspace over the current UTC month (values in EUR). */
-export function workspaceEconomics(billing: BillingService, sizes: (id: string) => { creators: number; seats: number }, now = Date.now()): WorkspaceEconomics[] {
+export function workspaceEconomics(
+  billing: BillingService,
+  sizes: (id: string) => { creators: number; seats: number },
+  now = Date.now(),
+  /** Real / estimated AI cost this month (1 = estimate only). */
+  aiFactor = 1,
+): WorkspaceEconomics[] {
   const c = billing.config.costs;
   const m = billing.config.margins;
   const month = monthKey(now);
@@ -46,7 +56,7 @@ export function workspaceEconomics(billing: BillingService, sizes: (id: string) 
     const liveHours = g("live_minutes") / 60;
     const paying = ["active", "past_due", "trialing"].includes(ws.status);
     const costs = {
-      ai: (inTok / 1e6) * c.per_1m_input_tokens + (outTok / 1e6) * c.per_1m_output_tokens,
+      ai: ((inTok / 1e6) * c.per_1m_input_tokens + (outTok / 1e6) * c.per_1m_output_tokens) * aiFactor,
       provider: g("provider_calls") * c.per_provider_request,
       live: liveHours * c.per_live_hour,
       recording: (g("recording_minutes") / 60) * c.per_recording_hour,
@@ -69,6 +79,7 @@ export function workspaceEconomics(billing: BillingService, sizes: (id: string) 
       cycle: ws.cycle,
       status: ws.status,
       founding: ws.founding,
+      ownCode: Boolean(ws.founderCodeHash),
       mrr,
       arr: round(mrr * 12),
       creators: size.creators,
@@ -97,6 +108,8 @@ export interface SaasMetrics {
   last30: { newSubscriptions: number; upgrades: number; downgrades: number; cancellations: number; paymentsFailed: number; paymentsRecovered: number };
   churn30: number | null;
   estimatedCost: number;
+  /** AI cost this month: metered estimate vs the real Anthropic bill (EUR). */
+  ai: AICostSummary;
   grossProfit: number;
   grossMargin: number | null;
   founding: { capacity: number; used: number; remaining: number; enabled: boolean };
@@ -104,7 +117,54 @@ export interface SaasMetrics {
   trend: { month: string; newSubscriptions: number; cancellations: number }[];
 }
 
-export function saasMetrics(billing: BillingService, economics: WorkspaceEconomics[], events: BillingEvent[], now = Date.now()): SaasMetrics {
+export interface AICostSummary {
+  source: "anthropic" | "estimate";
+  /** Tokens metered in the app × the admin's per-token prices. */
+  estimated: number;
+  /** The Anthropic bill, month to date (null when not connected or unavailable). */
+  actual: number | null;
+  actualUsd: number | null;
+  /** (actual − estimated) / estimated, in %. */
+  deviation: number | null;
+  /** Billed by Anthropic but not traced to any workspace's metered calls. */
+  unallocated: number;
+  fetchedAt: number | null;
+  configured: boolean;
+  error?: string;
+}
+
+/**
+ * Estimated AI cost of the month, and the factor that brings it to the real bill.
+ * `estimated` must be computed with factor 1.
+ */
+export function aiCostSummary(billing: BillingService, estimated: number, real: AICostStatus): { summary: AICostSummary; factor: number } {
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const usd = real.actual?.usd ?? null;
+  const actual = usd === null ? null : usd * billing.config.costs.usd_to_eur;
+  const factor = actual !== null && estimated > 0 ? actual / estimated : 1;
+  return {
+    factor,
+    summary: {
+      source: actual === null ? "estimate" : "anthropic",
+      estimated: round(estimated),
+      actual: actual === null ? null : round(actual),
+      actualUsd: usd,
+      deviation: actual !== null && estimated > 0 ? Math.round(((actual - estimated) / estimated) * 1000) / 10 : null,
+      unallocated: actual !== null && estimated <= 0 ? round(actual) : 0,
+      fetchedAt: real.actual?.fetchedAt ?? null,
+      configured: real.configured,
+      error: real.error,
+    },
+  };
+}
+
+export function saasMetrics(
+  billing: BillingService,
+  economics: WorkspaceEconomics[],
+  events: BillingEvent[],
+  now = Date.now(),
+  ai: AICostSummary = { source: "estimate", estimated: 0, actual: null, actualUsd: null, deviation: null, unallocated: 0, fetchedAt: null, configured: false },
+): SaasMetrics {
   const all = billing.all();
   const paying = all.filter((w) => ["active", "past_due"].includes(w.status));
   const mrr = economics.reduce((s, e) => s + e.mrr, 0);
@@ -118,7 +178,8 @@ export function saasMetrics(billing: BillingService, economics: WorkspaceEconomi
   const trialToPaid = trialed.length ? Math.round((trialed.filter((w) => ["active", "past_due"].includes(w.status)).length / trialed.length) * 1000) / 10 : null;
   const cancellations = count("subscription_cancelled");
   const churnBase = paying.length + cancellations;
-  const cost = economics.reduce((s, e) => s + e.costs.total, 0);
+  // Real AI spend no workspace accounts for still costs money.
+  const cost = economics.reduce((s, e) => s + e.costs.total, 0) + ai.unallocated;
   const trend = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now);
     d.setUTCMonth(d.getUTCMonth() - (5 - i));
@@ -148,6 +209,7 @@ export function saasMetrics(billing: BillingService, economics: WorkspaceEconomi
     },
     churn30: churnBase ? Math.round((cancellations / churnBase) * 1000) / 10 : null,
     estimatedCost: round(cost),
+    ai,
     grossProfit: round(mrr - cost),
     grossMargin: mrr > 0 ? Math.round(((mrr - cost) / mrr) * 1000) / 10 : null,
     founding: { capacity: f.capacity, used: f.capacity - remaining, remaining, enabled: f.enabled },

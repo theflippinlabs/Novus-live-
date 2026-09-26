@@ -15,6 +15,10 @@ export interface Workspace {
   ownerEmail?: string;
   /** SHA-256 of the founder access code (self-serve workspaces). */
   founderCodeHash?: string;
+  /** Pending lost-code recovery: SHA-256 of the one-time e-mailed token, and its expiry. */
+  recoveryHash?: string;
+  recoveryExpiresAt?: number;
+  recoverySentAt?: number;
   plan: PlanId;
   cycle: BillingCycle;
   status: WorkspaceStatus;

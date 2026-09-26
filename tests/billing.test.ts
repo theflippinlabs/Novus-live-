@@ -3,7 +3,9 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PLANS, defaultBillingConfig, mergeBillingConfig } from "../shared/plans";
 import { MeteredAIProvider, type AIProvider } from "../server/ai/AIProvider";
-import { createApp, type Space } from "../server/app";
+import { createApp, type AppDeps, type Space } from "../server/app";
+import { AnthropicCostReport } from "../server/billing/AnthropicCost";
+import type { Mailer, MailMessage } from "../server/mail/Mailer";
 import { BillingService, type StripeLike } from "../server/billing/Billing";
 import { effectiveEntitlements, PAST_DUE_GRACE_MS } from "../server/billing/Entitlements";
 import { MemoryBillingStore, type Workspace } from "../server/billing/Store";
@@ -94,16 +96,18 @@ async function space(repo: MemoryRepository, id: string): Promise<Space> {
   return { id, rooms, chat: new EulerChatSender({}, r) };
 }
 
-async function makeApp() {
+async function makeApp(extra: Pick<AppDeps, "mailer" | "aiCost"> & { supportEmail?: string } = {}) {
   const { billing, stripe } = await makeBilling();
   const repo = new MemoryRepository();
   await billing.ensureComped("owner", "Novus Live", "enterprise");
   const owner = await space(repo, "owner");
   const provisioned = new Map<string, Space>();
   const app = createApp({
-    config: { accessToken: OWNER, production: false, webDir: "x", trustProxy: false, apiRateLimitPerMinute: 10_000, ingestRateLimitPerMinute: 1000, sessionSecret: "s", publicUrl: "https://novus.test" },
+    config: { accessToken: OWNER, production: false, webDir: "x", trustProxy: false, apiRateLimitPerMinute: 10_000, ingestRateLimitPerMinute: 1000, sessionSecret: "s", publicUrl: "https://novus.test", supportEmail: extra.supportEmail },
     spaces: [owner],
     billing,
+    mailer: extra.mailer,
+    aiCost: extra.aiCost,
     provisionSpace: async (id) => {
       const s = await space(repo, id);
       provisioned.set(id, s);
@@ -410,5 +414,161 @@ describe("Billing over HTTP", () => {
     expect(cfg.body.plans.moderator_pro.entitlements.creator_limit).toBe(5);
     expect(cfg.body.margins.target).toBe(80);
     await request(app).put("/api/admin/config").set("Cookie", ownerCookie).send({ plans: { moderator_pro: { monthly: 1 } } }).expect(400);
+  });
+});
+
+describe("Lost founder code", () => {
+  const mailbox = () => {
+    const sent: MailMessage[] = [];
+    const mailer: Mailer = { enabled: true, send: async (m) => void sent.push(m) };
+    return { sent, mailer };
+  };
+  const tokenOf = (m: MailMessage) => /\/recover#([\w-]+)/.exec(m.text)![1];
+  const flush = () => new Promise((r) => setTimeout(r, 20));
+
+  it("e-mails a one-time link that gives a new code; the old code and the link stop working", async () => {
+    const { sent, mailer } = mailbox();
+    const { app, cookieOf } = await makeApp({ mailer });
+    const signup = await request(app).post("/api/billing/signup").send({ name: "Lost & Found", email: "Boss@Agency.io", plan: "creator_pro", cycle: "month" }).expect(200);
+    const oldCode = signup.body.code as string;
+    const oldCookie = cookieOf(signup);
+
+    // Same answer for an unknown e-mail, and nothing is sent.
+    const unknown = await request(app).post("/api/auth/recover").send({ email: "nobody@x.co" }).expect(200);
+    const known = await request(app).post("/api/auth/recover").send({ email: "boss@agency.io", lang: "fr" }).expect(200);
+    expect(unknown.body).toEqual(known.body);
+    await flush();
+    expect(sent).toHaveLength(1);
+    expect(sent[0].to).toBe("boss@agency.io");
+    expect(sent[0].subject).toContain("code");
+    expect(sent[0].text).toContain("https://novus.test/recover#");
+
+    // A second request right away doesn't send another e-mail.
+    await request(app).post("/api/auth/recover").send({ email: "boss@agency.io" }).expect(200);
+    await flush();
+    expect(sent).toHaveLength(1);
+
+    const token = tokenOf(sent[0]);
+    const done = await request(app).post("/api/auth/recover/complete").send({ token }).expect(200);
+    expect(done.body.name).toBe("Lost & Found");
+    expect(done.body.code).not.toBe(oldCode);
+    // Logged in by the link itself.
+    await request(app).get("/api/billing/me").set("Cookie", cookieOf(done)).expect(200);
+
+    await request(app).post("/api/auth/recover/complete").send({ token }).expect(400, { error: "recovery_invalid" });
+    await request(app).post("/api/auth/login").send({ key: oldCode }).expect(401);
+    await request(app).get("/api/billing/me").set("Cookie", oldCookie).expect(401);
+    await request(app).post("/api/auth/login").send({ key: done.body.code }).expect(200);
+  });
+
+  it("recovery links expire after 30 minutes", async () => {
+    let now = Date.now();
+    const { billing } = await makeBilling({ now: () => now });
+    const { workspace } = await billing.signup({ name: "Slow", email: "slow@x.co", plan: "moderator_pro" });
+    const [{ token }] = await billing.startRecovery("slow@x.co");
+    now += 31 * 60_000;
+    await expect(billing.completeRecovery(token)).rejects.toMatchObject({ code: "recovery_invalid" });
+    expect(billing.workspace(workspace.id)?.recoveryHash).toBeTruthy();
+  });
+
+  it("without e-mail configured, points to support instead", async () => {
+    const { app } = await makeApp({ supportEmail: "support@novus.test" });
+    const res = await request(app).post("/api/auth/recover").send({ email: "a@b.co" }).expect(200);
+    expect(res.body).toEqual({ email: false, support: "support@novus.test" });
+  });
+
+  it("the founder changes their code: other sessions are logged out, this one stays in", async () => {
+    const { app, cookieOf } = await makeApp();
+    const signup = await request(app).post("/api/billing/signup").send({ name: "Rotate", email: "r@x.co", plan: "moderator_pro", cycle: "month" }).expect(200);
+    const phone = cookieOf(signup);
+    const laptop = cookieOf(await request(app).post("/api/auth/login").send({ key: signup.body.code }).expect(200));
+    expect((await request(app).get("/api/billing/me").set("Cookie", phone).expect(200)).body.ownCode).toBe(true);
+
+    const res = await request(app).post("/api/billing/founder-code").set("Cookie", phone).send({}).expect(200);
+    await request(app).get("/api/billing/me").set("Cookie", cookieOf(res)).expect(200);
+    await request(app).get("/api/billing/me").set("Cookie", laptop).expect(401);
+    await request(app).post("/api/auth/login").send({ key: res.body.code }).expect(200);
+  });
+
+  it("only the admin resets a customer's code, and never a server-managed one", async () => {
+    const { app, ownerCookie, cookieOf } = await makeApp();
+    const signup = await request(app).post("/api/billing/signup").send({ name: "Help", email: "h@x.co", plan: "moderator_pro", cycle: "month" }).expect(200);
+    const id = signup.body.workspaceId as string;
+    const customer = cookieOf(signup);
+
+    await request(app).post(`/api/admin/workspaces/${id}/reset-code`).set("Cookie", customer).send({}).expect(403);
+    await request(app).post("/api/admin/workspaces/owner/reset-code").set("Cookie", ownerCookie).send({}).expect(409, { error: "code_managed_by_server" });
+    const owned = (await request(app).get("/api/admin/overview").set("Cookie", ownerCookie).expect(200)).body.workspaces as { id: string; ownCode: boolean }[];
+    expect(owned.find((w) => w.id === id)?.ownCode).toBe(true);
+    expect(owned.find((w) => w.id === "owner")?.ownCode).toBe(false);
+
+    const res = await request(app).post(`/api/admin/workspaces/${id}/reset-code`).set("Cookie", ownerCookie).send({}).expect(200);
+    await request(app).get("/api/billing/me").set("Cookie", customer).expect(401);
+    await request(app).post("/api/auth/login").send({ key: res.body.code }).expect(200);
+  });
+});
+
+describe("Real AI cost (Anthropic Cost API)", () => {
+  type Page = { data: { starting_at: string; ending_at: string; results: { amount: string; currency: string; workspace_id: string | null }[] }[]; has_more: boolean; next_page: string | null };
+  const fakeFetch = (pages: Page[]) => {
+    const urls: string[] = [];
+    const headers: Record<string, string>[] = [];
+    const impl = async (url: string, init: { headers: Record<string, string> }) => {
+      urls.push(url);
+      headers.push(init.headers);
+      const page = pages[urls.length - 1];
+      return { ok: true, status: 200, json: async () => page, text: async () => "" };
+    };
+    return { impl, urls, headers };
+  };
+  const bucket = (day: string, results: Page["data"][number]["results"]) => ({ starting_at: `${day}T00:00:00Z`, ending_at: `${day}T23:59:59Z`, results });
+
+  it("sums the month's cost across pages (amounts are cents) with the admin key", async () => {
+    const f = fakeFetch([
+      { data: [bucket("2026-09-01", [{ amount: "1234.5", currency: "USD", workspace_id: null }])], has_more: true, next_page: "p2" },
+      { data: [bucket("2026-09-02", [{ amount: "765.5", currency: "USD", workspace_id: null }])], has_more: false, next_page: null },
+    ]);
+    const report = new AnthropicCostReport({ adminKey: "sk-ant-admin01-test" }, f.impl, () => Date.parse("2026-09-26T12:00:00Z"));
+    const status = await report.status();
+    expect(status.actual?.usd).toBe(20);
+    expect(f.urls[0]).toContain("/v1/organizations/cost_report?");
+    expect(f.urls[0]).toContain("starting_at=2026-09-01T00%3A00%3A00Z");
+    expect(f.urls[1]).toContain("page=p2");
+    expect(f.headers[0]["x-api-key"]).toBe("sk-ant-admin01-test");
+    expect(f.headers[0]["anthropic-version"]).toBe("2023-06-01");
+    // Cached: no new call within 10 minutes.
+    await report.status();
+    expect(f.urls).toHaveLength(2);
+  });
+
+  it("can count a single Anthropic workspace", async () => {
+    const f = fakeFetch([
+      { data: [bucket("2026-09-01", [{ amount: "500", currency: "USD", workspace_id: "wrkspc_novus" }, { amount: "9000", currency: "USD", workspace_id: "wrkspc_other" }])], has_more: false, next_page: null },
+    ]);
+    const report = new AnthropicCostReport({ adminKey: "k", workspaceId: "wrkspc_novus" }, f.impl, () => Date.parse("2026-09-26T12:00:00Z"));
+    expect((await report.status()).actual?.usd).toBe(5);
+    expect(decodeURIComponent(f.urls[0])).toContain("group_by[]=workspace_id");
+  });
+
+  it("the admin overview scales AI costs to the real bill", async () => {
+    const f = fakeFetch([{ data: [bucket(new Date().toISOString().slice(0, 10), [{ amount: "1000", currency: "USD", workspace_id: null }])], has_more: false, next_page: null }]);
+    const { app, billing, ownerCookie } = await makeApp({ aiCost: new AnthropicCostReport({ adminKey: "k" }, f.impl) });
+    // Metered estimate: 1M input tokens = €4.60 at the default price.
+    billing.meterAdd("owner", "ai_input_tokens", 1_000_000);
+    const body = (await request(app).get("/api/admin/overview").set("Cookie", ownerCookie).expect(200)).body;
+    const ai = body.metrics.ai;
+    expect(ai.source).toBe("anthropic");
+    expect(ai.estimated).toBeCloseTo(4.6, 2);
+    expect(ai.actualUsd).toBe(10);
+    expect(ai.actual).toBeCloseTo(9.2, 2); // $10 × 0.92
+    expect(ai.deviation).toBeCloseTo(100, 0);
+    const owner = body.workspaces.find((w: { id: string }) => w.id === "owner");
+    expect(owner.costs.ai).toBeCloseTo(9.2, 2);
+  });
+
+  it("without the admin key, the overview says the cost is an estimate", async () => {
+    const { app, ownerCookie } = await makeApp();
+    const ai = (await request(app).get("/api/admin/overview").set("Cookie", ownerCookie).expect(200)).body.metrics.ai;
+    expect(ai).toMatchObject({ source: "estimate", configured: false, actual: null });
   });
 });

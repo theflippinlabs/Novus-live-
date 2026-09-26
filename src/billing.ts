@@ -51,6 +51,10 @@ export const billingApi = {
   portal: () => call<{ url: string }>("POST", "/billing/portal"),
   changePlan: (plan: PlanId, cycle: BillingCycle) => call<{ ok: boolean }>("POST", "/billing/change-plan", { plan, cycle }),
   lead: (b: { name: string; email: string; company: string; creators: number; message?: string }) => call<{ ok: boolean }>("POST", "/billing/lead", b),
+  recover: (email: string, lang: "en" | "fr") => call<{ email: boolean; support: string | null }>("POST", "/auth/recover", { email, lang }),
+  recoverComplete: (token: string) => call<{ code: string; name: string }>("POST", "/auth/recover/complete", { token }),
+  changeFounderCode: () => call<{ code: string }>("POST", "/billing/founder-code"),
+  adminResetCode: (id: string) => call<{ code: string }>("POST", `/admin/workspaces/${encodeURIComponent(id)}/reset-code`),
   adminOverview: () => call<AdminOverview>("GET", "/admin/overview"),
   adminConfig: () => call<import("../shared/plans").BillingConfig>("GET", "/admin/config"),
   saveAdminConfig: (patch: unknown) => call<import("../shared/plans").BillingConfig>("PUT", "/admin/config", patch),
@@ -70,6 +74,17 @@ export interface AdminOverview {
     last30: { newSubscriptions: number; upgrades: number; downgrades: number; cancellations: number; paymentsFailed: number; paymentsRecovered: number };
     churn30: number | null;
     estimatedCost: number;
+    ai: {
+      source: "anthropic" | "estimate";
+      estimated: number;
+      actual: number | null;
+      actualUsd: number | null;
+      deviation: number | null;
+      unallocated: number;
+      fetchedAt: number | null;
+      configured: boolean;
+      error?: string;
+    };
     grossProfit: number;
     grossMargin: number | null;
     founding: { capacity: number; used: number; remaining: number; enabled: boolean };
@@ -82,6 +97,7 @@ export interface AdminOverview {
     cycle: string;
     status: string;
     founding: boolean;
+    ownCode: boolean;
     mrr: number;
     arr: number;
     creators: number;

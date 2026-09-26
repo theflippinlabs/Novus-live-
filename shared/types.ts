@@ -638,6 +638,8 @@ export interface BillingMe {
   foundingUntil?: number;
   comped: boolean;
   canManageBilling: boolean;
+  /** The founder logs in with a stored code they can change (self-serve workspaces). */
+  ownCode: boolean;
   entitlements: import("./plans").Entitlements;
   usage: UsageSnapshot;
   creators: number;

@@ -4,6 +4,7 @@ import { ApiError } from "../api";
 import { billingApi, NEXT_PLAN, PLAN_NAMES, refreshBilling, track } from "../billing";
 import { errorText, useLang } from "../i18n";
 import { setState, toast, useStore } from "../store";
+import { ChangeFounderCode } from "./FounderCode";
 
 const TX = {
   en: {
@@ -182,6 +183,7 @@ export function BillingSection() {
           {tx.seePlans} →
         </a>
       )}
+      {b.ownCode ? <ChangeFounderCode /> : null}
     </div>
   );
 }

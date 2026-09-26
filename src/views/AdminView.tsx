@@ -3,6 +3,7 @@ import { PLAN_IDS, type BillingConfig, type Entitlements, type PlanId } from "..
 import { ApiError } from "../api";
 import { billingApi, PLAN_NAMES, type AdminOverview } from "../billing";
 import { Segmented } from "../components/ui";
+import { CodeReveal } from "../components/FounderCode";
 import { errorText, useLang } from "../i18n";
 import { navigate, toast } from "../store";
 
@@ -71,6 +72,21 @@ const T = {
     foundingEnabled: "Founding offer enabled",
     capacity: "Capacity",
     costTitle: "Internal cost assumptions (EUR)",
+    aiTitle: "AI cost this month",
+    aiActual: "Real (Anthropic bill)",
+    aiEstimate: "Metered estimate",
+    aiDeviation: "Deviation",
+    aiUnallocated: "Billed but not traced to a workspace",
+    aiUpdated: (m: number) => `Anthropic data from ${m} min ago (it lags about 5 min). Margins use the real amount.`,
+    aiOff: "Not connected: margins use the estimate. Add ANTHROPIC_ADMIN_KEY (Anthropic Console › Admin keys) on the server to read the real bill.",
+    aiError: "The Anthropic cost API didn't answer: margins use the estimate.",
+    aiCalibrated: "AI costs are scaled to the real Anthropic bill.",
+    resetCode: "New access code",
+    resetConfirm: "Only after checking it's really the customer (e.g. a message from their workspace e-mail). Their old code stops working.",
+    resetYes: "Create the code",
+    cancel: "Cancel",
+    codeFor: (n: string) => `New founder code for ${n} — give it to the customer, it's shown only once:`,
+    done: "Done",
     marginTitle: "Margin thresholds (%)",
   },
   fr: {
@@ -130,6 +146,21 @@ const T = {
     foundingEnabled: "Offre fondateur active",
     capacity: "Capacité",
     costTitle: "Hypothèses de coûts internes (EUR)",
+    aiTitle: "Coût IA du mois",
+    aiActual: "Réel (facture Anthropic)",
+    aiEstimate: "Estimation mesurée",
+    aiDeviation: "Écart",
+    aiUnallocated: "Facturé mais rattaché à aucun espace",
+    aiUpdated: (m: number) => `Données Anthropic d'il y a ${m} min (environ 5 min de décalage). Les marges utilisent le montant réel.`,
+    aiOff: "Non connecté : les marges utilisent l'estimation. Ajoute ANTHROPIC_ADMIN_KEY (Console Anthropic › Admin keys) sur le serveur pour lire la vraie facture.",
+    aiError: "L'API de coûts Anthropic n'a pas répondu : les marges utilisent l'estimation.",
+    aiCalibrated: "Coûts IA recalés sur la vraie facture Anthropic.",
+    resetCode: "Nouveau code d'accès",
+    resetConfirm: "Seulement après avoir vérifié que c'est bien le client (par ex. un message depuis l'e-mail de son espace). Son ancien code ne marchera plus.",
+    resetYes: "Créer le code",
+    cancel: "Annuler",
+    codeFor: (n: string) => `Nouveau code fondateur pour ${n} — à transmettre au client, il n'est affiché qu'une fois :`,
+    done: "Terminé",
     marginTitle: "Seuils de marge (%)",
   },
 };
@@ -201,6 +232,7 @@ function Overview({ d, lang }: { d: AdminOverview; lang: "en" | "fr" }) {
         <Kpi label={tx.margin} value={pct(m.grossMargin)} />
         <Kpi label={tx.founding} value={`${m.founding.used}/${m.founding.capacity} ${tx.used} · ${m.founding.remaining} ${tx.left}`} />
       </div>
+      <AICost ai={m.ai} lang={lang} />
       <div className="card">
         <div className="card-title">{tx.last30}</div>
         <div className="admin-grid">
@@ -251,12 +283,71 @@ function Overview({ d, lang }: { d: AdminOverview; lang: "en" | "fr" }) {
   );
 }
 
+function AICost({ ai, lang }: { ai: AdminOverview["metrics"]["ai"]; lang: "en" | "fr" }) {
+  const tx = T[lang];
+  const usd = (v: number) => new Intl.NumberFormat(lang === "fr" ? "fr-FR" : "en-US", { style: "currency", currency: "USD" }).format(v);
+  const minutes = ai.fetchedAt ? Math.max(0, Math.round((Date.now() - ai.fetchedAt) / 60_000)) : 0;
+  return (
+    <div className="card">
+      <div className="card-title">{tx.aiTitle}</div>
+      <div className="admin-grid">
+        <Kpi label={tx.aiActual} value={ai.actual === null ? "—" : `${eur(ai.actual, lang)} (${usd(ai.actualUsd ?? 0)})`} />
+        <Kpi label={tx.aiEstimate} value={eur(ai.estimated, lang)} />
+        <Kpi label={tx.aiDeviation} value={ai.deviation === null ? "—" : `${ai.deviation > 0 ? "+" : ""}${ai.deviation}%`} />
+        {ai.unallocated > 0 ? <Kpi label={tx.aiUnallocated} value={eur(ai.unallocated, lang)} /> : null}
+      </div>
+      <div className="small muted" style={{ marginTop: 8 }}>
+        {!ai.configured ? tx.aiOff : ai.actual === null ? tx.aiError : `${tx.aiUpdated(minutes)}`}
+      </div>
+    </div>
+  );
+}
+
+function ResetCode({ id, name, lang }: { id: string; name: string; lang: "en" | "fr" }) {
+  const tx = T[lang];
+  const [step, setStep] = useState<"idle" | "confirm" | "busy">("idle");
+  const [code, setCode] = useState<string | null>(null);
+  const run = async () => {
+    setStep("busy");
+    try {
+      setCode((await billingApi.adminResetCode(id)).code);
+    } catch (e) {
+      toast(errorText(e instanceof ApiError ? e.code : "internal_error", lang), "warn");
+    } finally {
+      setStep("idle");
+    }
+  };
+  if (code) return <CodeReveal code={code} title={tx.codeFor(name)} onDone={() => setCode(null)} />;
+  if (step === "idle")
+    return (
+      <button className="link-btn" style={{ marginTop: 8 }} onClick={() => setStep("confirm")}>
+        {tx.resetCode}
+      </button>
+    );
+  return (
+    <div className="code-box" style={{ marginTop: 8 }}>
+      <div className="small">{tx.resetConfirm}</div>
+      <div className="row">
+        <button className="btn sm gold" disabled={step === "busy"} onClick={run}>
+          {step === "busy" ? "…" : tx.resetYes}
+        </button>
+        <button className="btn sm ghost" disabled={step === "busy"} onClick={() => setStep("idle")}>
+          {tx.cancel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Customers({ d, lang }: { d: AdminOverview; lang: "en" | "fr" }) {
   const tx = T[lang];
   const rows = [...d.workspaces].sort((a, b) => (a.grossMargin ?? 999) - (b.grossMargin ?? 999));
   return (
     <>
-      <div className="small muted">{tx.estimate}</div>
+      <div className="small muted">
+        {tx.estimate}
+        {d.metrics.ai.source === "anthropic" ? ` ${tx.aiCalibrated}` : ""}
+      </div>
       {rows.map((w) => (
         <div key={w.id} className="card">
           <div className="row wrap" style={{ gap: 8 }}>
@@ -276,6 +367,7 @@ function Customers({ d, lang }: { d: AdminOverview; lang: "en" | "fr" }) {
           <div className="small muted" style={{ marginTop: 6 }}>
             {w.liveHours} {tx.liveH} · {w.aiRequests} {tx.aiReq} · IA {eur(w.costs.ai, lang)} · provider {eur(w.costs.provider, lang)} · LIVE {eur(w.costs.live, lang)} · fixe {eur(w.costs.fixed, lang)}
           </div>
+          {w.ownCode ? <ResetCode id={w.id} name={w.name} lang={lang} /> : null}
         </div>
       ))}
     </>

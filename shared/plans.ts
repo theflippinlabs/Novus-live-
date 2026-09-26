@@ -230,6 +230,8 @@ export interface CostAssumptions {
   per_1000_screenshots: number;
   /** Fixed monthly cost per paying workspace (support, hosting share…). */
   per_workspace_month: number;
+  /** EUR per US dollar, to convert the real Anthropic bill (billed in USD). */
+  usd_to_eur: number;
 }
 
 // AI defaults follow the published claude-opus-5 rates ($5 / $25 per 1M tokens), converted to EUR.
@@ -242,6 +244,7 @@ export const DEFAULT_COSTS: CostAssumptions = {
   per_storage_gb_month: 0.015,
   per_1000_screenshots: 0.02,
   per_workspace_month: 1,
+  usd_to_eur: 0.92,
 };
 
 export interface MarginThresholds {

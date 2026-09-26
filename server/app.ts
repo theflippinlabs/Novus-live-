@@ -20,6 +20,8 @@ import {
   changePlanSchema,
   leadSchema,
   adminConfigSchema,
+  recoverCompleteSchema,
+  recoverSchema,
   recordingSchema,
   sendChatSchema,
   settingsPatchSchema,
@@ -35,13 +37,16 @@ import { buildReportPdf } from "./reports/pdf";
 import { OWNER_TENANT } from "./persistence/Repository";
 import { BillingError, BillingService } from "./billing/Billing";
 import { MemoryBillingStore } from "./billing/Store";
-import { funnel, saasMetrics, workspaceEconomics } from "./billing/Metrics";
+import { aiCostSummary, funnel, saasMetrics, workspaceEconomics } from "./billing/Metrics";
+import { AnthropicCostReport } from "./billing/AnthropicCost";
+import { ResendMailer, type Mailer } from "./mail/Mailer";
+import { recoveryMail } from "./mail/templates";
 import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
 import { can, canSeeAccount, TeamError, TeamStore, type MemberInput, type Principal } from "./team/Team";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
-    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens" | "sessionSecret">>;
+    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens" | "sessionSecret" | "supportEmail">>;
   /** Single-space mode (tests, open access): every key opens these rooms. */
   rooms?: RoomRegistry;
   /** "Send in chat" through Euler Stream OAuth (optional). */
@@ -52,6 +57,10 @@ export interface AppDeps {
   billing?: BillingService;
   /** Build the space of a new self-serve workspace (signup). */
   provisionSpace?: (id: string) => Promise<Space>;
+  /** Transactional e-mail (lost founder code); off when not configured. */
+  mailer?: Mailer;
+  /** The real Anthropic bill for the admin dashboard; off when not configured. */
+  aiCost?: AnthropicCostReport;
 }
 
 /** One person's Novus: their own followed accounts, settings, history and "Send in chat" account. */
@@ -108,7 +117,7 @@ const mainOnly = (room: Room): Room => {
   return room;
 };
 
-export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace }: AppDeps) {
+export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace, mailer = new ResendMailer({}), aiCost = new AnthropicCostReport({}) }: AppDeps) {
   // The hashed app bundle currently served (e.g. "index-0YX36Sc8.js"): lets installed apps notice a new version.
   const build = (() => {
     try {
@@ -233,6 +242,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     if (detail.entry.startedAt < historyCutoff(req)) throw planLimit("history_retention");
     return detail;
   };
+  const setAuthCookie = (res: Response, value: string) =>
+    res.cookie(AUTH_COOKIE, value, { httpOnly: true, sameSite: "strict", secure: config.production, maxAge: 30 * 24 * 3600 * 1000, path: "/" });
   const billingError = (e: unknown) => (e instanceof BillingError ? new HttpError(e.status, e.code) : e);
   /** 402 with the reason, so the app can show the right upgrade prompt. */
   const planLimit = (code: string) => new HttpError(402, code);
@@ -337,6 +348,41 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
         path: "/",
       });
       return { ok: true };
+    }),
+  );
+
+  // Lost founder code: a one-time link by e-mail (when configured), else the support contact.
+  api.post(
+    "/auth/recover",
+    rateLimit("recover", 3),
+    h(async (req) => {
+      const { email, lang: asked } = parse(recoverSchema, req.body);
+      if (!mailer.enabled) return { email: false, support: config.supportEmail ?? null };
+      const origin = requestOrigin(req);
+      const lang = asked ?? (req.get("accept-language")?.toLowerCase().startsWith("fr") ? "fr" : "en");
+      // Same answer whether or not the e-mail has a workspace; sending happens in the background.
+      void billing
+        .startRecovery(email)
+        .then((found) =>
+          Promise.all(found.map(({ workspace, token }) => mailer.send({ to: email, ...recoveryMail({ lang, workspace: workspace.name, link: `${origin}/recover#${token}` }) }))),
+        )
+        .catch((e) => console.warn(`[auth] recovery e-mail failed: ${e instanceof Error ? e.message : e}`));
+      return { email: true, support: config.supportEmail ?? null };
+    }),
+  );
+  api.post(
+    "/auth/recover/complete",
+    rateLimit("recover-complete", 10),
+    h(async (req, res) => {
+      const { token } = parse(recoverCompleteSchema, req.body);
+      let done;
+      try {
+        done = await billing.completeRecovery(token);
+      } catch (e) {
+        throw billingError(e);
+      }
+      if (byId.has(done.workspace.id)) setAuthCookie(res, workspaceCookie(done.workspace.id, done.workspace.founderCodeHash!));
+      return { code: done.code, name: done.workspace.name };
     }),
   );
 
@@ -550,6 +596,21 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       return billing.me(space.id, { creators: space.rooms.settings.tiktokProfiles?.length ?? 0, seats: space.team.list().filter((m) => !m.disabled).length, isFounder: p.kind === "founder" });
     }),
   );
+  // The founder changes their own code: other devices are logged out, this one stays in.
+  api.post(
+    "/billing/founder-code",
+    h(async (req, res) => {
+      founderOnly(req);
+      let done;
+      try {
+        done = await billing.resetFounderCode(sp(req).id, "founder");
+      } catch (e) {
+        throw billingError(e);
+      }
+      setAuthCookie(res, workspaceCookie(done.workspace.id, done.workspace.founderCodeHash!));
+      return { code: done.code };
+    }),
+  );
   api.post(
     "/billing/checkout",
     h(async (req) => {
@@ -596,15 +657,31 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
         const s = byId.get(id);
         return { creators: s?.rooms.settings.tiktokProfiles?.length ?? 0, seats: s?.team.list().filter((m) => !m.disabled).length ?? 0 };
       };
-      const economics = workspaceEconomics(billing, sizes);
+      // AI cost: scale the metered estimate to the real Anthropic bill when it is connected.
+      const estimate = workspaceEconomics(billing, sizes).reduce((sum, w) => sum + w.costs.ai, 0);
+      const ai = aiCostSummary(billing, estimate, await aiCost.status());
+      const economics = workspaceEconomics(billing, sizes, Date.now(), ai.factor);
       const events = await billing.events(Date.now() - 200 * 24 * 3600 * 1000);
       return {
-        metrics: saasMetrics(billing, economics, events),
+        metrics: saasMetrics(billing, economics, events, Date.now(), ai.summary),
         workspaces: economics,
         funnel: funnel(billing, events.filter((e) => e.at >= Date.now() - 30 * 24 * 3600 * 1000)),
         leads: events.filter((e) => e.type === "enterprise_lead_detail").slice(-50).reverse().map((e) => ({ at: e.at, ...e.meta })),
         stripe: billing.stripeEnabled,
       };
+    }),
+  );
+  // A customer lost their code and could not recover it by e-mail: the admin checks who
+  // they are, then hands them this new code (shown once).
+  api.post(
+    "/admin/workspaces/:id/reset-code",
+    h(async (req) => {
+      adminOnly(req);
+      try {
+        return { code: (await billing.resetFounderCode(String(req.params.id), "admin")).code };
+      } catch (e) {
+        throw billingError(e);
+      }
     }),
   );
   api.get(

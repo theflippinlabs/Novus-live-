@@ -448,6 +448,8 @@ const ERRORS: Record<string, { en: string; fr: string }> = {
   internal_error: { en: "Server error — try again.", fr: "Erreur du serveur — réessaie." },
   plan_limit_creators: { en: "Your plan's creator limit is reached.", fr: "La limite de créateurs de votre offre est atteinte." },
   plan_limit_seats: { en: "Your plan's team seats are all used.", fr: "Toutes les places d'équipe de votre offre sont utilisées." },
+  recovery_invalid: { en: "This link has expired or was already used.", fr: "Ce lien a expiré ou a déjà servi." },
+  code_managed_by_server: { en: "This workspace's code is set on the server: it can't be changed here.", fr: "Le code de cet espace est défini sur le serveur : il ne peut pas être changé ici." },
   plan_limit_exports: { en: "This month's export allowance is used.", fr: "Le quota d'exports du mois est atteint." },
   history_retention: { en: "This LIVE is older than your plan's history window.", fr: "Ce LIVE est plus ancien que l'historique de votre offre." },
   workspace_restricted: { en: "Your workspace is read-only — reactivate your subscription.", fr: "Votre espace est en lecture seule — réactivez votre abonnement." },

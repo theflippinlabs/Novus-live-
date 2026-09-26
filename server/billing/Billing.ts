@@ -53,6 +53,9 @@ const FOUNDING_HOLD_MS = 45 * 60_000;
 const YEAR_MS = 365 * 24 * 3600 * 1000;
 
 export const hashFounderCode = (code: string) => createHash("sha256").update(code.trim()).digest("hex");
+const RECOVERY_TTL_MS = 30 * 60_000;
+const RECOVERY_RESEND_MS = 2 * 60_000;
+
 const newFounderCode = () => {
   const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
   let s = "";
@@ -163,6 +166,56 @@ export class BillingService {
     return found;
   }
 
+  // ---------------------------------------------------------------- founder code (lost / rotated)
+
+  /**
+   * New founder code for a self-serve workspace: the old code and every session opened with
+   * it stop working (sessions are signed over the code hash). Shown once to the caller.
+   */
+  async resetFounderCode(id: string, by: "founder" | "admin" | "recovery"): Promise<{ workspace: Workspace; code: string }> {
+    const ws = this.workspaces.get(id);
+    if (!ws) throw new BillingError("workspace_not_found", 404);
+    // Owner and tester spaces open with the server's own access codes (env), not a stored one.
+    if (!ws.founderCodeHash) throw new BillingError("code_managed_by_server", 409);
+    const code = newFounderCode();
+    ws.founderCodeHash = hashFounderCode(code);
+    delete ws.recoveryHash;
+    delete ws.recoveryExpiresAt;
+    await this.save(ws);
+    this.record({ type: "founder_code_reset", workspaceId: id, source: by });
+    return { workspace: ws, code };
+  }
+
+  /**
+   * One-time recovery tokens (valid 30 min) for the self-serve workspaces of this e-mail.
+   * At most one e-mail per workspace every 2 minutes. Unknown e-mails get nothing (and the
+   * caller answers the same way, so nobody learns which e-mails have a workspace).
+   */
+  async startRecovery(email: string): Promise<{ workspace: Workspace; token: string }[]> {
+    const now = this.now();
+    const out: { workspace: Workspace; token: string }[] = [];
+    for (const ws of this.all()) {
+      if (!ws.founderCodeHash || ws.ownerEmail !== email.trim().toLowerCase()) continue;
+      if (ws.recoverySentAt && now - ws.recoverySentAt < RECOVERY_RESEND_MS) continue;
+      const token = randomBytes(32).toString("base64url");
+      ws.recoveryHash = hashFounderCode(token);
+      ws.recoveryExpiresAt = now + RECOVERY_TTL_MS;
+      ws.recoverySentAt = now;
+      await this.save(ws);
+      this.record({ type: "founder_code_recovery_requested", workspaceId: ws.id });
+      out.push({ workspace: ws, token });
+    }
+    return out;
+  }
+
+  /** Redeem an e-mailed recovery token: a new founder code (the token works once). */
+  async completeRecovery(token: string): Promise<{ workspace: Workspace; code: string }> {
+    const h = hashFounderCode(token);
+    const ws = this.all().find((w) => w.recoveryHash && w.recoveryHash === h);
+    if (!ws || !ws.recoveryExpiresAt || ws.recoveryExpiresAt < this.now()) throw new BillingError("recovery_invalid", 400);
+    return this.resetFounderCode(ws.id, "recovery");
+  }
+
   effective(id: string): EffectiveEntitlements {
     const ws = this.workspaces.get(id);
     // A space without a billing record (tests, open access) keeps every feature.
@@ -208,6 +261,7 @@ export class BillingService {
       foundingUntil: ws?.foundingUntil,
       comped: !ws || ws.status === "comped",
       canManageBilling: opts.isFounder && Boolean(ws?.stripeCustomerId) && this.stripeEnabled,
+      ownCode: opts.isFounder && Boolean(ws?.founderCodeHash),
       entitlements: eff.entitlements,
       usage: this.usage(id),
       creators: opts.creators,
