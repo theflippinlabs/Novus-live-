@@ -35,14 +35,18 @@ const TEXT = {
     emptyGroup: "Empty — pick this group next to an account below.",
     liveNotRecorded: "LIVE · NOT RECORDED",
     paused: "PAUSED · PLAN LIMIT",
-    auto: "AUTO",
-    manual: "MANUAL",
+    auto: "AUTO RECORDING",
+    manual: "MANUAL RECORDING",
+    recording: "Recording",
+    allManual: "All manual",
+    allAuto: "All automatic",
+    counts: (a: number, m: number) => `${a} automatic · ${m} manual`,
     modeTitle: (u: string, manual: boolean) =>
       manual
         ? `@${u}: manual — each LIVE is detected, recorded only when you start it. Tap for automatic.`
         : `@${u}: automatic — every LIVE is recorded, app open or not. Tap for manual.`,
     modesHint:
-      "AUTO records every LIVE of the account from start to end, even with the app closed. MANUAL only detects the LIVE: you start the recording yourself from the LIVE screen.",
+      "AUTO RECORDING records (and moderates with AI) every LIVE of the account from start to end, even with the app closed. MANUAL RECORDING only detects the LIVE, at no AI cost: you start the recording yourself from the LIVE screen when it's worth it.",
   },
   fr: {
     title: "Comptes TikTok suivis",
@@ -73,14 +77,18 @@ const TEXT = {
     emptyGroup: "Vide — choisis ce groupe à côté d'un compte ci-dessous.",
     liveNotRecorded: "EN LIVE · NON ENREGISTRÉ",
     paused: "EN PAUSE · LIMITE DE L'OFFRE",
-    auto: "AUTO",
-    manual: "MANUEL",
+    auto: "ENREG. AUTO",
+    manual: "ENREG. MANUEL",
+    recording: "Enregistrement",
+    allManual: "Tout en manuel",
+    allAuto: "Tout en auto",
+    counts: (a: number, m: number) => `${a} en auto · ${m} en manuel`,
     modeTitle: (u: string, manual: boolean) =>
       manual
         ? `@${u} : manuel — chaque LIVE est détecté, enregistré seulement quand tu le lances. Touche pour passer en automatique.`
         : `@${u} : automatique — chaque LIVE est enregistré, appli ouverte ou non. Touche pour passer en manuel.`,
     modesHint:
-      "AUTO enregistre chaque LIVE du compte du début à la fin, même appli fermée. MANUEL détecte seulement le LIVE : tu lances l'enregistrement toi-même depuis l'écran du LIVE.",
+      "ENREG. AUTO enregistre (et modère avec l'IA) chaque LIVE du compte du début à la fin, même appli fermée. ENREG. MANUEL détecte seulement le LIVE, sans coût IA : tu lances l'enregistrement toi-même depuis l'écran du LIVE quand ça vaut le coup.",
   },
 };
 
@@ -209,6 +217,18 @@ export function TikTokProfiles() {
       });
     });
 
+  /** Every account shown here in manual (or automatic) recording at once. */
+  const setAllManual = (manual: boolean) =>
+    run(async () => {
+      const shown = new Set(profiles.map((p) => p.toLowerCase()));
+      const others = manualList.filter((u) => !shown.has(u));
+      setState({
+        settings: await api.saveSettings({ tiktokManual: manual ? [...others, ...shown] : others }),
+        rooms: (await api.rooms()).rooms,
+      });
+    });
+  const manualCount = profiles.filter((p) => isManual(p)).length;
+
   const groupOf = (username: string) =>
     groups.find((g) => g.members.includes(username.toLowerCase()))?.id ?? "";
 
@@ -313,7 +333,28 @@ export function TikTokProfiles() {
       </div>
       {profiles.length === 0 ? (
         <div className="small muted">{tx.empty}</div>
-      ) : null}
+      ) : (
+        <div className="rec-bulk">
+          <span className="small muted">
+            {tx.recording} · {tx.counts(profiles.length - manualCount, manualCount)}
+          </span>
+          <span className="spacer" />
+          <button
+            className="btn sm ghost"
+            onClick={() => void setAllManual(true)}
+            disabled={busy || !canManage || manualCount === profiles.length}
+          >
+            ✋ {tx.allManual}
+          </button>
+          <button
+            className="btn sm ghost"
+            onClick={() => void setAllManual(false)}
+            disabled={busy || !canManage || manualCount === 0}
+          >
+            ⟳ {tx.allAuto}
+          </button>
+        </div>
+      )}
       {byGroup.map(({ g, list }) => (
         <div key={g.id} className="group-block">
           <div className="group-head">

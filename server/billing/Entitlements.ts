@@ -35,7 +35,7 @@ export const monthKey = (t: number) => new Date(t).toISOString().slice(0, 7);
 
 export function effectiveEntitlements(ws: Workspace, cfg: BillingConfig, now = Date.now()): EffectiveEntitlements {
   const plan = cfg.plans[ws.plan];
-  const full = plan.entitlements;
+  const full = ws.limits ? { ...plan.entitlements, ...ws.limits } : plan.entitlements;
   const month = monthKey(now);
   switch (ws.status) {
     case "comped":

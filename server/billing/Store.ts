@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { BillingCycle, PlanId } from "../../shared/plans";
+import type { BillingCycle, Entitlements, PlanId } from "../../shared/plans";
 import type { WorkspaceStatus } from "../../shared/types";
 
 /*
@@ -36,6 +36,8 @@ export interface Workspace {
   pastDueSince?: number;
   paidSince?: number;
   canceledAt?: number;
+  /** Per-workspace allowances set by the admin (e.g. a tester space), merged over the plan's. */
+  limits?: Partial<Entitlements>;
   createdAt: number;
   updatedAt: number;
 }

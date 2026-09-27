@@ -3070,3 +3070,11 @@ main.view {
   align-items: center;
   gap: 10px;
 }
+
+.rec-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 8px;
+}
