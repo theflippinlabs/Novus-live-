@@ -569,6 +569,31 @@ export interface StatsInsights {
   trend: { sessionId: string; startedAt: number; peakViewers: number; messages: number; diamonds: number; alerts: number; current: boolean }[];
 }
 
+/** One donor across the space's LIVEs (donor directory). */
+export interface DonorSummary {
+  viewer: ViewerRef;
+  diamonds: number;
+  gifts: number;
+  /** Number of LIVEs where this viewer sent at least one gift. */
+  lives: number;
+  avgDiamondsPerLive: number;
+  /** Share of all the diamonds of the period (%). */
+  share: number;
+  /** Followed accounts (rooms) this viewer gifted in, biggest first. */
+  rooms: { account: string | null; diamonds: number; gifts: number; lives: number }[];
+  byGift: { name: string; count: number; diamonds: number }[];
+  favoriteGift: { name: string; count: number } | null;
+  firstAt: number;
+  lastAt: number;
+}
+
+export interface DonorDirectory {
+  totals: { donors: number; diamonds: number; gifts: number; lives: number };
+  donors: DonorSummary[];
+  /** Followed accounts present in the period, for the room filter. */
+  accounts: string[];
+}
+
 /** A saved chat line, for history exports. */
 export interface ChatLine {
   t: number;

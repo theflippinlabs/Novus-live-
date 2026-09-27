@@ -3057,3 +3057,16 @@ main.view {
 .moment-dot.quiet {
   background: var(--text-3);
 }
+
+/* ---------------------------------------------------------------- Stats: donors */
+.donor-room {
+  width: auto;
+  max-width: 55%;
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+.donor-row {
+  align-items: center;
+  gap: 10px;
+}

@@ -2,6 +2,7 @@ import type { PushPrefs } from "./push";
 import type {
   CoachTip,
   StatsInsights,
+  DonorDirectory,
   CopilotTurn,
   ActionRecord,
   ActionType,
@@ -122,6 +123,7 @@ export const api = {
   markAnswered: (id: string, answered: boolean) => request<{ ok: boolean }>("POST", `/assistant/questions/${encodeURIComponent(id)}/answered`, { answered }),
 
   analytics: () => request<AnalyticsSummary>("GET", "/analytics"),
+  donors: (days: number, account: string) => request<DonorDirectory>("GET", `/donors?days=${days}${account ? `&account=${encodeURIComponent(account)}` : ""}`),
   insights: () => request<StatsInsights>("GET", "/analytics/insights"),
   historyInsights: (id: string) => request<StatsInsights>("GET", `/history/${encodeURIComponent(id)}/insights`),
   askStats: (question: string, history: CopilotTurn[], sessionId: string | undefined, lang: "en" | "fr") => request<{ text: string }>("POST", "/analytics/ask", { question, history, sessionId, lang }),

@@ -50,6 +50,7 @@ import { AnthropicCostReport } from "./billing/AnthropicCost";
 import { ResendMailer, type Mailer } from "./mail/Mailer";
 import { recoveryMail } from "./mail/templates";
 import { deriveInsights } from "./analytics/insights";
+import { buildDonors, donorsCsv } from "./analytics/donors";
 import { DEFAULT_PREFS, type PushOwner, type PushService } from "./push/Push";
 import { testMessage } from "./push/messages";
 import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
@@ -1084,6 +1085,32 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
         incidents: (summary.incidents ?? []).slice(0, 12).map((i) => ({ t: new Date(i.t).toISOString().slice(11, 16), handle: i.username, severity: i.severity, text: i.text.slice(0, 120) })),
       });
       return copilotCall(req, () => roomIn(req).runtime.askAbout(context, question, history, lang ?? sp(req).rooms.settings.language));
+    }),
+  );
+
+  // ---------------------------------------------------------------- donor directory
+  /** Donors of the period (7 / 30 days or everything the plan's history keeps), optionally one room. */
+  const donorsFor = async (req: Request) => {
+    need(req, "history");
+    const days = Number(req.query.days);
+    const since = Math.max(historyCutoff(req), days > 0 && days <= 3650 ? Date.now() - days * 24 * 3600 * 1000 : 0);
+    const account = typeof req.query.account === "string" && /^[\w.]{1,64}$/.test(req.query.account) ? req.query.account.toLowerCase() : null;
+    const p = principal(req);
+    // Members only see the rooms of their own streamers.
+    const rows = (await sp(req).rooms.main.runtime.repository.giftLedger(since || undefined)).filter((r) => canSeeAccount(p, r.account ?? undefined) && (!account || r.account === account));
+    return buildDonors(rows);
+  };
+  api.get("/donors", h(async (req) => donorsFor(req)));
+  api.get(
+    "/donors.csv",
+    rateLimit("pdf", 20),
+    h(async (req, res) => {
+      const dir = await donorsFor(req);
+      useExport(req);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="novus-live-donateurs-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send(donorsCsv(dir, langOf(req), timeZone));
     }),
   );
 

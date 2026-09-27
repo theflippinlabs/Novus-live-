@@ -69,9 +69,25 @@ export interface Repository {
   getReports(sessionIds: string[]): Promise<StreamReport[]>;
   /** Saved chat of a session, oldest first. */
   getChat(sessionId: string, limit: number): Promise<ChatLine[]>;
+  /** Gifts per donor, LIVE, followed account and gift type (donor directory; demos excluded). */
+  giftLedger(sinceMs?: number): Promise<GiftLedgerRow[]>;
   /** Server-only secrets (e.g. the chat sender's OAuth tokens). Never sent to the browser. */
   loadSecret(id: string): Promise<unknown | null>;
   saveSecret(id: string, value: unknown | null): Promise<void>;
+}
+
+export interface GiftLedgerRow {
+  viewerId: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  account: string | null;
+  sessionId: string;
+  giftName: string;
+  gifts: number;
+  diamonds: number;
+  firstAt: number;
+  lastAt: number;
 }
 
 export function emptyBatch(): PersistBatch {

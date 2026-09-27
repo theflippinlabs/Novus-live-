@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
-import { OWNER_TENANT, type PersistBatch, type Repository, type SessionFilter } from "./Repository";
+import { OWNER_TENANT, type GiftLedgerRow, type PersistBatch, type Repository, type SessionFilter } from "./Repository";
 
 // Supabase/Postgres store. Uses the service-role key, which is only ever read
 // on the server (SUPABASE_SERVICE_ROLE_KEY) — it is never sent to the browser.
@@ -36,6 +36,24 @@ export class SupabaseRepository implements Repository {
 
   async init(): Promise<void> {
     await this.check(this.db.from("settings").select("id").limit(1), "init");
+  }
+
+  async giftLedger(sinceMs?: number): Promise<GiftLedgerRow[]> {
+    type Row = { viewer_id: string; username: string | null; display_name: string | null; avatar_url: string | null; account: string | null; session_id: string; gift_name: string; gifts: number; diamonds: number; first_at: string; last_at: string };
+    const rows = await this.check<Row[]>(this.db.rpc("gift_ledger", { p_tenant: this.tenant, p_since: sinceMs ? new Date(sinceMs).toISOString() : null }).limit(50_000), "giftLedger");
+    return (rows ?? []).map((r) => ({
+      viewerId: r.viewer_id,
+      username: r.username ?? r.viewer_id,
+      displayName: r.display_name ?? undefined,
+      avatarUrl: r.avatar_url ?? undefined,
+      account: r.account,
+      sessionId: r.session_id,
+      giftName: r.gift_name,
+      gifts: Number(r.gifts),
+      diamonds: Number(r.diamonds),
+      firstAt: Date.parse(r.first_at),
+      lastAt: Date.parse(r.last_at),
+    }));
   }
 
   async loadSecret(id: string): Promise<unknown | null> {
