@@ -110,6 +110,14 @@ export interface RuntimeDeps {
   log?: (msg: string) => void;
   /** TikTok account this runtime's room follows: stamped on every session it records. */
   account?: string;
+  /** Moments worth a push notification (a LIVE starting or ending, a new critical alert). */
+  events?: RuntimeEvents;
+}
+
+export interface RuntimeEvents {
+  liveStarted?(session: LiveSessionInfo): void;
+  liveEnded?(session: LiveSessionInfo, report: StreamReport): void;
+  criticalAlert?(alert: ModerationAlert): void;
 }
 
 export class NovusRuntime {
@@ -120,6 +128,7 @@ export class NovusRuntime {
   private commentIndex = new Map<string, AnalyzedComment>();
   private viewers = new Map<string, ViewerState>();
   private alerts = new Map<string, ModerationAlert>();
+  private notifiedCritical = new Set<string>();
   private openAlertByViewer = new Map<string, string>();
   private coordinatedAlertByFp = new Map<string, string>();
   private actions: ActionRecord[] = [];
@@ -197,6 +206,7 @@ export class NovusRuntime {
     this.commentIndex.clear();
     this.viewers.clear();
     this.alerts.clear();
+    this.notifiedCritical.clear();
     this.openAlertByViewer.clear();
     this.coordinatedAlertByFp.clear();
     this.actions = [];
@@ -229,6 +239,7 @@ export class NovusRuntime {
     };
     await this.deps.repo.saveSession(this.session).catch((e) => this.persistError(e));
     this.deps.hub?.pushExtras({ reset: true, session: this.session });
+    this.fire(() => this.deps.events?.liveStarted?.(this.session!));
     return this.session;
   }
 
@@ -241,6 +252,8 @@ export class NovusRuntime {
     const report = this.report();
     await this.deps.repo.saveReport(report).catch((e) => this.persistError(e));
     this.deps.hub?.pushExtras({ session: this.session });
+    const ended = this.session;
+    this.fire(() => this.deps.events?.liveEnded?.(ended, report));
     return report;
   }
 
@@ -553,6 +566,20 @@ export class NovusRuntime {
     }
     this.pending.alerts.push(alert);
     this.deps.hub?.pushAlert(alert);
+    // Once per alert: when it is created critical, or escalates to critical (AI review).
+    if (alert.severity === "critical" && alert.status === "open" && !this.notifiedCritical.has(alert.id)) {
+      this.notifiedCritical.add(alert.id);
+      this.fire(() => this.deps.events?.criticalAlert?.(alert));
+    }
+  }
+
+  /** Notification hooks never disturb moderation. */
+  private fire(fn: () => void): void {
+    try {
+      fn();
+    } catch (e) {
+      this.deps.log?.(`[runtime] event hook failed: ${e instanceof Error ? e.message : e}`);
+    }
   }
 
   // ---------------------------------------------------------------- stage 2

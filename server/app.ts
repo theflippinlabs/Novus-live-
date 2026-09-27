@@ -24,6 +24,9 @@ import {
   copilotReplySchema,
   copilotSendSchema,
   profileSchema,
+  pushEndpointSchema,
+  pushPrefsUpdateSchema,
+  pushSubscribeSchema,
   recoverCompleteSchema,
   recoverSchema,
   recordingSchema,
@@ -45,6 +48,8 @@ import { aiCostSummary, funnel, saasMetrics, workspaceEconomics } from "./billin
 import { AnthropicCostReport } from "./billing/AnthropicCost";
 import { ResendMailer, type Mailer } from "./mail/Mailer";
 import { recoveryMail } from "./mail/templates";
+import { DEFAULT_PREFS, type PushOwner, type PushService } from "./push/Push";
+import { testMessage } from "./push/messages";
 import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
 import { can, canSeeAccount, TeamError, TeamStore, type MemberInput, type Principal } from "./team/Team";
 
@@ -65,6 +70,8 @@ export interface AppDeps {
   mailer?: Mailer;
   /** The real Anthropic bill for the admin dashboard; off when not configured. */
   aiCost?: AnthropicCostReport;
+  /** Web push notifications (LIVE started, critical alerts, LIVE summary). */
+  push?: PushService;
 }
 
 /** One person's Novus: their own followed accounts, settings, history and "Send in chat" account. */
@@ -121,7 +128,7 @@ const mainOnly = (room: Room): Room => {
   return room;
 };
 
-export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace, mailer = new ResendMailer({}), aiCost = new AnthropicCostReport({}) }: AppDeps) {
+export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace, mailer = new ResendMailer({}), aiCost = new AnthropicCostReport({}), push }: AppDeps) {
   // The hashed app bundle currently served (e.g. "index-0YX36Sc8.js"): lets installed apps notice a new version.
   const build = (() => {
     try {
@@ -860,6 +867,69 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const record = await runtime.actOnViewer(param(req, "id"), action as ActionType, note);
       if (!record) throw new HttpError(404, "viewer_not_found");
       return { record, profile: runtime.viewerProfile(param(req, "id")) };
+    }),
+  );
+
+  // ---------------------------------------------------------------- push notifications
+  /** A device belongs to whoever turned notifications on: the founder or one team member. */
+  const pushOwner = (req: Request): PushOwner => {
+    const p = principal(req);
+    return p.kind === "founder" ? { kind: "founder" } : { kind: "member", id: p.member.id };
+  };
+  const needPush = () => {
+    if (!push?.publicKey) throw new HttpError(503, "push_unavailable");
+    return push;
+  };
+  // Members only get what they may see: their own streamers, alerts only with "moderate".
+  push?.setAudience((spaceId, owner, msg) => {
+    if (owner.kind === "founder") return true;
+    const member = byId.get(spaceId)?.team.get(owner.id);
+    if (!member || member.disabled) return false;
+    const p: Principal = { kind: "member", spaceId, member };
+    if (msg.kind === "alerts" && !can(p, "moderate")) return false;
+    return canSeeAccount(p, msg.account);
+  });
+  api.get("/push/config", h(() => ({ publicKey: push?.publicKey ?? null })));
+  api.post(
+    "/push/subscribe",
+    rateLimit("push", 20),
+    h(async (req) => {
+      const { subscription, prefs } = parse(pushSubscribeSchema, req.body);
+      const entry = await needPush().subscribe(sp(req).id, pushOwner(req), subscription, prefs ?? DEFAULT_PREFS);
+      return { subscribed: true, prefs: entry.prefs };
+    }),
+  );
+  api.post(
+    "/push/status",
+    h(async (req) => {
+      const { endpoint } = parse(pushEndpointSchema, req.body);
+      const found = await needPush().find(sp(req).id, endpoint);
+      return { subscribed: Boolean(found), prefs: found?.prefs ?? DEFAULT_PREFS };
+    }),
+  );
+  api.put(
+    "/push/prefs",
+    h(async (req) => {
+      const { endpoint, prefs } = parse(pushPrefsUpdateSchema, req.body);
+      if (!(await needPush().setPrefs(sp(req).id, endpoint, prefs))) throw new HttpError(404, "push_not_subscribed");
+      return { prefs };
+    }),
+  );
+  api.post(
+    "/push/unsubscribe",
+    h(async (req) => {
+      const { endpoint } = parse(pushEndpointSchema, req.body);
+      await needPush().unsubscribe(sp(req).id, endpoint);
+      return { subscribed: false };
+    }),
+  );
+  api.post(
+    "/push/test",
+    rateLimit("push-test", 5),
+    h(async (req) => {
+      const { endpoint } = parse(pushEndpointSchema, req.body);
+      if (!(await needPush().sendTo(sp(req).id, endpoint, testMessage(sp(req).rooms.settings.language)))) throw new HttpError(502, "push_failed");
+      return { sent: true };
     }),
   );
 

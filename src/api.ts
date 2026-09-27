@@ -1,3 +1,4 @@
+import type { PushPrefs } from "./push";
 import type {
   CoachTip,
   CopilotTurn,
@@ -106,6 +107,12 @@ export const api = {
     request<{ record: ActionRecord; profile: ViewerProfile }>("POST", `/viewers/${encodeURIComponent(id)}/action`, { action }),
 
   pulse: () => request<ChatPulse>("GET", "/assistant/pulse"),
+  pushConfig: () => request<{ publicKey: string | null }>("GET", "/push/config"),
+  pushSubscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }, prefs: PushPrefs) => request<{ subscribed: boolean; prefs: PushPrefs }>("POST", "/push/subscribe", { subscription, prefs }),
+  pushStatus: (endpoint: string) => request<{ subscribed: boolean; prefs: PushPrefs }>("POST", "/push/status", { endpoint }),
+  pushPrefs: (endpoint: string, prefs: PushPrefs) => request<{ prefs: PushPrefs }>("PUT", "/push/prefs", { endpoint, prefs }),
+  pushUnsubscribe: (endpoint: string) => request<{ subscribed: boolean }>("POST", "/push/unsubscribe", { endpoint }),
+  pushTest: (endpoint: string) => request<{ sent: boolean }>("POST", "/push/test", { endpoint }),
   coach: (lang: "en" | "fr") => request<{ tips: CoachTip[] }>("GET", `/assistant/coach?lang=${lang}`),
   askCopilot: (question: string, history: CopilotTurn[], lang: "en" | "fr") => request<{ text: string }>("POST", "/assistant/ask", { question, history, lang }),
   draftMessage: (b: { kind: "question" | "thanks" | "welcome" | "revive"; questionId?: string; viewerId?: string }, lang: "en" | "fr") => request<{ text: string }>("POST", "/assistant/draft", { ...b, lang }),

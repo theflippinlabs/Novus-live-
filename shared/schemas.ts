@@ -206,6 +206,30 @@ export const copilotReplySchema = z
   .strict();
 export const copilotSendSchema = z.object({ text: z.string().trim().min(1).max(150) }).strict();
 
+// Only real browser push services (the server posts to this URL).
+const PUSH_HOSTS = [/(^|\.)push\.apple\.com$/, /^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /(^|\.)push\.services\.mozilla\.com$/, /\.notify\.windows\.com$/];
+const pushEndpoint = z
+  .string()
+  .max(1000)
+  .url()
+  .refine((u) => {
+    try {
+      const url = new URL(u);
+      return url.protocol === "https:" && PUSH_HOSTS.some((re) => re.test(url.hostname));
+    } catch {
+      return false;
+    }
+  }, "unsupported push service");
+export const pushPrefsSchema = z.object({ live: z.boolean(), alerts: z.boolean(), summary: z.boolean() }).strict();
+export const pushSubscribeSchema = z
+  .object({
+    subscription: z.object({ endpoint: pushEndpoint, keys: z.object({ p256dh: z.string().min(10).max(200), auth: z.string().min(8).max(100) }) }),
+    prefs: pushPrefsSchema.optional(),
+  })
+  .strict();
+export const pushEndpointSchema = z.object({ endpoint: pushEndpoint }).strict();
+export const pushPrefsUpdateSchema = z.object({ endpoint: pushEndpoint, prefs: pushPrefsSchema }).strict();
+
 export const profileSchema = z.object({ name: z.string().trim().min(2).max(60) }).strict();
 
 export const recoverSchema = z.object({ email: z.string().trim().max(120).email(), lang: z.enum(["en", "fr"]).optional() }).strict();

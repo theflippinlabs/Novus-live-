@@ -8,7 +8,8 @@ import { getState, navigate, openSettings, setState, toast, useStore, type Setti
 import { TikTokIntegration } from "./TikTokIntegration";
 import { TeamSection } from "../components/TeamSection";
 import { ChangeFounderCode } from "../components/FounderCode";
-import { IconBack, IconCard, IconChart, IconChevron, IconGlobe, IconList, IconLive, IconLogout, IconShield, IconSpark, IconUser, IconUsers } from "../components/Icons";
+import { NotificationsSettings } from "../components/NotificationsSettings";
+import { IconBack, IconBell, IconCard, IconChart, IconChevron, IconGlobe, IconList, IconLive, IconLogout, IconShield, IconSpark, IconUser, IconUsers } from "../components/Icons";
 import { billingApi, PLAN_NAMES, refreshBilling } from "../billing";
 import { PERM_LABEL, ROLE_LABEL, useCan, useIsFounder } from "../permissions";
 import { BillingSection } from "../components/BillingSection";
@@ -99,6 +100,7 @@ function ThresholdEditor({ initial }: { initial: Thresholds }) {
 type Lang = "en" | "fr";
 const PAGE_TITLE: Record<SettingsPage, Record<Lang, string>> = {
   profile: { en: "Profile", fr: "Profil" },
+  notifications: { en: "Notifications", fr: "Notifications" },
   billing: { en: "Subscription", fr: "Abonnement" },
   team: { en: "Team", fr: "Équipe" },
   moderation: { en: "Sensitivity & detection", fr: "Sensibilité & détection" },
@@ -174,6 +176,7 @@ function SettingsMenu() {
       <div className="menu-group-title">{fr ? "Compte" : "Account"}</div>
       <div className="menu-group">
         <MenuRow icon={<IconUser {...icon} />} label={PAGE_TITLE.profile[lang]} detail={fr ? "Nom, e-mail, code d'accès" : "Name, e-mail, access code"} onClick={() => openSettings("profile")} />
+        <MenuRow icon={<IconBell {...icon} />} label={PAGE_TITLE.notifications[lang]} detail={fr ? "LIVE, alertes critiques, résumés" : "LIVEs, critical alerts, summaries"} onClick={() => openSettings("notifications")} />
         {isFounder ? <MenuRow icon={<IconCard {...icon} />} label={PAGE_TITLE.billing[lang]} detail={[id.plan, statusText].filter(Boolean).join(" · ")} onClick={() => openSettings("billing")} /> : null}
         {teamEnabled && canTeam ? <MenuRow icon={<IconUsers {...icon} />} label={PAGE_TITLE.team[lang]} detail={fr ? "Membres et autorisations" : "Members and permissions"} onClick={() => openSettings("team")} /> : null}
         {isAdmin ? <MenuRow icon={<IconChart {...icon} />} label={fr ? "Tableau de bord admin" : "Admin dashboard"} detail={fr ? "Clients, revenus, coûts" : "Customers, revenue, costs"} onClick={() => navigate("admin")} /> : null}
@@ -480,6 +483,7 @@ export function SettingsView() {
   const allowed =
     page === null ||
     page === "profile" ||
+    page === "notifications" ||
     page === "tiktok" ||
     page === "app" ||
     (page === "billing" && isFounder) ||
@@ -500,6 +504,7 @@ export function SettingsView() {
               <h2 className="subpage-title">{PAGE_TITLE[shown][lang]}</h2>
             </div>
             {shown === "profile" ? <ProfilePage /> : null}
+            {shown === "notifications" ? <NotificationsSettings /> : null}
             {shown === "billing" ? <BillingSection /> : null}
             {shown === "team" ? <TeamSection /> : null}
             {shown === "moderation" ? <ModerationPage /> : null}

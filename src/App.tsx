@@ -8,7 +8,8 @@ import { ViewerSheet } from "./components/ViewerSheet";
 import { useT } from "./i18n";
 import { handleChatSenderReturn, refreshChatSender } from "./chatSender";
 import { loadMe } from "./permissions";
-import { connectRealtime, openSettings, useStore } from "./store";
+import { connectRealtime, navigate, openSettings, switchRoom, useStore, type View } from "./store";
+import { markNotificationsSeen } from "./push";
 import { refreshBilling, showUpgrade } from "./billing";
 import { BillingBanner, UpgradeSheet } from "./components/BillingSection";
 import { AdminView } from "./views/AdminView";
@@ -61,6 +62,19 @@ function Login({ onDone }: { onDone: () => void }) {
       </a>
     </div>
   );
+}
+
+const VIEWS: View[] = ["live", "alerts", "viewers", "assistant", "analytics", "settings"];
+
+/** Open the screen (and TikTok room) a link or notification points to: /?view=alerts&room=tt:x */
+function openFromUrl(href: string): void {
+  const params = new URL(href, location.origin).searchParams;
+  const view = params.get("view");
+  const room = params.get("room");
+  if (room && /^(main|tt:[\w.]{1,64})$/.test(room)) switchRoom(room);
+  if (view === "billing") openSettings("billing");
+  else if (view === "settings") openSettings(null);
+  else if (view && (VIEWS as string[]).includes(view)) navigate(view as View);
 }
 
 function Shell() {
@@ -123,18 +137,28 @@ function AppAuthed() {
     void loadMe();
     void refreshBilling();
     setPlanLimitHandler(showUpgrade);
-    // Back from the billing portal or a plan change.
-    if (new URLSearchParams(location.search).get("view") === "billing") {
-      openSettings("billing");
+    // Back from the billing portal or a plan change, or opened from a notification.
+    if (new URLSearchParams(location.search).get("view")) {
+      openFromUrl(location.href);
       history.replaceState(null, "", "/");
     }
+    markNotificationsSeen();
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       void refreshChatSender();
       void refreshBilling();
+      markNotificationsSeen();
+    };
+    // A notification tapped while the app was already open.
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "novus:open" && typeof e.data.url === "string") openFromUrl(e.data.url);
     };
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      navigator.serviceWorker?.removeEventListener("message", onMessage);
+    };
   }, [auth]);
 
   if (auth === "checking") return null;

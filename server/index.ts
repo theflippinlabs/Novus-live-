@@ -9,7 +9,9 @@ import { AnthropicCostReport } from "./billing/AnthropicCost";
 import { ResendMailer } from "./mail/Mailer";
 import { MemoryBillingStore, SupabaseBillingStore, type BillingStore } from "./billing/Store";
 import { AnthropicProvider } from "./ai/AnthropicProvider";
-import { NovusRuntime } from "./core/NovusRuntime";
+import { NovusRuntime, type RuntimeEvents } from "./core/NovusRuntime";
+import { AlertThrottle, PushService } from "./push/Push";
+import { criticalAlertMessage, liveEndedMessage, liveStartedMessage } from "./push/messages";
 import { MemoryRepository } from "./persistence/MemoryRepository";
 import { OWNER_TENANT, type Repository } from "./persistence/Repository";
 import type { LiveEvent } from "../shared/types";
@@ -52,6 +54,16 @@ async function main() {
   }
   billing.start();
 
+  // ---------------------------------------------------------------- push notifications
+  const push = new PushService({
+    serverRepo: repo.scoped(OWNER_TENANT),
+    spaceRepo: (tenant) => repo.scoped(tenant),
+    subject: config.publicUrl ?? (config.supportEmail ? `mailto:${config.supportEmail}` : "https://novus-live-production.up.railway.app"),
+    log: (m) => console.warn(m),
+  });
+  await push.init().catch((e) => console.error(`[novus] push notifications unavailable: ${e instanceof Error ? e.message : e}`));
+  const alertThrottle = new AlertThrottle();
+
   const aiQueueOptions = { batchSize: config.aiBatchSize, flushMs: 1200, maxCallsPerMinute: config.aiMaxCallsPerMinute, maxQueue: 64 };
 
   /**
@@ -77,7 +89,21 @@ async function main() {
         if (!runtime) return {};
         return { stats: runtime.stats(), ai: runtime.aiQueue.status(), demo: mock?.status(), tiktok: tiktok.status() };
       });
-      runtime = new NovusRuntime({ repo: spaceRepo, ai: spaceAi, tiktok, mock, hub, aiQueueOptions, account });
+      // Push notifications for followed TikTok accounts (not for the demo room).
+      const lang = () => runtime?.settings.language ?? "fr";
+      const notify = (msg: Parameters<typeof push.notify>[1]) =>
+        void push.notify(tenant, msg).catch((e) => console.warn(`[push] ${e instanceof Error ? e.message : e}`));
+      const events: RuntimeEvents | undefined = account
+        ? {
+            liveStarted: () => notify(liveStartedMessage(account, lang())),
+            liveEnded: (session, report) => notify(liveEndedMessage(account, session, report, lang())),
+            criticalAlert: (alert) => {
+              const grouped = alertThrottle.take(`${tenant}:${account}`);
+              if (grouped) notify(criticalAlertMessage(account, alert, grouped, lang()));
+            },
+          }
+        : undefined;
+      runtime = new NovusRuntime({ repo: spaceRepo, ai: spaceAi, tiktok, mock, hub, aiQueueOptions, account, events });
       await runtime.init();
       hub.start();
       return { runtime, hub };
@@ -237,6 +263,7 @@ async function main() {
     billing,
     mailer,
     aiCost,
+    push,
     provisionSpace: async (id) => {
       const space = await buildSpace(id);
       byTenant.set(id, space);

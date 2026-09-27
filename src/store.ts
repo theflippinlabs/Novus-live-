@@ -24,7 +24,7 @@ import type {
 
 export type View = "live" | "alerts" | "viewers" | "assistant" | "analytics" | "settings" | "admin";
 /** A sub-page of Settings (null = the menu). */
-export type SettingsPage = "profile" | "billing" | "team" | "moderation" | "lists" | "ai" | "tiktok" | "app";
+export type SettingsPage = "profile" | "notifications" | "billing" | "team" | "moderation" | "lists" | "ai" | "tiktok" | "app";
 export type Connection = "connecting" | "live" | "reconnecting" | "unauthorized";
 
 const MAX_CHAT = 1500;
