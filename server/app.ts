@@ -1176,7 +1176,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const pdf = await buildReportPdf({
         entry: detail.entry,
         analytics: detail.analytics,
-        chat: await sp(req).history.chat(id),
+        // The chat has its own download (chat.pdf / chat.txt): not repeated in the report.
+        chat: [],
         lang: langOf(req),
         timeZone,
         logo: reportLogo(),
