@@ -4,6 +4,8 @@ import { api, ApiError } from "../api";
 import { Avatar, Segmented } from "../components/ui";
 import { useCan } from "../permissions";
 import { nicknameOf } from "../viewerName";
+import { canSpeak, speak, stopSpeaking, useDictation } from "../voice";
+import { IconMic, IconSpeaker, IconSpeakerOff } from "../components/Icons";
 import { LineChart } from "../components/Charts";
 import { errorText, tr, useLang, useT } from "../i18n";
 import { ago, compact, hm } from "../format";
@@ -352,6 +354,15 @@ const CX = {
     chips: ["Sum up the last 10 minutes", "Who should I keep an eye on?", "What is the chat asking for?", "How do I boost engagement now?", "Who are my best supporters?"],
     aiOff: "The AI copilot isn't available (AI not configured on the server). The priorities above keep working.",
     you: "You",
+    mic: "Speak",
+    micStop: "Stop",
+    listening: "Listening…",
+    voiceOn: "Read answers aloud",
+    voiceOff: "Answers read aloud: off",
+    micUnsupported: "Voice input isn't available in this browser: tap the 🎤 of the iPhone keyboard to dictate.",
+    micDenied: "Allow the microphone for NOVUS (iPhone Settings › Safari › Microphone), or use the 🎤 of the keyboard.",
+    micNothing: "I didn't hear anything — try again.",
+    micFailed: "Voice input stopped — try again or use the 🎤 of the keyboard.",
   },
   fr: {
     tabs: { copilot: "Copilote", live: "En direct", recap: "Récap" },
@@ -382,6 +393,15 @@ const CX = {
     chips: ["Résume les 10 dernières minutes", "Qui dois-je surveiller ?", "Que demande le chat ?", "Comment relancer l'engagement ?", "Qui sont mes meilleurs soutiens ?"],
     aiOff: "Le copilote IA n'est pas disponible (IA non configurée sur le serveur). Les priorités ci-dessus continuent de fonctionner.",
     you: "Toi",
+    mic: "Parler",
+    micStop: "Arrêter",
+    listening: "Je t'écoute…",
+    voiceOn: "Lire les réponses à voix haute",
+    voiceOff: "Lecture vocale : désactivée",
+    micUnsupported: "La dictée n'est pas disponible dans ce navigateur : touche le 🎤 du clavier iPhone pour dicter.",
+    micDenied: "Autorise le micro pour NOVUS (Réglages iPhone › Safari › Micro), ou utilise le 🎤 du clavier.",
+    micNothing: "Je n'ai rien entendu — réessaie.",
+    micFailed: "La dictée s'est arrêtée — réessaie ou utilise le 🎤 du clavier.",
   },
 };
 
@@ -549,6 +569,23 @@ function AskNovus({ pending, onPendingDone }: { pending: string | null; onPendin
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const [voice, setVoice] = useState(() => {
+    try {
+      return localStorage.getItem("novus:copilot-voice") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleVoice = () => {
+    const next = !voice;
+    setVoice(next);
+    if (!next) stopSpeaking();
+    try {
+      localStorage.setItem("novus:copilot-voice", next ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
 
   useEffect(() => setTurns(loadHistory(room)), [room]);
   useEffect(() => {
@@ -561,7 +598,7 @@ function AskNovus({ pending, onPendingDone }: { pending: string | null; onPendin
   useEffect(() => endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }), [turns.length, busy]);
 
   const ask = useCallback(
-    async (question: string) => {
+    async (question: string, spoken = false) => {
       const q = question.trim();
       if (!q || busy) return;
       const before = turns;
@@ -571,6 +608,8 @@ function AskNovus({ pending, onPendingDone }: { pending: string | null; onPendin
       try {
         const { text } = await api.askCopilot(q, before.slice(-10), lang);
         setTurns((t) => [...t, { role: "assistant", text }]);
+        // Asked by voice (or voice answers on): Novus answers out loud.
+        if (spoken || voice) speak(text, lang);
       } catch (e) {
         setTurns(before);
         setInput(q);
@@ -579,8 +618,22 @@ function AskNovus({ pending, onPendingDone }: { pending: string | null; onPendin
         setBusy(false);
       }
     },
-    [busy, turns, lang],
+    [busy, turns, lang, voice],
   );
+
+  const dictation = useDictation(
+    lang,
+    (partial) => setInput(partial),
+    (final) => void ask(final, true),
+    (e) => toast(e === "unsupported" ? cx.micUnsupported : e === "denied" ? cx.micDenied : e === "no-speech" ? cx.micNothing : cx.micFailed, "warn"),
+  );
+  const mic = () => {
+    if (dictation.listening) return dictation.stop();
+    stopSpeaking();
+    if (!dictation.supported) return toast(cx.micUnsupported, "info");
+    setInput("");
+    dictation.start();
+  };
 
   useEffect(() => {
     if (pending) {
@@ -595,6 +648,11 @@ function AskNovus({ pending, onPendingDone }: { pending: string | null; onPendin
       <div className="card-title">
         <span className="gold">✦</span> {cx.ask}
         <span className="spacer" />
+        {aiOn && canSpeak() ? (
+          <button className={`icon-btn ${voice ? "on" : ""}`} onClick={toggleVoice} aria-pressed={voice} aria-label={voice ? cx.voiceOn : cx.voiceOff} title={voice ? cx.voiceOn : cx.voiceOff}>
+            {voice ? <IconSpeaker width={18} height={18} /> : <IconSpeakerOff width={18} height={18} />}
+          </button>
+        ) : null}
         {turns.length ? (
           <button className="link-btn small" onClick={() => setTurns([])}>
             {cx.clear}
@@ -623,11 +681,14 @@ function AskNovus({ pending, onPendingDone }: { pending: string | null; onPendin
             ))}
           </div>
           <div className="row ask-row">
+            <button className={`btn mic-btn ${dictation.listening ? "listening" : ""}`} disabled={busy} onClick={mic} aria-label={dictation.listening ? cx.micStop : cx.mic} aria-pressed={dictation.listening}>
+              <IconMic width={22} height={22} />
+            </button>
             <input
               className="input"
               value={input}
               maxLength={500}
-              placeholder={cx.placeholder}
+              placeholder={dictation.listening ? cx.listening : cx.placeholder}
               aria-label={cx.ask}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && ask(input)}

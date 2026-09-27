@@ -124,3 +124,21 @@ export const IconLogout = (p: P) => (
     <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3" />
   </svg>
 );
+export const IconMic = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="9" y="2.5" width="6" height="12" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7" />
+  </svg>
+);
+export const IconSpeaker = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+    <path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" />
+  </svg>
+);
+export const IconSpeakerOff = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+    <path d="m16 9.5 5 5M21 9.5l-5 5" />
+  </svg>
+);

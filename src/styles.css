@@ -2776,3 +2776,39 @@ main.view {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.mic-btn {
+  flex: none;
+  width: 48px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--gold);
+}
+.mic-btn.listening {
+  color: #16120c;
+  background: var(--chrome);
+  border-color: var(--gold-line);
+  box-shadow: var(--gold-glow);
+  animation: mic-pulse 1.1s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  50% {
+    box-shadow: 0 0 0 7px rgba(217, 174, 106, 0.18);
+  }
+}
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 17px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.icon-btn.on {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
