@@ -1,4 +1,6 @@
 import type {
+  CoachTip,
+  CopilotTurn,
   ActionRecord,
   ActionType,
   AnalyticsSummary,
@@ -104,6 +106,10 @@ export const api = {
     request<{ record: ActionRecord; profile: ViewerProfile }>("POST", `/viewers/${encodeURIComponent(id)}/action`, { action }),
 
   pulse: () => request<ChatPulse>("GET", "/assistant/pulse"),
+  coach: (lang: "en" | "fr") => request<{ tips: CoachTip[] }>("GET", `/assistant/coach?lang=${lang}`),
+  askCopilot: (question: string, history: CopilotTurn[], lang: "en" | "fr") => request<{ text: string }>("POST", "/assistant/ask", { question, history, lang }),
+  draftMessage: (b: { kind: "question" | "thanks" | "welcome" | "revive"; questionId?: string; viewerId?: string }, lang: "en" | "fr") => request<{ text: string }>("POST", "/assistant/draft", { ...b, lang }),
+  copilotSendChat: (text: string) => request<{ ok: boolean }>("POST", "/assistant/send-chat", { text }),
   catchUp: (since: number | undefined, lang: "en" | "fr") => request<CatchUp>("POST", "/assistant/catchup", since ? { since, lang } : { lang }),
   markAnswered: (id: string, answered: boolean) => request<{ ok: boolean }>("POST", `/assistant/questions/${encodeURIComponent(id)}/answered`, { answered }),
 

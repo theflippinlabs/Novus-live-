@@ -9,6 +9,9 @@ import {
   type AnalyzedComment,
   type Category,
   type ChatPulse,
+  type CoachTip,
+  type CopilotTurn,
+  type Supporter,
   type DemoSpeed,
   type LiveComment,
   type LiveEvent,
@@ -35,6 +38,7 @@ import type { AIProvider, AIReviewItem, AIVerdict } from "../ai/AIProvider";
 import { Analytics } from "../analytics/Analytics";
 import { buildReportMarkdown } from "../analytics/report";
 import { buildCatchUp } from "../assistant/catchUp";
+import { buildCoach } from "../assistant/coach";
 import { InsightsEngine, sentimentOf } from "../assistant/InsightsEngine";
 import { HOSTILE_CATEGORIES, RoomContext, ViewerContextStore } from "../moderation/context";
 import { analyzeStage1, effectiveThresholds, recommendFor, severityFor } from "../moderation/heuristics";
@@ -969,7 +973,88 @@ export class NovusRuntime {
       importantMessages: this.insights.importantMessages(),
       spikes: this.insights.spikes(),
       viewersNeedingAttention: attention.size,
+      supporters: this.supporters(),
     };
+  }
+
+  /** Top gifters of this LIVE (diamonds first, then number of gifts). */
+  supporters(limit = 5): Supporter[] {
+    return [...this.giftsBySender.values()]
+      .sort((a, b) => b.diamonds - a.diamonds || b.gifts - a.gifts)
+      .slice(0, limit)
+      .map((g) => {
+        const v = this.viewers.get(g.viewer.id);
+        return { viewer: v?.viewer ?? g.viewer, gifts: g.gifts, diamonds: g.diamonds, messages: v?.messageCount ?? 0 };
+      });
+  }
+
+  /** "What should I do now?" for the copilot. */
+  coach(lang: "en" | "fr" = this.settings.language): CoachTip[] {
+    return buildCoach({
+      pulse: this.pulse(),
+      openAlerts: [...this.alerts.values()].filter((a) => a.status === "open"),
+      stats: this.stats(),
+      live: this.session?.status === "live",
+      language: lang,
+    });
+  }
+
+  /** Compact JSON snapshot of the LIVE for the AI copilot (chat text is untrusted data). */
+  copilotContext(): string {
+    const now = this.now();
+    const pulse = this.pulse();
+    const stats = this.stats();
+    const cut = (t: string, n = 160) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+    const minutes = (t: number) => Math.max(0, Math.round((now - t) / 60_000));
+    const risky = [...this.viewers.values()]
+      .filter((v) => v.maxRisk >= 50)
+      .sort((a, b) => b.maxRisk - a.maxRisk)
+      .slice(0, 8)
+      .map((v) => ({ handle: v.viewer.username, name: v.viewer.displayName, maxRisk: v.maxRisk, messages: v.messageCount, warnings: v.warnings }));
+    return JSON.stringify({
+      now: new Date(now).toISOString(),
+      live: this.session ? { status: this.session.status, title: this.session.title, account: this.session.account, minutesSinceStart: minutes(this.session.startedAt) } : null,
+      audience: { viewersNow: stats.viewerCount, activeChatters: stats.activeChatters, uniqueChatters: stats.uniqueChatters, messagesTotal: stats.messagesTotal, messagesPerMinute: stats.messagesPerMinute, activityChangePct: pulse.activityChangePct, gifts: stats.gifts, follows: stats.follows, joins: stats.joins },
+      mood: pulse.sentiment,
+      trendingTopics: pulse.trending.slice(0, 6).map((t) => ({ topic: t.topic, mentions: t.count, growthPct: t.growth })),
+      questions: pulse.topQuestions.map((q) => ({ question: cut(q.question), times: q.count, answered: q.answered, askers: q.askers.slice(0, 3) })),
+      requests: pulse.repeatedRequests.slice(0, 5).map((q) => ({ request: cut(q.question), times: q.count })),
+      openAlerts: this.sortedAlerts()
+        .filter((a) => a.status === "open")
+        .slice(0, 10)
+        .map((a) => ({ handle: a.viewer.username, severity: a.severity, categories: a.categories, text: cut(a.text), minutesAgo: minutes(a.updatedAt), times: a.occurrences })),
+      riskyViewers: risky,
+      topGifters: pulse.supporters.map((s) => ({ handle: s.viewer.username, name: s.viewer.displayName, gifts: s.gifts, diamonds: s.diamonds })),
+      importantMessages: pulse.importantMessages.slice(0, 6).map((m) => ({ handle: m.viewer.username, reason: m.reason, text: cut(m.text), minutesAgo: minutes(m.t) })),
+      recentChat: this.comments.slice(-60).map((c) => `@${c.viewer.username}: ${cut(c.text, 140)}`),
+    });
+  }
+
+  /** The AI copilot: answer the team's question about this LIVE. */
+  async askCopilot(question: string, history: CopilotTurn[], lang: "en" | "fr" = this.settings.language): Promise<string> {
+    const ai = this.deps.ai;
+    if (!ai.available() || !ai.copilot) throw new Error("ai_unavailable");
+    return ai.copilot({ mode: "chat", instruction: question, history, context: this.copilotContext(), language: lang, streamerName: this.settings.streamerName });
+  }
+
+  /** The AI copilot drafts one chat message (answer a question, thank a gifter, welcome, revive the chat). */
+  async draftChatMessage(req: { kind: "question" | "thanks" | "welcome" | "revive"; questionId?: string; viewerId?: string }, lang: "en" | "fr" = this.settings.language): Promise<string> {
+    const ai = this.deps.ai;
+    if (!ai.available() || !ai.copilot) throw new Error("ai_unavailable");
+    let instruction: string;
+    if (req.kind === "question") {
+      const q = this.insights.topQuestions(20).find((x) => x.id === req.questionId);
+      if (!q) throw new Error("question_not_found");
+      instruction = `Answer, as the streamer, this question the chat keeps asking (${q.count} times): "${q.question}". If the snapshot doesn't contain the answer, write a friendly reply saying you'll answer it in a moment, without inventing facts.`;
+    } else if (req.kind === "thanks") {
+      const g = this.giftsBySender.get(req.viewerId ?? "");
+      if (!g) throw new Error("viewer_not_found");
+      instruction = `Thank @${g.viewer.username} for their ${g.gifts} gift(s) during this LIVE.`;
+    } else if (req.kind === "welcome") instruction = "Welcome the viewers who just arrived and invite them to say hi in the chat.";
+    else instruction = "Revive a chat that is slowing down: ask the viewers one fun, open question related to what the chat was talking about.";
+    const text = await ai.copilot({ mode: "draft", instruction, history: [], context: this.copilotContext(), language: lang, streamerName: this.settings.streamerName });
+    // One clean line that fits a TikTok chat message.
+    return text.replace(/\s+/g, " ").trim().replace(/^["«“'\s]+|["»”'\s]+$/g, "").slice(0, 150);
   }
 
   markQuestionAnswered(id: string, answered: boolean): boolean {

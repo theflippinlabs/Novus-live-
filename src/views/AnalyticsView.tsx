@@ -228,7 +228,7 @@ function AnalyticsBody({ d, sessionId, interactive }: { d: AnalyticsSummary; ses
                   <span className="n">{i + 1}</span>
                   <span className="t">@{g.viewer.username}</span>
                   <span className="c">
-                    {g.gifts} · {n(g.diamonds)} 💎
+                    {g.gifts} · {n(g.diamonds)} <span className="gold">◆</span>
                   </span>
                 </div>
               ))}
@@ -448,7 +448,7 @@ function HistoryList({ onOpen }: { onOpen: (id: string) => void }) {
             <span>👥 {n(e.peakViewers)}</span>
             <span>💬 {n(e.messages)}</span>
             <span>🎁 {n(e.gifts)}</span>
-            <span>💎 {n(e.diamonds)}</span>
+            <span><span className="gold">◆</span> {n(e.diamonds)}</span>
             <span>⚠ {n(e.alerts)}</span>
           </div>
         </button>

@@ -20,6 +20,9 @@ import {
   changePlanSchema,
   leadSchema,
   adminConfigSchema,
+  copilotAskSchema,
+  copilotReplySchema,
+  copilotSendSchema,
   profileSchema,
   recoverCompleteSchema,
   recoverSchema,
@@ -861,6 +864,58 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   );
 
   api.get("/assistant/pulse", h((req) => roomIn(req).runtime.pulse()));
+  api.get(
+    "/assistant/coach",
+    h((req) => ({ tips: roomIn(req).runtime.coach(req.query.lang === "en" || req.query.lang === "fr" ? req.query.lang : sp(req).rooms.settings.language) })),
+  );
+  /** Runs one AI copilot call; the plan's AI allowance and provider errors become clear codes. */
+  const copilotCall = async (req: Request, run: () => Promise<string>) => {
+    if (!billing.allowed(sp(req).id, "ai")) throw planLimit("plan_limit_ai");
+    try {
+      return { text: await run() };
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "";
+      if (code === "ai_unavailable") throw new HttpError(503, "ai_unavailable");
+      if (code === "question_not_found" || code === "viewer_not_found") throw new HttpError(404, code);
+      console.warn(`[copilot] ${code}`);
+      throw new HttpError(502, "ai_failed");
+    }
+  };
+  api.post(
+    "/assistant/ask",
+    rateLimit("copilot", 20),
+    h(async (req) => {
+      const { question, history, lang } = parse(copilotAskSchema, req.body);
+      return copilotCall(req, () => roomIn(req).runtime.askCopilot(question, history, lang ?? sp(req).rooms.settings.language));
+    }),
+  );
+  api.post(
+    "/assistant/draft",
+    rateLimit("copilot", 20),
+    h(async (req) => {
+      const { kind, questionId, viewerId, lang } = parse(copilotReplySchema, req.body);
+      return copilotCall(req, () => roomIn(req).runtime.draftChatMessage({ kind, questionId, viewerId }, lang ?? sp(req).rooms.settings.language));
+    }),
+  );
+  // Post a copilot message in the LIVE chat with the connected TikTok account.
+  api.post(
+    "/assistant/send-chat",
+    rateLimit("chat", 30),
+    h(async (req) => {
+      need(req, "send_chat");
+      const room = roomIn(req);
+      const { text } = parse(copilotSendSchema, req.body);
+      const roomId = room.liveRoomId?.();
+      if (!roomId) throw new HttpError(409, "chat_not_live");
+      try {
+        await sp(req).chat.send(roomId, text);
+        billing.meterAdd(sp(req).id, "chat_messages_sent");
+      } catch (e) {
+        throw chatError(e);
+      }
+      return { ok: true };
+    }),
+  );
   api.post(
     "/assistant/catchup",
     h(async (req) => {

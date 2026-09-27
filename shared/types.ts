@@ -390,6 +390,38 @@ export interface ChatPulse {
   importantMessages: ImportantMessage[];
   spikes: { t: number; messages: number }[];
   viewersNeedingAttention: number;
+  /** Top gifters of the LIVE (by diamonds, then gifts). */
+  supporters: Supporter[];
+}
+
+export interface Supporter {
+  viewer: ViewerRef;
+  gifts: number;
+  diamonds: number;
+  messages: number;
+}
+
+// ---------------------------------------------------------------- copilot
+
+export type CoachKind = "alerts" | "question" | "mood" | "activity" | "spike" | "supporter" | "topic" | "calm" | "idle";
+
+/** One "do this now" suggestion from the copilot (most urgent first). */
+export interface CoachTip {
+  /** Stable while the situation lasts (the app can hide a tip the user dismissed). */
+  id: string;
+  kind: CoachKind;
+  /** 1 = urgent, 2 = important, 3 = opportunity. */
+  priority: 1 | 2 | 3;
+  title: string;
+  detail: string;
+  questionId?: string;
+  question?: string;
+  viewer?: ViewerRef;
+}
+
+export interface CopilotTurn {
+  role: "user" | "assistant";
+  text: string;
 }
 
 export interface CatchUpSection {

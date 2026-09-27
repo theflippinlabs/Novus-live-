@@ -40,6 +40,19 @@ export interface AIProvider {
   reviewBatch(items: AIReviewItem[], ctx: AIReviewContext, meter?: UsageCallback): Promise<Map<string, AIVerdict>>;
   /** Optional narrative polish for "Catch me up". */
   summarize?(facts: string, language: "en" | "fr", meter?: UsageCallback): Promise<string>;
+  /** Optional LIVE copilot: answers questions or drafts chat messages from the room's live data. */
+  copilot?(req: CopilotRequest, meter?: UsageCallback): Promise<string>;
+}
+
+export interface CopilotRequest {
+  /** "chat": answer the streamer's question. "draft": write one message to post in the LIVE chat. */
+  mode: "chat" | "draft";
+  instruction: string;
+  history: { role: "user" | "assistant"; text: string }[];
+  /** JSON snapshot of the LIVE (untrusted chat text inside). */
+  context: string;
+  language: "en" | "fr";
+  streamerName: string;
 }
 
 /** Tokens used by one AI call (for usage metering). */
@@ -71,6 +84,11 @@ export class MeteredAIProvider implements AIProvider {
     const inner = this.inner.summarize?.bind(this.inner);
     if (!inner) return undefined;
     return (facts, language) => inner(facts, language, (u) => this.gate.record(1, u.inputTokens, u.outputTokens));
+  }
+  get copilot(): AIProvider["copilot"] {
+    const inner = this.inner.copilot?.bind(this.inner);
+    if (!inner) return undefined;
+    return (req) => inner(req, (u) => this.gate.record(1, u.inputTokens, u.outputTokens));
   }
 }
 

@@ -185,6 +185,27 @@ export const trackSchema = z
   })
   .strict();
 
+const lang = z.enum(["en", "fr"]).optional();
+export const copilotAskSchema = z
+  .object({
+    question: z.string().trim().min(1).max(500),
+    history: z
+      .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(2000) }).strict())
+      .max(12)
+      .default([]),
+    lang,
+  })
+  .strict();
+export const copilotReplySchema = z
+  .object({
+    kind: z.enum(["question", "thanks", "welcome", "revive"]),
+    questionId: z.string().max(80).optional(),
+    viewerId: z.string().max(140).optional(),
+    lang,
+  })
+  .strict();
+export const copilotSendSchema = z.object({ text: z.string().trim().min(1).max(150) }).strict();
+
 export const profileSchema = z.object({ name: z.string().trim().min(2).max(60) }).strict();
 
 export const recoverSchema = z.object({ email: z.string().trim().max(120).email(), lang: z.enum(["en", "fr"]).optional() }).strict();

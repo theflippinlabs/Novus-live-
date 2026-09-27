@@ -2566,3 +2566,213 @@ main.view {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------- Assistant: copilot */
+.copilot-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--gold-line);
+  background:
+    radial-gradient(520px 180px at 0% 0%, rgba(240, 190, 110, 0.18), transparent 70%),
+    var(--surface);
+  color: var(--text-2);
+}
+.copilot-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--chrome);
+  color: #16120c;
+  font-size: 22px;
+  box-shadow: var(--gold-glow);
+}
+.copilot-name {
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  font-size: 13px;
+  color: var(--platinum);
+  margin-bottom: 2px;
+}
+.copilot-mood {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.copilot-mood b {
+  color: var(--gold);
+}
+.copilot-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.copilot-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  min-width: 0;
+}
+.copilot-stats b {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.copilot-stats span {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tip {
+  padding: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  --tip: var(--gold);
+}
+.tip.p1 {
+  --tip: var(--r-critical);
+  border-color: rgba(229, 38, 62, 0.45);
+  background: linear-gradient(90deg, var(--r-critical-bg), transparent 60%), var(--surface);
+}
+.tip.p2 {
+  --tip: var(--r-warning);
+  border-color: rgba(245, 138, 52, 0.4);
+}
+.tip-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--tip);
+  box-shadow: 0 0 10px var(--tip);
+}
+.tip-title {
+  font-weight: 800;
+  font-size: 15.5px;
+}
+.tip-detail {
+  margin-top: 3px;
+  font-size: 13.5px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.tip-x {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 15px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.tip-actions {
+  gap: 8px;
+  margin-top: 10px;
+  padding-left: 20px;
+}
+.tip-actions:empty {
+  display: none;
+}
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gold-line);
+  background: var(--bg-2);
+}
+.composer-text {
+  min-height: 72px;
+  resize: vertical;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.typing {
+  animation: pulse-soft 1.2s ease-in-out infinite;
+}
+@keyframes pulse-soft {
+  50% {
+    opacity: 0.45;
+  }
+}
+.copilot-chat .bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+.bubble {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bubble.user {
+  align-self: flex-end;
+  background: var(--gold-soft);
+  border: 1px solid var(--gold-line);
+  border-bottom-right-radius: 4px;
+}
+.bubble.assistant {
+  align-self: flex-start;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+.chips-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 -14px 10px;
+  padding: 0 14px 2px;
+  scrollbar-width: none;
+}
+.chips-scroll::-webkit-scrollbar {
+  display: none;
+}
+.chips-scroll .chip {
+  flex: none;
+  white-space: nowrap;
+}
+.ask-row {
+  gap: 8px;
+}
+.ask-row .btn {
+  flex: none;
+  width: 48px;
+  font-size: 20px;
+}
+.rank-n {
+  flex: none;
+  width: 18px;
+  font-weight: 800;
+  color: var(--gold);
+}
+.ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
