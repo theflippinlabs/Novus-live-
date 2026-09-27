@@ -3078,3 +3078,61 @@ main.view {
   gap: 6px;
   margin: 2px 0 8px;
 }
+
+.video-option {
+  margin-top: 12px;
+}
+
+.video-packs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.video-pack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.video-pack.mine {
+  border-color: var(--gold-line);
+}
+
+.video-pack-hours {
+  font-weight: 700;
+}
+
+.video-pack-price {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.video-pack .btn {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
+.video-toggle.on {
+  color: var(--gold);
+  border-color: var(--gold-line);
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.video-toggle.locked {
+  opacity: 0.6;
+}
+
+.live-video {
+  width: 100%;
+  max-height: 60vh;
+  margin-top: 10px;
+  border-radius: 12px;
+  background: #000;
+}

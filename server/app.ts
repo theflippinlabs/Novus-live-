@@ -18,6 +18,7 @@ import {
   signupSchema,
   checkoutSchema,
   changePlanSchema,
+  videoPackSchema,
   leadSchema,
   adminConfigSchema,
   copilotAskSchema,
@@ -55,6 +56,11 @@ import { DEFAULT_PREFS, type PushOwner, type PushService } from "./push/Push";
 import { testMessage } from "./push/messages";
 import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
 import { can, canSeeAccount, TeamError, TeamStore, type MemberInput, type Principal } from "./team/Team";
+import { spawn } from "node:child_process";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { buildPlaylist, videoInfo } from "./video/playlist";
+import { openLocal, segmentPath, type VideoStore } from "./video/VideoStore";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
@@ -75,6 +81,8 @@ export interface AppDeps {
   aiCost?: AnthropicCostReport;
   /** Web push notifications (LIVE started, critical alerts, LIVE summary). */
   push?: PushService;
+  /** LIVE video (option): ffmpeg available, and where videos are stored. */
+  video?: { ready: boolean; store: VideoStore };
 }
 
 /** One person's Novus: their own followed accounts, settings, history and "Send in chat" account. */
@@ -131,7 +139,7 @@ const mainOnly = (room: Room): Room => {
   return room;
 };
 
-export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace, mailer = new ResendMailer({}), aiCost = new AnthropicCostReport({}), push }: AppDeps) {
+export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace, mailer = new ResendMailer({}), aiCost = new AnthropicCostReport({}), push, video }: AppDeps) {
   // The hashed app bundle currently served (e.g. "index-0YX36Sc8.js"): lets installed apps notice a new version.
   const build = (() => {
     try {
@@ -247,7 +255,20 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
         if (changed.some((u) => !canSeeAccount(p, u))) throw new HttpError(403, "forbidden");
       }
     }
-    if (keys.some((k) => k !== "language" && k !== "tiktokManual" && !accountKeys.includes(k))) need(req, "settings");
+    if (patch.tiktokVideo) {
+      need(req, "manage_accounts");
+      const before = new Set(sp(req).rooms.settings.tiktokVideo ?? []);
+      const after = new Set(patch.tiktokVideo.map((u) => u.toLowerCase()));
+      const changed = [...new Set([...before, ...after])].filter((u) => before.has(u) !== after.has(u));
+      const p = principal(req);
+      if (p.kind === "member" && p.member.accounts && changed.some((u) => !canSeeAccount(p, u))) throw new HttpError(403, "forbidden");
+      // Switching video on needs the video option (and a server able to record).
+      if ([...after].some((u) => !before.has(u))) {
+        if (!effective(req).entitlements.recording) throw planLimit("plan_video_option");
+        if (!video?.ready) throw new HttpError(503, "video_unavailable");
+      }
+    }
+    if (keys.some((k) => k !== "language" && k !== "tiktokManual" && k !== "tiktokVideo" && !accountKeys.includes(k))) need(req, "settings");
   };
   /** A LIVE of the history, if this person may see its streamer (and it is within the plan's history window). */
   const historyDetail = async (req: Request, id: string) => {
@@ -675,6 +696,21 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     }),
   );
 
+  // Video option: add, change (pack) or remove (null) — Stripe prorates, its webhook activates it.
+  api.post(
+    "/billing/video",
+    h(async (req) => {
+      founderOnly(req);
+      const { pack } = parse(videoPackSchema, req.body);
+      try {
+        await billing.setVideoPack(sp(req).id, pack);
+      } catch (e) {
+        throw billingError(e);
+      }
+      return { ok: true };
+    }),
+  );
+
   // ---------------------------------------------------------------- admin (platform owner only)
   api.get(
     "/admin/overview",
@@ -709,6 +745,20 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       } catch (e) {
         throw billingError(e);
       }
+    }),
+  );
+  // Give a video pack to a space without billing it (e.g. a tester or a customer promised video).
+  api.post(
+    "/admin/workspaces/:id/video",
+    h(async (req) => {
+      adminOnly(req);
+      const { pack } = parse(videoPackSchema, req.body);
+      try {
+        await billing.grantVideoPack(String(req.params.id), pack);
+      } catch (e) {
+        throw billingError(e);
+      }
+      return { ok: true };
     }),
   );
   api.get(
@@ -1114,6 +1164,85 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     }),
   );
 
+  // ---------------------------------------------------------------- LIVE video (option)
+  /** The video of a LIVE this person may see (404 when none, or expired). */
+  const videoFor = async (req: Request) => {
+    need(req, "history");
+    const id = param(req, "id");
+    const detail = await historyDetail(req, id);
+    if (!detail || !video) throw new HttpError(404, "video_not_found");
+    const rec = await video.store.getRecord(sp(req).id, id);
+    if (!rec || !rec.segments.length || rec.expiresAt < Date.now()) throw new HttpError(404, "video_not_found");
+    return { rec, detail };
+  };
+  // Watching streams straight from storage: counted once per person, LIVE and 6 hours (an upper bound of the egress).
+  const watched = new Map<string, number>();
+  api.get("/history/:id/video", h(async (req) => videoInfo((await videoFor(req)).rec)));
+  api.get(
+    "/history/:id/video.m3u8",
+    rateLimit("video", 120),
+    h(async (req, res) => {
+      const { rec } = await videoFor(req);
+      const urls = await video!.store.urls(rec.segments.map((x) => x.path), 6 * 3600);
+      const key = `${sp(req).id}|${rec.sessionId}|${(() => {
+        const p = principal(req);
+        return p.kind === "member" ? p.member.id : "founder";
+      })()}`;
+      if ((watched.get(key) ?? 0) < Date.now() - 6 * 3600_000) {
+        watched.set(key, Date.now());
+        if (watched.size > 5000) watched.clear();
+        billing.meterAdd(sp(req).id, "video_mb_served", Math.ceil(rec.bytes / 1_048_576));
+      }
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(buildPlaylist(rec, urls));
+    }),
+  );
+  /** The whole LIVE as one MP4 (pieces joined by ffmpeg without re-encoding, streamed as it goes). */
+  api.get(
+    "/history/:id/video.mp4",
+    rateLimit("pdf", 10),
+    h(async (req, res) => {
+      const { rec, detail } = await videoFor(req);
+      if (!video?.ready) throw new HttpError(503, "video_unavailable");
+      useExport(req);
+      const inputs = video.store.kind === "local" ? rec.segments.map((x) => video.store.localFile?.(x.path) ?? "") : await video.store.urls(rec.segments.map((x) => x.path), 3600);
+      const dir = await mkdtemp(join(tmpdir(), "novus-mp4-"));
+      const list = join(dir, "in.m3u8");
+      await writeFile(list, buildPlaylist({ ...rec, status: "done" }, inputs));
+      billing.meterAdd(sp(req).id, "video_mb_served", Math.ceil(rec.bytes / 1_048_576));
+      const ff = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file,http,https,tcp,tls,crypto", "-allowed_extensions", "ALL", "-i", list, "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"], { stdio: ["ignore", "pipe", "ignore"] });
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName(`${detail.entry.title}-video`, detail.entry.startedAt, "mp4")}"`);
+      res.setHeader("Cache-Control", "no-store");
+      const cleanup = () => void rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      ff.on("exit", cleanup);
+      // Streamed as ffmpeg writes it; the handler returns once the download ends (or is cancelled).
+      await new Promise<void>((resolve) => {
+        res.on("close", () => {
+          ff.kill("SIGKILL");
+          resolve();
+        });
+        ff.stdout.pipe(res);
+      });
+    }),
+  );
+  /** Local storage only (no Supabase): the pieces, for signed-in people of the same space. */
+  api.get(
+    "/video-files/:tenant/:session/:file",
+    h(async (req, res) => {
+      need(req, "history");
+      if (!video || video.store.kind !== "local" || param(req, "tenant") !== sp(req).id) throw new HttpError(404, "video_not_found");
+      const file = video.store.localFile?.(segmentPath(param(req, "tenant"), param(req, "session"), param(req, "file")));
+      if (!file || !(await stat(file).catch(() => null))) throw new HttpError(404, "video_not_found");
+      res.setHeader("Content-Type", "video/mp2t");
+      await new Promise<void>((resolve) => {
+        res.on("close", resolve);
+        openLocal(file).pipe(res);
+      });
+    }),
+  );
+
   // ---------------------------------------------------------------- LIVE history & exports
   api.get(
     "/history",
@@ -1121,8 +1250,12 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       need(req, "history");
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
       const cutoff = historyCutoff(req);
-      const entries = await sp(req).history.list(limit, roomIn(req));
-      return { entries: entries.filter((e) => e.status === "live" || e.startedAt >= cutoff), hiddenOlder: entries.some((e) => e.status !== "live" && e.startedAt < cutoff) };
+      const all = await sp(req).history.list(limit, roomIn(req));
+      const entries = all.filter((e) => e.status === "live" || e.startedAt >= cutoff);
+      // LIVEs recorded in video (option) carry their video.
+      const videos = video ? await video.store.listRecords(sp(req).id, entries.map((e) => e.sessionId)).catch(() => []) : [];
+      const byId = new Map(videos.filter((v) => v.segments.length && v.expiresAt > Date.now()).map((v) => [v.sessionId, videoInfo(v)]));
+      return { entries: entries.map((e) => (byId.has(e.sessionId) ? { ...e, video: byId.get(e.sessionId) } : e)), hiddenOlder: all.some((e) => e.status !== "live" && e.startedAt < cutoff) };
     }),
   );
   api.get(

@@ -1,4 +1,4 @@
-import type { BillingCycle, PlanId } from "../shared/plans";
+import type { BillingCycle, PlanId, VideoPackId } from "../shared/plans";
 import type { BillingMe, PublicPricing } from "../shared/types";
 import { ApiError } from "./api";
 import { getState, setState } from "./store";
@@ -50,6 +50,8 @@ export const billingApi = {
   checkout: (b: { plan: PlanId; cycle: BillingCycle; founding: boolean; source?: string }) => call<{ url: string }>("POST", "/billing/checkout", { ...b, anonId: anonId() }),
   portal: () => call<{ url: string }>("POST", "/billing/portal"),
   changePlan: (plan: PlanId, cycle: BillingCycle) => call<{ ok: boolean }>("POST", "/billing/change-plan", { plan, cycle }),
+  setVideoPack: (pack: VideoPackId | null) => call<{ ok: boolean }>("POST", "/billing/video", { pack }),
+  adminGrantVideo: (id: string, pack: VideoPackId | null) => call<{ ok: boolean }>("POST", `/admin/workspaces/${encodeURIComponent(id)}/video`, { pack }),
   lead: (b: { name: string; email: string; company: string; creators: number; message?: string }) => call<{ ok: boolean }>("POST", "/billing/lead", b),
   recover: (email: string, lang: "en" | "fr") => call<{ email: boolean; support: string | null }>("POST", "/auth/recover", { email, lang }),
   recoverComplete: (token: string) => call<{ code: string; name: string }>("POST", "/auth/recover/complete", { token }),
@@ -99,6 +101,8 @@ export interface AdminOverview {
     status: string;
     founding: boolean;
     ownCode: boolean;
+    videoPack: VideoPackId | null;
+    videoGranted: boolean;
     mrr: number;
     arr: number;
     creators: number;
@@ -126,7 +130,7 @@ export async function refreshBilling(): Promise<void> {
 /** A 402 from the API: show the matching upgrade prompt (once per code per minute). */
 let lastPrompt = { code: "", at: 0 };
 /** The 402 codes that mean "your NOVUS plan doesn't allow this". */
-const PLAN_CODES = new Set(["plan_limit_creators", "plan_limit_seats", "plan_limit_exports", "plan_limit_ai", "history_retention", "workspace_restricted", "trial_quota"]);
+const PLAN_CODES = new Set(["plan_video_option", "plan_limit_creators", "plan_limit_seats", "plan_limit_exports", "plan_limit_ai", "history_retention", "workspace_restricted", "trial_quota"]);
 
 export function showUpgrade(code: string): void {
   // Anything else is an ordinary error (shown where it happened), and a complimentary

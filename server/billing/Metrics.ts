@@ -22,6 +22,9 @@ export interface WorkspaceEconomics {
   founding: boolean;
   /** Logs in with a stored founder code (the admin can reset it). */
   ownCode: boolean;
+  /** Video option pack, and whether the admin gave it (not billed). */
+  videoPack: string | null;
+  videoGranted: boolean;
   mrr: number;
   arr: number;
   creators: number;
@@ -59,8 +62,10 @@ export function workspaceEconomics(
       ai: ((inTok / 1e6) * c.per_1m_input_tokens + (outTok / 1e6) * c.per_1m_output_tokens) * aiFactor,
       provider: g("provider_calls") * c.per_provider_request,
       live: liveHours * c.per_live_hour,
-      recording: (g("recording_minutes") / 60) * c.per_recording_hour,
-      storage: 0,
+      // Video: server time, upload to storage, and viewers' downloads (from measured bytes).
+      recording: (g("recording_minutes") / 60) * c.per_recording_hour + (g("video_mb_uploaded") / 1024) * c.per_video_gb_uploaded + (g("video_mb_served") / 1024) * c.per_video_gb_served,
+      // Kept for the retention period (one month of uploads ≈ what is stored at any time).
+      storage: (g("video_mb_uploaded") / 1024) * c.per_storage_gb_month,
       screenshots: (g("screenshots") / 1000) * c.per_1000_screenshots,
       fixed: paying ? c.per_workspace_month : 0,
       total: 0,
@@ -80,6 +85,8 @@ export function workspaceEconomics(
       status: ws.status,
       founding: ws.founding,
       ownCode: Boolean(ws.founderCodeHash),
+      videoPack: ws.videoPack ?? null,
+      videoGranted: Boolean(ws.videoPackGranted),
       mrr,
       arr: round(mrr * 12),
       creators: size.creators,

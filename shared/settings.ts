@@ -25,6 +25,7 @@ export function defaultSettings(): Settings {
     tiktokProfiles: [],
     tiktokGroups: [],
     tiktokManual: [],
+    tiktokVideo: [],
   };
 }
 

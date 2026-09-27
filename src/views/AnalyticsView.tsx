@@ -9,6 +9,7 @@ import { useCan } from "../permissions";
 import { categoryLabel, severityLabel, tr, useLang, useT } from "../i18n";
 import { duration, hm } from "../format";
 import { openViewer, toast, useStore } from "../store";
+import { VideoCard } from "../components/VideoCard";
 
 const TX = {
   en: {
@@ -376,6 +377,7 @@ function AnalyticsBody({ d, sessionId, interactive, insights }: { d: AnalyticsSu
         </div>
       ) : null}
 
+      {sessionId ? <VideoCard sessionId={sessionId} /> : null}
       {sessionId ? <ExportCard sessionId={sessionId} /> : null}
     </>
   );

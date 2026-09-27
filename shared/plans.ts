@@ -128,21 +128,17 @@ export const DEFAULT_PLANS: Record<PlanId, PlanDef> = {
       ai_requests: 40000,
       ai_tokens: 80_000_000,
       live_monitoring_hours: 1500,
-      recording_hours: 400,
-      video_storage_gb: 500,
-      video_retention_days: 30,
       screenshot_limit: 60000,
       history_retention_days: 365,
       exports_limit: 3000,
       advanced_analytics: true,
       agency_dashboard: true,
       team_roles: true,
-      recording: true,
       screenshots: true,
       priority_support: true,
     },
     // Agency trials are the most expensive to serve: fewer creators and a small allowance.
-    trial: { creator_limit: 5, team_seat_limit: 3, ai_requests: 1500, ai_tokens: 3_000_000, live_monitoring_hours: 40, recording_hours: 3, video_storage_gb: 10, screenshot_limit: 1000, exports_limit: 30 },
+    trial: { creator_limit: 5, team_seat_limit: 3, ai_requests: 1500, ai_tokens: 3_000_000, live_monitoring_hours: 40, screenshot_limit: 1000, exports_limit: 30 },
   },
   agency_pro: {
     id: "agency_pro",
@@ -157,16 +153,12 @@ export const DEFAULT_PLANS: Record<PlanId, PlanDef> = {
       ai_requests: 110000,
       ai_tokens: 220_000_000,
       live_monitoring_hours: 4000,
-      recording_hours: 1100,
-      video_storage_gb: 2000,
-      video_retention_days: 90,
       screenshot_limit: 180000,
       history_retention_days: 730,
       exports_limit: 10000,
       advanced_analytics: true,
       agency_dashboard: true,
       team_roles: true,
-      recording: true,
       screenshots: true,
       priority_support: true,
     },
@@ -206,6 +198,49 @@ export const DEFAULT_PLANS: Record<PlanId, PlanDef> = {
 /** Stripe price lookup keys (created by `npm run stripe:setup`). */
 export const priceLookupKey = (plan: PlanId, cycle: BillingCycle) => `novus_${plan}_${cycle}`;
 
+// ---------------------------------------------------------------- Video option (add-on)
+
+/*
+ * LIVE video recording is sold as an option on top of any self-serve plan (Enterprise
+ * includes it by contract). Each pack has two hard caps per billing month — recorded
+ * hours and stored gigabytes — and recording simply stops at either one: there is no
+ * overage, so the cost of a pack is bounded whatever the stream's bitrate.
+ */
+export const VIDEO_PACK_IDS = ["video_50", "video_150", "video_500"] as const;
+export type VideoPackId = (typeof VIDEO_PACK_IDS)[number];
+
+export interface VideoPack {
+  id: VideoPackId;
+  /** Monthly price in cents (EUR); the yearly price is `yearly` (two months free). */
+  monthly: number;
+  yearly: number;
+  /** Hard caps per billing month. */
+  hours: number;
+  storage_gb: number;
+  retention_days: number;
+}
+
+export const DEFAULT_VIDEO_PACKS: Record<VideoPackId, VideoPack> = {
+  video_50: { id: "video_50", monthly: 1900, yearly: 19000, hours: 50, storage_gb: 40, retention_days: 30 },
+  video_150: { id: "video_150", monthly: 4900, yearly: 49000, hours: 150, storage_gb: 120, retention_days: 30 },
+  video_500: { id: "video_500", monthly: 14900, yearly: 149000, hours: 500, storage_gb: 400, retention_days: 30 },
+};
+
+/** Stripe lookup key of a pack's price; it must match the plan's billing interval. */
+export const videoLookupKey = (pack: VideoPackId, cycle: BillingCycle) => `novus_addon_${pack}_${cycle}`;
+
+/** Entitlements a pack adds on top of the plan's (a plan that already records keeps the larger values). */
+export function withVideoPack(e: Entitlements, pack: VideoPack | undefined): Entitlements {
+  if (!pack) return e;
+  return {
+    ...e,
+    recording: true,
+    recording_hours: Math.max(e.recording ? e.recording_hours : 0, pack.hours),
+    video_storage_gb: Math.max(e.recording ? e.video_storage_gb : 0, pack.storage_gb),
+    video_retention_days: Math.max(e.recording ? e.video_retention_days : 0, pack.retention_days),
+  };
+}
+
 export interface FoundingOffer {
   enabled: boolean;
   /** Real cap on founding agencies (counted from the database). */
@@ -225,8 +260,14 @@ export interface CostAssumptions {
   per_1m_output_tokens: number;
   per_provider_request: number;
   per_live_hour: number;
+  /** Server time of one recorded hour (ffmpeg copies the stream: no re-encoding). */
   per_recording_hour: number;
+  /** Railway egress: every recorded gigabyte is uploaded once to storage ($0.05/GB). */
+  per_video_gb_uploaded: number;
+  /** Supabase Storage size beyond the Pro quota ($0.0213/GB-month). */
   per_storage_gb_month: number;
+  /** Supabase egress when a video is watched or downloaded ($0.09/GB beyond the quota). */
+  per_video_gb_served: number;
   per_1000_screenshots: number;
   /** Fixed monthly cost per paying workspace (support, hosting share…). */
   per_workspace_month: number;
@@ -240,8 +281,10 @@ export const DEFAULT_COSTS: CostAssumptions = {
   per_1m_output_tokens: 23,
   per_provider_request: 0.0005,
   per_live_hour: 0.02,
-  per_recording_hour: 0.05,
-  per_storage_gb_month: 0.015,
+  per_recording_hour: 0.003,
+  per_video_gb_uploaded: 0.046,
+  per_storage_gb_month: 0.0196,
+  per_video_gb_served: 0.083,
   per_1000_screenshots: 0.02,
   per_workspace_month: 1,
   usd_to_eur: 0.92,
@@ -259,6 +302,7 @@ export const DEFAULT_MARGINS: MarginThresholds = { target: 70, watch: 45 };
 /** Everything the admin can change without a deploy. */
 export interface BillingConfig {
   plans: Record<PlanId, PlanDef & { available: boolean }>;
+  video: Record<VideoPackId, VideoPack & { available: boolean }>;
   founding: FoundingOffer;
   costs: CostAssumptions;
   margins: MarginThresholds;
@@ -266,13 +310,14 @@ export interface BillingConfig {
 
 export function defaultBillingConfig(): BillingConfig {
   const plans = Object.fromEntries(PLAN_IDS.map((id) => [id, { ...structuredClone(DEFAULT_PLANS[id]), available: true }])) as BillingConfig["plans"];
-  return { plans, founding: { ...DEFAULT_FOUNDING }, costs: { ...DEFAULT_COSTS }, margins: { ...DEFAULT_MARGINS } };
+  const video = Object.fromEntries(VIDEO_PACK_IDS.map((id) => [id, { ...DEFAULT_VIDEO_PACKS[id], available: true }])) as BillingConfig["video"];
+  return { plans, video, founding: { ...DEFAULT_FOUNDING }, costs: { ...DEFAULT_COSTS }, margins: { ...DEFAULT_MARGINS } };
 }
 
 /** Admin overrides merged over the defaults (unknown keys ignored). */
 export function mergeBillingConfig(overrides: unknown): BillingConfig {
   const cfg = defaultBillingConfig();
-  const o = (overrides ?? {}) as Partial<{ plans: Record<string, Partial<PlanDef & { available: boolean }>>; founding: Partial<FoundingOffer>; costs: Partial<CostAssumptions>; margins: Partial<MarginThresholds> }>;
+  const o = (overrides ?? {}) as Partial<{ plans: Record<string, Partial<PlanDef & { available: boolean }>>; video: Record<string, Partial<VideoPack & { available: boolean }>>; founding: Partial<FoundingOffer>; costs: Partial<CostAssumptions>; margins: Partial<MarginThresholds> }>;
   for (const id of PLAN_IDS) {
     const p = o.plans?.[id];
     if (!p) continue;
@@ -284,6 +329,10 @@ export function mergeBillingConfig(overrides: unknown): BillingConfig {
       entitlements: { ...cur.entitlements, ...pickKnown(p.entitlements, cur.entitlements) },
       trial: { ...cur.trial, ...pickKnown(p.trial, cur.entitlements) },
     };
+  }
+  for (const id of VIDEO_PACK_IDS) {
+    const v = o.video?.[id];
+    if (v) cfg.video[id] = { ...cfg.video[id], ...pickKnown(v, cfg.video[id]), id };
   }
   if (o.founding) cfg.founding = { ...cfg.founding, ...pickKnown(o.founding, cfg.founding) };
   if (o.costs) cfg.costs = { ...cfg.costs, ...pickKnown(o.costs, cfg.costs) };

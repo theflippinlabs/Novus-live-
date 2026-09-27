@@ -7,6 +7,8 @@ COPY . .
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-alpine
+# ffmpeg copies LIVE video streams into storage (video option): no re-encoding.
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 ENV NODE_ENV=production PORT=8787 DATA_DIR=/app/data TRUST_PROXY=true
 COPY --from=build /app/package.json ./

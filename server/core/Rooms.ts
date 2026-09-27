@@ -31,6 +31,10 @@ export interface Room {
   mode?: () => "auto" | "manual";
   /** Start / stop recording the current LIVE (manual mode, or to stop early). */
   setRecording?: (on: boolean) => Promise<void>;
+  /** Video of the current LIVE (followed accounts with the video option). */
+  video?: () => { on: boolean; recording: boolean };
+  /** Start / stop the video to match the LIVE, the setting and the option. */
+  syncVideo?: () => void;
   /** New settings for this room (recording mode…). */
   applySettings?: (settings: Settings) => void;
   /** Stop watchers/timers and close any running session. */
@@ -84,6 +88,7 @@ export class RoomRegistry {
         live: r.runtime.session?.status === "live",
         detected: r.detected?.() ?? false,
         mode: r.mode?.(),
+        video: r.video?.(),
         state: r.tiktok.state(),
         openAlerts: stats.openAlerts,
         criticalAlerts: stats.criticalAlerts,
@@ -109,12 +114,13 @@ export class RoomRegistry {
   /** Save settings once, share them with every room, then follow/unfollow TikTok accounts. */
   async updateSettings(patch: Partial<Settings>): Promise<Settings> {
     // Groups and manual-mode entries only keep accounts that are still followed.
-    if (patch.tiktokProfiles || patch.tiktokGroups || patch.tiktokManual) {
+    if (patch.tiktokProfiles || patch.tiktokGroups || patch.tiktokManual || patch.tiktokVideo) {
       const followed = new Set((patch.tiktokProfiles ?? this.settings.tiktokProfiles ?? []).map((u) => u.toLowerCase()));
       patch = {
         ...patch,
         tiktokGroups: (patch.tiktokGroups ?? this.settings.tiktokGroups ?? []).map((g) => ({ ...g, members: g.members.filter((u) => followed.has(u)) })),
         tiktokManual: (patch.tiktokManual ?? this.settings.tiktokManual ?? []).filter((u) => followed.has(u)),
+        tiktokVideo: (patch.tiktokVideo ?? this.settings.tiktokVideo ?? []).filter((u) => followed.has(u)),
       };
     }
     const settings = await this.main.runtime.updateSettings(patch);

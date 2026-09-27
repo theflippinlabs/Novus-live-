@@ -6,6 +6,9 @@ import {
   PLAN_IDS,
   priceLookupKey,
   SELF_SERVE_PLANS,
+  VIDEO_PACK_IDS,
+  videoLookupKey,
+  type VideoPackId,
   type BillingConfig,
   type BillingCycle,
   type PlanId,
@@ -246,7 +249,7 @@ export class BillingService {
   }
 
   /** May this workspace spend AI / monitoring / an export right now? */
-  allowed(id: string, what: "ai" | "live" | "export"): boolean {
+  allowed(id: string, what: "ai" | "live" | "export" | "video"): boolean {
     const eff = this.effective(id);
     if (eff.access === "restricted" && what !== "export") return false;
     return allowanceLeft(eff, this.usage(id), what);
@@ -277,6 +280,13 @@ export class BillingService {
       usage: this.usage(id),
       creators: opts.creators,
       seats: opts.seats,
+      video: {
+        pack: ws?.videoPack ?? null,
+        granted: Boolean(ws?.videoPackGranted),
+        // Enterprise (and spaces without a billing record) record without an option.
+        included: this.config.plans[ws?.plan ?? "enterprise"].entitlements.recording,
+        canBuy: opts.isFounder && this.stripeEnabled && Boolean(ws?.stripeSubscriptionId) && ["active", "past_due"].includes(ws?.status ?? ""),
+      },
     };
   }
 
@@ -304,6 +314,7 @@ export class BillingService {
     return {
       currency: "EUR",
       plans,
+      video: VIDEO_PACK_IDS.map((id) => this.config.video[id]).filter((v) => v.available).map(({ available: _a, ...v }) => v),
       founding: { available: this.foundingAvailable(), capacity: f.capacity, remaining: f.enabled ? this.foundingRemaining() : null, monthly: agencyMonthly - f.discountCents, months: f.months },
       checkoutEnabled: this.stripeEnabled,
     };
@@ -339,7 +350,10 @@ export class BillingService {
   }
 
   private async priceId(plan: PlanId, cycle: BillingCycle): Promise<string> {
-    const key = priceLookupKey(plan, cycle);
+    return this.priceByKey(priceLookupKey(plan, cycle));
+  }
+
+  private async priceByKey(key: string): Promise<string> {
     const cached = this.priceIds.get(key);
     if (cached) return cached;
     const res = await this.deps.stripe!.prices.list({ lookup_keys: [key], active: true, limit: 1 });
@@ -422,14 +436,54 @@ export class BillingService {
     if (!SELF_SERVE_PLANS.includes(plan) || !this.config.plans[plan].available) throw new BillingError("plan_unavailable", 400);
     if (plan === ws.plan && cycle === ws.cycle) return;
     const sub = await stripe.subscriptions.retrieve(ws.stripeSubscriptionId);
-    const item = sub.items.data[0];
+    const item = planItem(sub);
+    if (!item) throw new BillingError("no_subscription", 409);
+    // Every item of a subscription bills on the same interval: the video option follows the plan's cycle.
+    const video = videoItem(sub);
+    const videoPack = video && videoPackOf(video);
     await stripe.subscriptions.update(sub.id, {
-      items: [{ id: item.id, price: await this.priceId(plan, cycle) }],
+      items: [{ id: item.id, price: await this.priceId(plan, cycle) }, ...(video && videoPack && cycle !== ws.cycle ? [{ id: video.id, price: await this.priceByKey(videoLookupKey(videoPack, cycle)) }] : [])],
       proration_behavior: "create_prorations",
       metadata: { ...sub.metadata, plan, cycle },
     });
     // The founding discount only applies to Agency monthly.
     if (ws.founding && (plan !== "agency" || cycle !== "month")) await stripe.subscriptions.deleteDiscount(sub.id).catch(() => undefined);
+  }
+
+  /**
+   * Add, change or remove the video option on the paid subscription (prorated by Stripe).
+   * The pack only becomes active once Stripe's webhook confirms it. Not during a trial:
+   * the trial would make the recording free.
+   */
+  async setVideoPack(id: string, pack: VideoPackId | null): Promise<void> {
+    const stripe = this.deps.stripe;
+    const ws = this.workspaces.get(id);
+    if (!stripe) throw new BillingError("billing_not_configured", 503);
+    if (!ws?.stripeSubscriptionId || ["canceled", "pending", "comped"].includes(ws.status)) throw new BillingError("no_subscription", 409);
+    if (ws.status === "trialing") throw new BillingError("video_after_trial", 409);
+    if (pack && !this.config.video[pack]?.available) throw new BillingError("plan_unavailable", 400);
+    const sub = await stripe.subscriptions.retrieve(ws.stripeSubscriptionId);
+    const current = videoItem(sub);
+    if (!pack) {
+      if (current) await stripe.subscriptions.update(sub.id, { items: [{ id: current.id, deleted: true }], proration_behavior: "create_prorations" });
+      return;
+    }
+    const price = await this.priceByKey(videoLookupKey(pack, ws.cycle));
+    await stripe.subscriptions.update(sub.id, {
+      items: [current ? { id: current.id, price } : { price, quantity: 1 }],
+      proration_behavior: "always_invoice",
+    });
+    this.record({ type: "video_option_selected", workspaceId: ws.id, plan: ws.plan, cycle: ws.cycle, meta: { pack, from: ws.videoPack ?? null } });
+  }
+
+  /** Admin: give (or take back) a video pack without billing it, e.g. for a complimentary space. */
+  async grantVideoPack(id: string, pack: VideoPackId | null): Promise<void> {
+    const ws = this.workspaces.get(id);
+    if (!ws) throw new BillingError("workspace_not_found", 404);
+    ws.videoPack = pack ?? undefined;
+    ws.videoPackGranted = Boolean(pack);
+    await this.save(ws);
+    this.onChange(ws.id);
   }
 
   // ---------------------------------------------------------------- webhooks
@@ -523,12 +577,17 @@ export class BillingService {
       return;
     }
     const before = { status: ws.status, plan: ws.plan, cycle: ws.cycle, cancel: ws.cancelAtPeriodEnd };
-    const item = sub.items?.data?.[0];
-    const lookup = item?.price?.lookup_key ?? "";
-    const m = /^novus_(.+)_(month|year)$/.exec(lookup);
+    const item = planItem(sub);
+    const m = PLAN_KEY.exec(item?.price?.lookup_key ?? "");
     if (m && (PLAN_IDS as readonly string[]).includes(m[1])) {
       ws.plan = m[1] as PlanId;
       ws.cycle = m[2] as BillingCycle;
+    }
+    // The video option is whatever Stripe bills (a pack granted by the admin stays).
+    const beforePack = ws.videoPack;
+    if (!ws.videoPackGranted) {
+      const video = videoItem(sub);
+      ws.videoPack = sub.status === "canceled" ? undefined : ((video && videoPackOf(video)) ?? undefined);
     }
     const s = sub as Stripe.Subscription & { current_period_start?: number; current_period_end?: number };
     const itemPeriod = item as (typeof item & { current_period_start?: number; current_period_end?: number }) | undefined;
@@ -555,7 +614,8 @@ export class BillingService {
       this.record({ type: PLAN_RANK[ws.plan] > PLAN_RANK[before.plan] ? "subscription_upgraded" : "subscription_downgraded", ...ev, meta: { from: before.plan } });
     }
     if ((ws.status === "canceled" && before.status !== "canceled") || (ws.cancelAtPeriodEnd && !before.cancel)) this.record({ type: "subscription_cancelled", ...ev, meta: { atPeriodEnd: ws.cancelAtPeriodEnd } });
-    if (before.status !== ws.status) this.onChange(ws.id);
+    if (beforePack !== ws.videoPack) this.record({ type: ws.videoPack ? "video_option_started" : "video_option_ended", ...ev, meta: { pack: ws.videoPack ?? beforePack ?? null } });
+    if (before.status !== ws.status || beforePack !== ws.videoPack) this.onChange(ws.id);
   }
 
   // ---------------------------------------------------------------- analytics & admin
@@ -592,6 +652,8 @@ export class BillingService {
     const plan = this.config.plans[ws.plan];
     let value = monthlyValue(plan, ws.cycle);
     if (ws.founding && ws.plan === "agency" && ws.cycle === "month" && ws.foundingUntil && ws.foundingUntil > this.now()) value -= this.config.founding.discountCents;
+    const pack = ws.videoPack && !ws.videoPackGranted ? this.config.video[ws.videoPack] : undefined;
+    if (pack) value += ws.cycle === "year" ? Math.round(pack.yearly / 12) : pack.monthly;
     return Math.max(0, value);
   }
 }
@@ -622,3 +684,13 @@ function deepMerge(a: Record<string, unknown>, b: Record<string, unknown>): Reco
   }
   return out;
 }
+
+const PLAN_KEY = /^novus_(?!addon_)(.+)_(month|year)$/;
+const VIDEO_KEY = /^novus_addon_(video_\d+)_(month|year)$/;
+type SubItem = Stripe.Subscription["items"]["data"][number];
+const planItem = (sub: Stripe.Subscription): SubItem | undefined => sub.items?.data?.find((i) => PLAN_KEY.test(i.price?.lookup_key ?? "")) ?? sub.items?.data?.find((i) => !VIDEO_KEY.test(i.price?.lookup_key ?? ""));
+const videoItem = (sub: Stripe.Subscription): SubItem | undefined => sub.items?.data?.find((i) => VIDEO_KEY.test(i.price?.lookup_key ?? ""));
+const videoPackOf = (item: SubItem): VideoPackId | undefined => {
+  const id = VIDEO_KEY.exec(item.price?.lookup_key ?? "")?.[1];
+  return (VIDEO_PACK_IDS as readonly string[]).includes(id ?? "") ? (id as VideoPackId) : undefined;
+};

@@ -1,4 +1,4 @@
-import type { BillingConfig, Entitlements } from "../../shared/plans";
+import { withVideoPack, type BillingConfig, type Entitlements } from "../../shared/plans";
 import type { AccessLevel, UsageSnapshot } from "../../shared/types";
 import type { UsageRow, Workspace } from "./Store";
 
@@ -35,7 +35,9 @@ export const monthKey = (t: number) => new Date(t).toISOString().slice(0, 7);
 
 export function effectiveEntitlements(ws: Workspace, cfg: BillingConfig, now = Date.now()): EffectiveEntitlements {
   const plan = cfg.plans[ws.plan];
-  const full = ws.limits ? { ...plan.entitlements, ...ws.limits } : plan.entitlements;
+  const pack = ws.videoPack ? cfg.video[ws.videoPack] : undefined;
+  const withPack = withVideoPack(plan.entitlements, pack);
+  const full = ws.limits ? { ...withPack, ...ws.limits } : withPack;
   const month = monthKey(now);
   switch (ws.status) {
     case "comped":
@@ -70,6 +72,10 @@ export const METRICS = [
   "provider_calls",
   "exports",
   "recording_minutes",
+  /** Video megabytes uploaded to storage this month (the pack's storage cap). */
+  "video_mb_uploaded",
+  /** Video megabytes watched or downloaded (storage egress). */
+  "video_mb_served",
   "screenshots",
   "chat_messages_sent",
 ] as const;
@@ -129,14 +135,17 @@ export class UsageMeter {
       exports: g("exports"),
       provider_calls: g("provider_calls"),
       recording_hours: Math.round((g("recording_minutes") / 60) * 10) / 10,
+      video_gb: Math.round((g("video_mb_uploaded") / 1024) * 100) / 100,
       screenshots: g("screenshots"),
     };
   }
 }
 
 /** Which allowance a metered action draws on, and whether any is left. */
-export function allowanceLeft(eff: EffectiveEntitlements, usage: UsageSnapshot, what: "ai" | "live" | "export"): boolean {
+export function allowanceLeft(eff: EffectiveEntitlements, usage: UsageSnapshot, what: "ai" | "live" | "export" | "video"): boolean {
   const e = eff.entitlements;
+  // Video stops at either cap (hours or gigabytes): never an overage.
+  if (what === "video") return e.recording && usage.recording_hours < e.recording_hours && usage.video_gb < e.video_storage_gb;
   if (what === "ai") return usage.ai_requests < e.ai_requests && usage.ai_tokens < e.ai_tokens;
   if (what === "live") return usage.live_monitoring_hours < e.live_monitoring_hours;
   return usage.exports < e.exports_limit;

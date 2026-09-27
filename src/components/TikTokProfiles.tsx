@@ -3,6 +3,7 @@ import { useCan, useScope } from "../permissions";
 import type { TikTokGroup } from "../../shared/types";
 import { api, ApiError } from "../api";
 import { errorText, useLang } from "../i18n";
+import { showUpgrade } from "../billing";
 import { setState, switchRoom, toast, useStore } from "../store";
 
 const TEXT = {
@@ -41,6 +42,13 @@ const TEXT = {
     allManual: "All manual",
     allAuto: "All automatic",
     counts: (a: number, m: number) => `${a} automatic · ${m} manual`,
+    video: "VIDEO",
+    videoOn: "VIDEO ON",
+    videoRec: "● REC VIDEO",
+    videoTitle: (u: string, on: boolean) => (on ? `@${u}: LIVEs are also recorded in video. Tap to stop.` : `@${u}: record LIVEs in video too (Video option).`),
+    consent: (u: string) =>
+      `Record @${u}'s LIVEs in video?\n\nConfirm that you have @${u}'s agreement (ideally in writing): recording someone's LIVE without consent is against TikTok's rules and image rights.\n\nVideos are kept for the retention of your Video option, then deleted.`,
+    noVideo: "The Video option isn't enabled for this space.",
     modeTitle: (u: string, manual: boolean) =>
       manual
         ? `@${u}: manual — each LIVE is detected, recorded only when you start it. Tap for automatic.`
@@ -83,6 +91,13 @@ const TEXT = {
     allManual: "Tout en manuel",
     allAuto: "Tout en auto",
     counts: (a: number, m: number) => `${a} en auto · ${m} en manuel`,
+    video: "VIDÉO",
+    videoOn: "VIDÉO ACTIVÉE",
+    videoRec: "● REC VIDÉO",
+    videoTitle: (u: string, on: boolean) => (on ? `@${u} : les LIVE sont aussi enregistrés en vidéo. Touche pour arrêter.` : `@${u} : enregistrer aussi les LIVE en vidéo (option Vidéo).`),
+    consent: (u: string) =>
+      `Enregistrer les LIVE de @${u} en vidéo ?\n\nConfirme que tu as l'accord de @${u} (idéalement par écrit) : enregistrer le LIVE de quelqu'un sans son accord est contraire aux règles de TikTok et au droit à l'image.\n\nLes vidéos sont conservées selon ton option Vidéo, puis supprimées.`,
+    noVideo: "L'option Vidéo n'est pas activée pour cet espace.",
     modeTitle: (u: string, manual: boolean) =>
       manual
         ? `@${u} : manuel — chaque LIVE est détecté, enregistré seulement quand tu le lances. Touche pour passer en automatique.`
@@ -118,6 +133,9 @@ export function TikTokProfiles() {
   );
   const groups = useStore((s) => s.settings.tiktokGroups) ?? NO_GROUPS;
   const manualList = useStore((s) => s.settings.tiktokManual) ?? NO_MANUAL;
+  const videoList = useStore((s) => s.settings.tiktokVideo) ?? NO_MANUAL;
+  const billing = useStore((s) => s.billing);
+  const canVideo = billing?.entitlements.recording ?? false;
   const rooms = useStore((s) => s.rooms);
   const current = useStore((s) => s.room);
   const [draft, setDraft] = useState("");
@@ -217,6 +235,24 @@ export function TikTokProfiles() {
       });
     });
 
+  const hasVideo = (username: string) => videoList.includes(username.toLowerCase());
+  const toggleVideo = (username: string) => {
+    const u = username.toLowerCase();
+    const on = hasVideo(u);
+    if (!on && !canVideo) {
+      if (billing?.comped) toast(tx.noVideo, "warn");
+      else showUpgrade("plan_video_option");
+      return;
+    }
+    if (!on && !window.confirm(tx.consent(username))) return;
+    void run(async () => {
+      setState({
+        settings: await api.saveSettings({ tiktokVideo: on ? videoList.filter((x) => x !== u) : [...videoList, u] }),
+        rooms: (await api.rooms()).rooms,
+      });
+    });
+  };
+
   /** Every account shown here in manual (or automatic) recording at once. */
   const setAllManual = (manual: boolean) =>
     run(async () => {
@@ -272,6 +308,16 @@ export function TikTokProfiles() {
               aria-label={tx.modeTitle(p, manual)}
             >
               {manual ? `✋ ${tx.manual}` : `⟳ ${tx.auto}`}
+            </button>
+            <button
+              className={`mode-toggle video-toggle ${hasVideo(p) ? "on" : ""} ${canVideo ? "" : "locked"}`}
+              onClick={() => toggleVideo(p)}
+              disabled={busy || !canManage}
+              title={tx.videoTitle(p, hasVideo(p))}
+              aria-label={tx.videoTitle(p, hasVideo(p))}
+              aria-pressed={hasVideo(p)}
+            >
+              {room?.video?.recording ? tx.videoRec : hasVideo(p) ? `◉ ${tx.videoOn}` : `○ ${tx.video}`}
             </button>
             {groups.length && fullControl ? (
               <select

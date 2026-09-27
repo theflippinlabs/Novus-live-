@@ -134,8 +134,10 @@ describe("Pricing catalog", () => {
     // Yearly = 10 months (2 months free) for the agency plans.
     expect(DEFAULT_PLANS.agency.yearly).toBe(DEFAULT_PLANS.agency.monthly! * 10);
     expect(DEFAULT_PLANS.agency_pro.yearly).toBe(DEFAULT_PLANS.agency_pro.monthly! * 10);
-    expect(DEFAULT_PLANS.agency.entitlements).toMatchObject({ creator_limit: 15, team_seat_limit: 10, video_retention_days: 30 });
-    expect(DEFAULT_PLANS.agency_pro.entitlements).toMatchObject({ creator_limit: 40, team_seat_limit: 25, video_retention_days: 90 });
+    expect(DEFAULT_PLANS.agency.entitlements).toMatchObject({ creator_limit: 15, team_seat_limit: 10, recording: false });
+    expect(DEFAULT_PLANS.agency_pro.entitlements).toMatchObject({ creator_limit: 40, team_seat_limit: 25, recording: false });
+    // Video is an option; only Enterprise includes it by contract.
+    expect(DEFAULT_PLANS.enterprise.entitlements.recording).toBe(true);
     expect(DEFAULT_PLANS.agency_pro.trialDays).toBe(0);
   });
 
@@ -584,5 +586,61 @@ describe("Profile", () => {
     expect(me.email).toBe("pro@x.co");
     await request(app).put("/api/billing/profile").set("Cookie", founder).send({ name: "x" }).expect(400);
     await request(app).put("/api/billing/profile").send({ name: "Anon" }).expect(401);
+  });
+});
+
+describe("Video option billing", () => {
+  const withVideo = (s: Stripe.Subscription, lookup: string) => {
+    (s.items.data as unknown[]).push({ id: "si_video", price: { id: `price_${lookup}`, lookup_key: lookup, recurring: { interval: "month" } } });
+    return s;
+  };
+
+  it("follows Stripe: a video item on the subscription switches the pack on, removing it switches it off", async () => {
+    const { billing, stripe } = await makeBilling();
+    const { workspace } = await billing.signup({ name: "Agence Vidéo", email: "v@agence.fr", plan: "agency" });
+    const plain = sub("sub_v", workspace.id, "active", "novus_agency_month");
+    stripe.subs.set("sub_v", plain);
+    const e1 = signed("customer.subscription.updated", plain);
+    await billing.handleWebhook(Buffer.from(e1.payload), e1.header);
+    expect(billing.effective(workspace.id).entitlements.recording).toBe(false);
+    expect(billing.allowed(workspace.id, "video")).toBe(false);
+
+    // The customer adds the 150 h pack: the plan item stays the plan (not the add-on).
+    await billing.setVideoPack(workspace.id, "video_150");
+    const [, update] = stripe.calls.updates.at(-1)!;
+    expect(update.items).toEqual([{ price: "price_novus_addon_video_150_month", quantity: 1 }]);
+    const withPack = withVideo(sub("sub_v", workspace.id, "active", "novus_agency_month"), "novus_addon_video_150_month");
+    stripe.subs.set("sub_v", withPack);
+    const e2 = signed("customer.subscription.updated", withPack);
+    await billing.handleWebhook(Buffer.from(e2.payload), e2.header);
+    const ws = billing.workspace(workspace.id)!;
+    expect(ws.plan).toBe("agency");
+    expect(ws.videoPack).toBe("video_150");
+    expect(billing.effective(workspace.id).entitlements).toMatchObject({ recording: true, recording_hours: 150, video_storage_gb: 120 });
+    expect(billing.mrr(ws)).toBe(19900 + 4900);
+
+    // Removing it deletes the Stripe item; the webhook turns video off.
+    await billing.setVideoPack(workspace.id, null);
+    expect(stripe.calls.updates.at(-1)![1].items).toEqual([{ id: "si_video", deleted: true }]);
+    const e3 = signed("customer.subscription.updated", plain);
+    await billing.handleWebhook(Buffer.from(e3.payload), e3.header);
+    expect(billing.workspace(workspace.id)!.videoPack).toBeUndefined();
+  });
+
+  it("is refused during a trial and without a paid subscription; the admin can offer a pack", async () => {
+    const { billing, stripe } = await makeBilling();
+    const { workspace } = await billing.signup({ name: "Essai", email: "t@x.co", plan: "agency" });
+    await expect(billing.setVideoPack(workspace.id, "video_50")).rejects.toMatchObject({ code: "no_subscription" });
+    const trial = sub("sub_t", workspace.id, "trialing", "novus_agency_month");
+    stripe.subs.set("sub_t", trial);
+    const e = signed("customer.subscription.updated", trial);
+    await billing.handleWebhook(Buffer.from(e.payload), e.header);
+    await expect(billing.setVideoPack(workspace.id, "video_50")).rejects.toMatchObject({ code: "video_after_trial" });
+
+    await billing.ensureComped("beta", "Testeurs", "agency");
+    await billing.grantVideoPack("beta", "video_50");
+    expect(billing.effective("beta").entitlements.recording_hours).toBe(50);
+    // An offered pack is not revenue.
+    expect(billing.mrr(billing.workspace("beta")!)).toBe(0);
   });
 });

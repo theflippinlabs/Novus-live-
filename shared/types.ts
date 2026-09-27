@@ -252,6 +252,11 @@ export interface Settings {
    * once the moderator taps "Start recording". Every other account records automatically.
    */
   tiktokManual: string[];
+  /**
+   * Followed accounts whose LIVE is also recorded in video (lowercase). Needs the video
+   * option; the moderator confirmed having the streamer's consent when switching it on.
+   */
+  tiktokVideo?: string[];
 }
 
 export interface TikTokGroup {
@@ -535,6 +540,8 @@ export interface HistoryEntry {
   diamonds: number;
   peakViewers: number;
   alerts: number;
+  /** Video of this LIVE (video option), when one was recorded and not yet expired. */
+  video?: VideoInfo;
 }
 
 /** Derived, easier-to-read figures for one LIVE (Stats page). */
@@ -622,6 +629,8 @@ export interface RoomSummary {
   detected?: boolean;
   /** Recording mode of a followed account. */
   mode?: "auto" | "manual";
+  /** Video of this account's LIVE: switched on, and being recorded right now. */
+  video?: { on: boolean; recording: boolean };
   state: TikTokIntegrationState;
   openAlerts: number;
   criticalAlerts: number;
@@ -707,6 +716,8 @@ export interface UsageSnapshot {
   exports: number;
   provider_calls: number;
   recording_hours: number;
+  /** Video gigabytes recorded this month. */
+  video_gb: number;
   screenshots: number;
 }
 
@@ -735,6 +746,8 @@ export interface BillingMe {
   usage: UsageSnapshot;
   creators: number;
   seats: number;
+  /** Video option: the active pack, and whether it was granted (not bought). */
+  video: { pack: import("./plans").VideoPackId | null; granted: boolean; included: boolean; canBuy: boolean };
 }
 
 /** GET /api/billing/plans — public pricing data. */
@@ -748,6 +761,7 @@ export interface PublicPricing {
     available: boolean;
     entitlements: import("./plans").Entitlements;
   }[];
+  video: import("./plans").VideoPack[];
   founding: {
     available: boolean;
     capacity: number;
@@ -757,4 +771,40 @@ export interface PublicPricing {
     months: number;
   };
   checkoutEnabled: boolean;
+}
+
+// ---------------------------------------------------------------- LIVE video (option)
+
+export interface VideoSegment {
+  /** Object path in storage ("<tenant>/<session>/<file>.ts"). */
+  path: string;
+  seconds: number;
+  bytes: number;
+  /** A new ffmpeg run starts here (the stream was reconnected): the player resyncs. */
+  discontinuity?: boolean;
+}
+
+/** One LIVE's video: 60-second MPEG-TS segments in private storage. */
+export interface VideoRecord {
+  sessionId: string;
+  account: string;
+  startedAt: number;
+  endedAt?: number;
+  status: "recording" | "done" | "stopped_quota" | "failed";
+  segments: VideoSegment[];
+  seconds: number;
+  bytes: number;
+  /** Deleted automatically after this (the pack's retention). */
+  expiresAt: number;
+}
+
+/** What the app shows about a LIVE's video. */
+export interface VideoInfo {
+  sessionId: string;
+  status: VideoRecord["status"];
+  seconds: number;
+  bytes: number;
+  startedAt: number;
+  endedAt?: number;
+  expiresAt: number;
 }

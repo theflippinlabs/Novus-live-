@@ -23,6 +23,12 @@ import { RealtimeHub } from "./realtime/RealtimeHub";
 import { MAIN_ROOM, RoomRegistry, tiktokRoomId, type Room } from "./core/Rooms";
 import { EulerChatSender } from "./chat/EulerChat";
 import { LiveRecorder } from "./core/LiveRecorder";
+import { createClient } from "@supabase/supabase-js";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { RoomVideo } from "./video/RoomVideo";
+import { LocalVideoStore, SupabaseVideoStore, type VideoStore } from "./video/VideoStore";
 
 async function main() {
   const config = loadConfig();
@@ -53,6 +59,39 @@ async function main() {
     console.error(`[novus] billing tables unavailable (run the billing migration): ${err instanceof Error ? err.message : err}`);
   }
   billing.start();
+
+  // ---------------------------------------------------------------- LIVE video (option)
+  // ffmpeg copies TikTok's stream into storage; without it (or with VIDEO_RECORDING=off) video stays off.
+  const ffmpegOk = process.env.VIDEO_RECORDING !== "off" && spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+  const videoStore: VideoStore =
+    repo.kind === "supabase" && config.supabaseUrl && config.supabaseServiceRoleKey
+      ? new SupabaseVideoStore(createClient(config.supabaseUrl, config.supabaseServiceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } }))
+      : new LocalVideoStore(join(config.dataDir ?? tmpdir(), "videos"));
+  const videoKit = { ready: ffmpegOk, store: videoStore, tmp: join(tmpdir(), "novus-video") };
+  // Recorded seconds and bytes, counted in whole minutes / megabytes against the option's caps.
+  const videoCarry = new Map<string, { sec: number; mb: number }>();
+  const meterVideo = (tenant: string, seconds: number, bytes: number) => {
+    const c = videoCarry.get(tenant) ?? { sec: 0, mb: 0 };
+    c.sec += seconds;
+    c.mb += bytes / 1_048_576;
+    const minutes = Math.floor(c.sec / 60);
+    const mb = Math.floor(c.mb);
+    if (minutes) billing.meterAdd(tenant, "recording_minutes", minutes);
+    if (mb) billing.meterAdd(tenant, "video_mb_uploaded", mb);
+    c.sec -= minutes * 60;
+    c.mb -= mb;
+    videoCarry.set(tenant, c);
+  };
+  // Retention: videos past their pack's retention are deleted from storage (hourly).
+  setInterval(() => {
+    void (async () => {
+      for (const { tenant, record } of await videoStore.expired(Date.now())) {
+        await videoStore.remove(record.segments.map((s) => s.path));
+        await videoStore.deleteRecord(tenant, record.sessionId);
+        console.log(`[video] deleted @${record.account}'s video of ${new Date(record.startedAt).toISOString().slice(0, 10)} (retention over)`);
+      }
+    })().catch((e) => console.warn(`[video] cleanup: ${e instanceof Error ? e.message : e}`));
+  }, 3600_000).unref();
 
   // ---------------------------------------------------------------- push notifications
   const push = new PushService({
@@ -132,11 +171,22 @@ async function main() {
     // unofficial, read-only live connector (TIKTOK_LIVE_CONNECTOR=off disables watching).
     let onRoomsChanged = () => undefined as void;
     const createTikTokRoom = async (username: string): Promise<Room> => {
+      let video: RoomVideo | null = null;
+      let videoOn = false;
+      let runtimeRef: NovusRuntime | null = null;
+      /** Record the LIVE in video while it is recorded, the account has video on and the option has room left. */
+      const syncVideo = () => {
+        const s = runtimeRef?.session;
+        if (!video) return;
+        if (s && s.status === "live" && s.source === "tiktok" && videoOn && watcher?.isLive) void video.ensure(s.id).catch((e) => console.warn(`[video] ${e instanceof Error ? e.message : e}`));
+        else if (video.sessionId) void video.stop("done").catch((e) => console.warn(`[video] ${e instanceof Error ? e.message : e}`));
+      };
       const id = tiktokRoomId(username);
       const tiktok = new TikTokAdapter(false);
       tiktok.unofficialLiveConnector = config.tiktokLiveConnector;
       await tiktok.connect(username);
       const { runtime, hub } = await buildRoom(tiktok, undefined, username);
+      runtimeRef = runtime;
       const recorder = new LiveRecorder(username, runtime, {
         waiting: (detail) => {
           tiktok.noteWaiting(detail);
@@ -156,6 +206,7 @@ async function main() {
             push: async (events) => {
               await recorder.push(events as unknown as LiveEvent[]);
               hub.pushExtras({ tiktok: tiktok.status() });
+              syncVideo();
             },
             waiting: (detail) => {
               tiktok.noteWaiting(detail);
@@ -170,6 +221,19 @@ async function main() {
           { pollMs: 60_000, errorBackoffMs: 180_000, log: (m) => console.log(m) },
         );
         watcher.watch(username);
+        if (videoKit.ready)
+          video = new RoomVideo({
+            tenant,
+            account: username,
+            store: videoKit.store,
+            tmpRoot: videoKit.tmp,
+            streamUrl: (fresh) => watcher?.streamUrl(fresh) ?? Promise.resolve(null),
+            allowed: () => billing.allowed(tenant, "video"),
+            retentionDays: () => billing.effective(tenant).entitlements.video_retention_days || 30,
+            meter: (seconds, bytes) => meterVideo(tenant, seconds, bytes),
+            changed: () => onRoomsChanged(),
+            log: (m) => console.log(m),
+          });
         console.log(`[novus] TikTok live connector watching @${username}${isOwner ? "" : ` (space ${tenant})`}`);
       }
       return {
@@ -182,9 +246,19 @@ async function main() {
         liveRoomId: () => watcher?.roomId,
         detected: () => recorder.detected,
         mode: () => recorder.mode,
-        setRecording: (on) => recorder.setRecording(on),
-        applySettings: (settings) => recorder.apply((settings.tiktokManual ?? []).includes(username.toLowerCase())),
+        setRecording: async (on) => {
+          await recorder.setRecording(on);
+          syncVideo();
+        },
+        video: () => ({ on: videoOn, recording: Boolean(video?.recording) }),
+        applySettings: (settings) => {
+          recorder.apply((settings.tiktokManual ?? []).includes(username.toLowerCase()));
+          videoOn = (settings.tiktokVideo ?? []).includes(username.toLowerCase());
+          syncVideo();
+        },
+        syncVideo,
         dispose: async () => {
+          await video?.stop("done").catch(() => undefined);
           watcher?.stop();
           await runtime.endSession().catch(() => undefined);
           await runtime.shutdown();
@@ -234,7 +308,12 @@ async function main() {
   const chat = owner.chat;
 
   // A subscription starts, ends or changes plan: start or stop monitoring accordingly.
-  billing.onChange = (id) => void byTenant.get(id)?.rooms.syncProfiles();
+  billing.onChange = (id) => {
+    const space = byTenant.get(id);
+    void space?.rooms.syncProfiles().then(() => space.rooms.all().forEach((r) => r.syncVideo?.()));
+  };
+  // Video resumes after a dropped stream and stops when the option runs out (every 20 s).
+  if (videoKit.ready) setInterval(() => byTenant.forEach((space) => space.rooms.all().forEach((r) => r.syncVideo?.())), 20_000).unref();
   // Count LIVE minutes per workspace; a trial that used its LIVE hours stops monitoring.
   const seenSessions = new Set<string>();
   setInterval(() => {
@@ -260,6 +339,7 @@ async function main() {
   const app = createApp({
     config,
     spaces,
+    video: { ready: videoKit.ready, store: videoStore },
     billing,
     mailer,
     aiCost,
@@ -278,6 +358,7 @@ async function main() {
     console.log(`[novus] Send in chat: ${chat.configured ? "Euler OAuth configured" : "off (set EULER_CLIENT_ID / EULER_CLIENT_SECRET)"}`);
     console.log(`[novus] Real AI cost: ${aiCost.configured ? "Anthropic Cost API on" : "estimate only (set ANTHROPIC_ADMIN_KEY)"} · Code recovery e-mail: ${mailer.enabled ? "on" : "off (set RESEND_API_KEY / MAIL_FROM)"}`);
     console.log(`[novus] Billing: ${billing.stripeEnabled ? `Stripe on${config.stripeWebhookSecret ? "" : " (STRIPE_WEBHOOK_SECRET missing)"}` : "Stripe off (set STRIPE_SECRET_KEY)"} · ${billing.all().length} workspace(s)`);
+    console.log(`[novus] LIVE video: ${videoKit.ready ? `on (${videoStore.kind} storage)` : "off (ffmpeg not found or VIDEO_RECORDING=off)"}`);
     console.log(`[novus] Connector ingestion: ${config.ingestToken ? "enabled" : "disabled (set INGEST_TOKEN)"}`);
   });
 

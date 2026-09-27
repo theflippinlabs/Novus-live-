@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { BillingCycle, Entitlements, PlanId } from "../../shared/plans";
+import type { BillingCycle, Entitlements, PlanId, VideoPackId } from "../../shared/plans";
 import type { WorkspaceStatus } from "../../shared/types";
 
 /*
@@ -38,6 +38,10 @@ export interface Workspace {
   canceledAt?: number;
   /** Per-workspace allowances set by the admin (e.g. a tester space), merged over the plan's. */
   limits?: Partial<Entitlements>;
+  /** Video option: the pack Stripe bills (or the admin grants to a complimentary space). */
+  videoPack?: VideoPackId;
+  /** Granted by the admin rather than bought (kept when Stripe syncs the subscription). */
+  videoPackGranted?: boolean;
   createdAt: number;
   updatedAt: number;
 }

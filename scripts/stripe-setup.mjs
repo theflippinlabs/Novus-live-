@@ -24,6 +24,12 @@ const PLANS = [
   { id: "agency", name: "Novus Live — Agency", month: 19900, year: 199000 },
   { id: "agency_pro", name: "Novus Live — Agency Pro", month: 39900, year: 399000 },
 ];
+// Video option (add-on subscription items; same interval as the plan they join).
+const VIDEO = [
+  { id: "video_50", name: "Novus Live — Option Vidéo 50 h", month: 1900, year: 19000 },
+  { id: "video_150", name: "Novus Live — Option Vidéo 150 h", month: 4900, year: 49000 },
+  { id: "video_500", name: "Novus Live — Option Vidéo 500 h", month: 14900, year: 149000 },
+];
 const COUPON = "NOVUS_FOUNDING_AGENCY";
 const EVENTS = [
   "checkout.session.completed",
@@ -61,6 +67,22 @@ for (const p of PLANS) {
       log(`price ${lookup}: exists at ${price.unit_amount} (expected ${amount}) — left unchanged`);
     }
     products[p.id].prices.push(price.id);
+  }
+}
+
+for (const v of VIDEO) {
+  const lookups = [`novus_addon_${v.id}_month`, `novus_addon_${v.id}_year`];
+  const existing = await stripe.prices.list({ lookup_keys: lookups, active: true });
+  const found = await stripe.products.search({ query: `metadata['novus_addon']:'${v.id}'` }).catch(() => ({ data: [] }));
+  const productId = found.data[0]?.id ?? (await stripe.products.create({ name: v.name, metadata: { novus_addon: v.id } })).id;
+  for (const [interval, amount] of [["month", v.month], ["year", v.year]]) {
+    const lookup = `novus_addon_${v.id}_${interval}`;
+    if (existing.data.some((x) => x.lookup_key === lookup)) {
+      log(`price ${lookup}: exists`);
+      continue;
+    }
+    await stripe.prices.create({ product: productId, currency: "eur", unit_amount: amount, recurring: { interval }, lookup_key: lookup, tax_behavior: "inclusive", metadata: { novus_addon: v.id } });
+    log(`price ${lookup}: created`);
   }
 }
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ACTION_TYPES, CATEGORIES } from "./types";
+import { VIDEO_PACK_IDS } from "./plans";
 
 // Input validation for everything that crosses the HTTP boundary.
 
@@ -97,6 +98,10 @@ export const settingsPatchSchema = z
       .max(MAX_PROFILES)
       .transform((list) => [...new Set(list)]),
     tiktokManual: z
+      .array(tiktokHandle.pipe(z.string().min(2)))
+      .max(MAX_PROFILES)
+      .transform((list) => [...new Set(list.map((u) => u.toLowerCase()))]),
+    tiktokVideo: z
       .array(tiktokHandle.pipe(z.string().min(2)))
       .max(MAX_PROFILES)
       .transform((list) => [...new Set(list.map((u) => u.toLowerCase()))]),
@@ -269,6 +274,7 @@ export const checkoutSchema = z
   .strict();
 
 export const changePlanSchema = z.object({ plan: selfServePlan, cycle }).strict();
+export const videoPackSchema = z.object({ pack: z.enum(VIDEO_PACK_IDS).nullable() }).strict();
 
 export const leadSchema = z
   .object({

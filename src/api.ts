@@ -3,6 +3,7 @@ import type {
   CoachTip,
   StatsInsights,
   DonorDirectory,
+  VideoInfo,
   CopilotTurn,
   ActionRecord,
   ActionType,
@@ -124,6 +125,7 @@ export const api = {
 
   analytics: () => request<AnalyticsSummary>("GET", "/analytics"),
   donors: (days: number, account: string) => request<DonorDirectory>("GET", `/donors?days=${days}${account ? `&account=${encodeURIComponent(account)}` : ""}`),
+  video: (sessionId: string) => request<VideoInfo>("GET", `/history/${encodeURIComponent(sessionId)}/video`),
   insights: () => request<StatsInsights>("GET", "/analytics/insights"),
   historyInsights: (id: string) => request<StatsInsights>("GET", `/history/${encodeURIComponent(id)}/insights`),
   askStats: (question: string, history: CopilotTurn[], sessionId: string | undefined, lang: "en" | "fr") => request<{ text: string }>("POST", "/analytics/ask", { question, history, sessionId, lang }),

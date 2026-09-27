@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PLAN_IDS, type BillingConfig, type Entitlements, type PlanId } from "../../shared/plans";
+import { PLAN_IDS, VIDEO_PACK_IDS, type BillingConfig, type Entitlements, type PlanId, type VideoPackId } from "../../shared/plans";
 import { ApiError } from "../api";
 import { billingApi, PLAN_NAMES, type AdminOverview } from "../billing";
 import { Segmented } from "../components/ui";
@@ -82,6 +82,11 @@ const T = {
     aiError: "The Anthropic cost API didn't answer: margins use the estimate.",
     aiCalibrated: "AI costs are scaled to the real Anthropic bill.",
     resetCode: "New access code",
+    video: "Video option",
+    videoNone: "None",
+    videoGift: (h: number) => `${h} h (offered)`,
+    videoPaid: (p: string) => `Paid by the customer: ${p}`,
+    videoSaved: "Video option updated",
     resetConfirm: "Only after checking it's really the customer (e.g. a message from their workspace e-mail). Their old code stops working.",
     resetYes: "Create the code",
     cancel: "Cancel",
@@ -156,6 +161,11 @@ const T = {
     aiError: "L'API de coûts Anthropic n'a pas répondu : les marges utilisent l'estimation.",
     aiCalibrated: "Coûts IA recalés sur la vraie facture Anthropic.",
     resetCode: "Nouveau code d'accès",
+    video: "Option Vidéo",
+    videoNone: "Aucune",
+    videoGift: (h: number) => `${h} h (offerte)`,
+    videoPaid: (p: string) => `Payée par le client : ${p}`,
+    videoSaved: "Option Vidéo mise à jour",
     resetConfirm: "Seulement après avoir vérifié que c'est bien le client (par ex. un message depuis l'e-mail de son espace). Son ancien code ne marchera plus.",
     resetYes: "Créer le code",
     cancel: "Annuler",
@@ -303,6 +313,37 @@ function AICost({ ai, lang }: { ai: AdminOverview["metrics"]["ai"]; lang: "en" |
   );
 }
 
+/** Give (or take back) a video pack to a space without billing it. */
+function GrantVideo({ w, lang }: { w: AdminOverview["workspaces"][number]; lang: "en" | "fr" }) {
+  const tx = T[lang];
+  const [pack, setPack] = useState<VideoPackId | "">(w.videoGranted ? (w.videoPack ?? "") : "");
+  if (w.videoPack && !w.videoGranted) return <div className="small muted" style={{ marginTop: 6 }}>{tx.video} · {tx.videoPaid(w.videoPack.replace("video_", "") + " h")}</div>;
+  const save = async (next: VideoPackId | "") => {
+    const before = pack;
+    setPack(next);
+    try {
+      await billingApi.adminGrantVideo(w.id, next || null);
+      toast(tx.videoSaved, "ok");
+    } catch (e) {
+      setPack(before);
+      toast(errorText(e instanceof ApiError ? e.code : "internal_error", lang), "warn");
+    }
+  };
+  return (
+    <label className="row small" style={{ gap: 8, marginTop: 6 }}>
+      <span className="muted">{tx.video}</span>
+      <select className="group-select" value={pack} onChange={(e) => void save(e.target.value as VideoPackId | "")}>
+        <option value="">{tx.videoNone}</option>
+        {VIDEO_PACK_IDS.map((id) => (
+          <option key={id} value={id}>
+            {tx.videoGift(Number(id.replace("video_", "")))}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function ResetCode({ id, name, lang }: { id: string; name: string; lang: "en" | "fr" }) {
   const tx = T[lang];
   const [step, setStep] = useState<"idle" | "confirm" | "busy">("idle");
@@ -365,8 +406,9 @@ function Customers({ d, lang }: { d: AdminOverview; lang: "en" | "fr" }) {
             <Kpi label={tx.margin} value={pct(w.grossMargin)} />
           </div>
           <div className="small muted" style={{ marginTop: 6 }}>
-            {w.liveHours} {tx.liveH} · {w.aiRequests} {tx.aiReq} · IA {eur(w.costs.ai, lang)} · provider {eur(w.costs.provider, lang)} · LIVE {eur(w.costs.live, lang)} · fixe {eur(w.costs.fixed, lang)}
+            {w.liveHours} {tx.liveH} · {w.aiRequests} {tx.aiReq} · IA {eur(w.costs.ai, lang)} · provider {eur(w.costs.provider, lang)} · LIVE {eur(w.costs.live, lang)} · vidéo {eur(w.costs.recording + w.costs.storage, lang)} · fixe {eur(w.costs.fixed, lang)}
           </div>
+          <GrantVideo w={w} lang={lang} />
           {w.ownCode ? <ResetCode id={w.id} name={w.name} lang={lang} /> : null}
         </div>
       ))}

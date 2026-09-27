@@ -3,7 +3,7 @@ import type { BillingMe } from "../../shared/types";
 import { ApiError } from "../api";
 import { billingApi, NEXT_PLAN, PLAN_NAMES, refreshBilling, track } from "../billing";
 import { errorText, useLang } from "../i18n";
-import { setState, toast, useStore } from "../store";
+import { openSettings, setState, toast, useStore } from "../store";
 import { ChangeFounderCode } from "./FounderCode";
 
 const TX = {
@@ -276,6 +276,8 @@ const UPGRADE = {
     history_retention: "This LIVE is older than your plan's history window. It is kept — a higher plan shows more history.",
     workspace_restricted: "Your workspace is read-only. Reactivate your subscription to resume monitoring.",
     trial_quota: "You've reached your trial LIVE intelligence limit. Upgrade to continue protecting your LIVE activity.",
+    plan_video_option: "Recording LIVEs in video is an option: pick a Video pack in Settings › Subscription.",
+    seeVideo: "See the Video option",
     see: "See plans",
     later: "Not now",
   },
@@ -287,6 +289,8 @@ const UPGRADE = {
     history_retention: "Ce LIVE est plus ancien que l'historique de votre offre. Il est conservé — une offre supérieure affiche plus d'historique.",
     workspace_restricted: "Votre espace est en lecture seule. Réactivez votre abonnement pour reprendre la surveillance.",
     trial_quota: "Vous avez atteint la limite d'intelligence LIVE de l'essai. Passez à une offre pour continuer à protéger vos LIVE.",
+    plan_video_option: "Enregistrer les LIVE en vidéo est une option : choisis un pack Vidéo dans Réglages › Abonnement.",
+    seeVideo: "Voir l'option Vidéo",
     see: "Voir les offres",
     later: "Plus tard",
   },
@@ -307,7 +311,17 @@ export function UpgradeSheet() {
       <div className="sheet-card" onClick={(e) => e.stopPropagation()}>
         <p style={{ margin: 0 }}>{text}</p>
         <div className="row">
-          {founder ? (
+          {founder && code === "plan_video_option" ? (
+            <button
+              className="btn gold"
+              onClick={() => {
+                setState({ upgrade: null });
+                openSettings("billing");
+              }}
+            >
+              {tx.seeVideo}
+            </button>
+          ) : founder ? (
             <a className="btn gold" href={`/pricing?from=${code}`} onClick={() => track("upgrade_prompt_clicked", { plan, source: code })}>
               {tx.see}
             </a>

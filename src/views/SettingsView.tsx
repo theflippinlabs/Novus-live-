@@ -13,6 +13,7 @@ import { IconBack, IconBell, IconCard, IconChart, IconChevron, IconGlobe, IconLi
 import { billingApi, PLAN_NAMES, refreshBilling } from "../billing";
 import { PERM_LABEL, ROLE_LABEL, useCan, useIsFounder } from "../permissions";
 import { BillingSection } from "../components/BillingSection";
+import { VideoOption } from "../components/VideoOption";
 
 async function save(patch: Partial<Settings>, okText: string) {
   try {
@@ -505,7 +506,12 @@ export function SettingsView() {
             </div>
             {shown === "profile" ? <ProfilePage /> : null}
             {shown === "notifications" ? <NotificationsSettings /> : null}
-            {shown === "billing" ? <BillingSection /> : null}
+            {shown === "billing" ? (
+              <>
+                <BillingSection />
+                <VideoOption />
+              </>
+            ) : null}
             {shown === "team" ? <TeamSection /> : null}
             {shown === "moderation" ? <ModerationPage /> : null}
             {shown === "lists" ? <ListsPage /> : null}

@@ -55,7 +55,7 @@ const COPY = {
     talk: "Talk to us",
     roiTitle: "One command center for your entire LIVE operation.",
     roiSub: "Centralized supervision, AI moderation, analytics, team controls, reporting and creator management — for up to 15 creators.",
-    roiPoints: ["Centralized supervision of every creator's LIVE", "AI moderation and real-time alerts", "Team roles, permissions and creator assignment", "Reports, exports and 1-year history", "Evidence screenshots and LIVE recordings (rolling out)"],
+    roiPoints: ["Centralized supervision of every creator's LIVE", "AI moderation and real-time alerts", "Team roles, permissions and creator assignment", "Reports, exports and 1-year history", "LIVE video recording as an option, with hard monthly caps"],
     roiPrice: (a: string) => `${a}/month for up to 15 creators`,
     compareTitle: "Compare plans",
     faqTitle: "Questions",
@@ -126,7 +126,7 @@ const COPY = {
     talk: "Parlons-en",
     roiTitle: "Un poste de commandement pour toute votre activité LIVE.",
     roiSub: "Supervision centralisée, modération IA, analytics, contrôle d'équipe, rapports et gestion des créateurs — jusqu'à 15 créateurs.",
-    roiPoints: ["Supervision centralisée des LIVE de chaque créateur", "Modération IA et alertes en temps réel", "Rôles, autorisations et affectation des créateurs", "Rapports, exports et 1 an d'historique", "Captures de preuve et enregistrements des LIVE (déploiement en cours)"],
+    roiPoints: ["Supervision centralisée des LIVE de chaque créateur", "Modération IA et alertes en temps réel", "Rôles, autorisations et affectation des créateurs", "Rapports, exports et 1 an d'historique", "Enregistrement vidéo des LIVE en option, avec plafonds mensuels"],
     roiPrice: (a: string) => `${a}/mois pour jusqu'à 15 créateurs`,
     compareTitle: "Comparer les offres",
     faqTitle: "Questions",
@@ -219,7 +219,7 @@ function highlights(id: Paid, e: Entitlements, lang: Lang): { text: string; soon
         { text: fr ? "Support prioritaire" : "Priority support" },
         { text: fr ? "Tableau de bord agence et comparaison des créateurs" : "Agency dashboard and creator comparison", soon: true },
         { text: fr ? "Captures de preuve automatiques" : "Automated evidence screenshots", soon: true },
-        { text: fr ? `Enregistrement des LIVE, conservation ${e.video_retention_days} jours` : `LIVE recording, ${e.video_retention_days}-day retention`, soon: true },
+        { text: fr ? "Vidéo des LIVE : option à partir de 19 €/mois" : "LIVE video: option from €19/month" },
       ];
     case "agency_pro":
       return [
@@ -230,7 +230,7 @@ function highlights(id: Paid, e: Entitlements, lang: Lang): { text: string; soon
         { text: fr ? `Monitoring : ${n(e.live_monitoring_hours)} h de LIVE/mois` : `Monitoring: ${n(e.live_monitoring_hours)} LIVE hours/month` },
         { text: fr ? "Contrôles et reporting d'agence avancés" : "Advanced organization controls and reporting" },
         { text: fr ? "Support Priority+" : "Priority+ support" },
-        { text: fr ? `Conservation vidéo ${e.video_retention_days} jours` : `${e.video_retention_days}-day video retention`, soon: true },
+        { text: fr ? "Vidéo des LIVE : option à partir de 19 €/mois" : "LIVE video: option from €19/month" },
       ];
   }
 }
@@ -289,8 +289,7 @@ const COMPARE: { title: { en: string; fr: string }; rows: Row[] }[] = [
   {
     title: { en: "Recording", fr: "Enregistrement" },
     rows: [
-      { label: { en: "LIVE recording", fr: "Enregistrement des LIVE" }, value: (e, _id, l) => (e.recording ? `${num(e.recording_hours, l)} h/${l === "fr" ? "mois" : "month"} · ${soon(l)}` : no) },
-      { label: { en: "Video retention", fr: "Conservation vidéo" }, value: (e, _id, l) => (e.recording ? `${e.video_retention_days} ${l === "fr" ? "jours" : "days"}` : no) },
+      { label: { en: "LIVE video recording", fr: "Enregistrement vidéo des LIVE" }, value: (_e, _id, l) => (l === "fr" ? "Option Vidéo" : "Video option") },
     ],
   },
   {
@@ -316,8 +315,8 @@ const FAQ: Record<Lang, [string, string][]> = {
     ["What counts as a managed creator?", "Each TikTok account your workspace follows and monitors. Your plan sets how many are monitored at the same time; extra saved accounts stay in your workspace, paused."],
     ["Can I change plans?", "Yes, anytime from Settings › Subscription. Upgrades apply immediately with a prorated charge. When you downgrade, your data is kept; if you follow more creators than the new plan allows, the extra ones are paused until you choose which to keep."],
     ["What happens if my agency grows?", "Agency Pro monitors up to 40 creators with 25 team members. Beyond that, Enterprise is built around your needs."],
-    ["Are recordings included?", "LIVE recording and automated evidence screenshots are part of Agency and Agency Pro at no extra cost. They are being rolled out now and switch on for these plans as soon as they are available."],
-    ["How long are recordings retained?", "30 days on Agency, 90 days on Agency Pro, custom on Enterprise."],
+    ["Is LIVE video included?", "Video recording is an option you add to any plan: 50, 150 or 500 hours per month. Each pack has hard caps (hours and gigabytes): when they're used, recording stops until next month — you are never charged more than the pack's price. Enterprise includes video by contract."],
+    ["How long are videos kept?", "30 days, then they are deleted automatically. Download the ones you want to keep (MP4)."],
     ["What happens to recordings after retention expires?", "They are deleted automatically. Your LIVE history, reports and chat transcripts are not affected."],
     ["What happens if payment fails?", "Stripe retries the payment automatically and we warn you in the app. Your workspace keeps working for 14 days; after that it becomes read-only (history and exports stay available) until the payment method is updated. Nothing is deleted."],
     ["Is my data deleted if I cancel?", "No. Your workspace becomes read-only: your history stays accessible and exportable. Ask us if you want it deleted."],
@@ -332,8 +331,8 @@ const FAQ: Record<Lang, [string, string][]> = {
     ["Qu'est-ce qu'un créateur géré ?", "Chaque compte TikTok que votre espace suit et surveille. Votre offre fixe combien sont surveillés en même temps ; les comptes enregistrés en plus restent dans votre espace, en pause."],
     ["Puis-je changer d'offre ?", "Oui, à tout moment depuis Réglages › Abonnement. Les montées en gamme s'appliquent tout de suite, au prorata. En cas de descente, vos données sont conservées ; si vous suivez plus de créateurs que la nouvelle offre ne le permet, les comptes en trop sont mis en pause jusqu'à ce que vous choisissiez lesquels garder."],
     ["Et si mon agence grandit ?", "Agency Pro surveille jusqu'à 40 créateurs avec 25 membres d'équipe. Au-delà, Enterprise est construit selon vos besoins."],
-    ["Les enregistrements sont-ils inclus ?", "L'enregistrement des LIVE et les captures de preuve automatiques font partie d'Agency et d'Agency Pro sans surcoût. Ils sont en cours de déploiement et s'activent pour ces offres dès qu'ils sont disponibles."],
-    ["Combien de temps sont conservés les enregistrements ?", "30 jours sur Agency, 90 jours sur Agency Pro, sur mesure en Enterprise."],
+    ["La vidéo des LIVE est-elle incluse ?", "L'enregistrement vidéo est une option qui s'ajoute à n'importe quelle offre : 50, 150 ou 500 heures par mois. Chaque pack a des plafonds stricts (heures et gigaoctets) : une fois atteints, l'enregistrement s'arrête jusqu'au mois suivant — vous ne payez jamais plus que le prix du pack. Enterprise inclut la vidéo par contrat."],
+    ["Combien de temps les vidéos sont-elles conservées ?", "30 jours, puis elles sont supprimées automatiquement. Téléchargez celles que vous voulez garder (MP4)."],
     ["Que deviennent les enregistrements après la durée de conservation ?", "Ils sont supprimés automatiquement. Votre historique de LIVE, vos rapports et vos conversations ne sont pas touchés."],
     ["Que se passe-t-il si un paiement échoue ?", "Stripe relance automatiquement le paiement et nous vous prévenons dans l'app. Votre espace continue de fonctionner 14 jours ; ensuite il passe en lecture seule (historique et exports restent disponibles) jusqu'à la mise à jour du moyen de paiement. Rien n'est supprimé."],
     ["Mes données sont-elles supprimées si je résilie ?", "Non. Votre espace passe en lecture seule : votre historique reste consultable et exportable. Demandez-nous si vous souhaitez sa suppression."],
@@ -445,6 +444,7 @@ export function PricingPage({ success }: { success?: boolean }) {
 
           <EnterpriseBand lang={lang} onTalk={() => setFlow({ kind: "lead" })} />
           <AgencyRoi lang={lang} pricing={pricing} onStart={() => choose("agency", pricing.founding.available && cycle === "month")} />
+          <VideoPacks lang={lang} pricing={pricing} />
           <Compare lang={lang} pricing={pricing} />
           <Faq lang={lang} />
         </>
@@ -617,6 +617,39 @@ function AgencyRoi({ lang, pricing, onStart }: { lang: Lang; pricing: PublicPric
       <button className="btn gold" onClick={onStart}>
         {pricing.founding.available ? tx.foundingCta : PLAN_COPY.agency[lang].cta}
       </button>
+    </section>
+  );
+}
+
+/** The Video option: three packs with hard monthly caps (bought from Settings › Subscription). */
+function VideoPacks({ lang, pricing }: { lang: Lang; pricing: PublicPricing }) {
+  const fr = lang === "fr";
+  if (!pricing.video?.length) return null;
+  return (
+    <section className="compare" id="video">
+      <h2>{fr ? "Option Vidéo des LIVE" : "LIVE video option"}</h2>
+      <p className="muted">
+        {fr
+          ? "Enregistre en vidéo (480p) les LIVE des comptes de ton choix, avec l'accord des livers. À regarder dans l'app ou à télécharger en MP4. S'ajoute à ton abonnement depuis Réglages › Abonnement."
+          : "Records the LIVEs of the accounts you choose in video (480p), with the streamers' consent. Watch in the app or download as MP4. Added to your subscription from Settings › Subscription."}
+      </p>
+      <div className="video-packs">
+        {pricing.video.map((p) => (
+          <div key={p.id} className="video-pack">
+            <div className="video-pack-hours">{fr ? `${p.hours} h de vidéo / mois` : `${p.hours} h of video / month`}</div>
+            <div className="video-pack-price">
+              {euro(p.monthly, lang)}
+              {fr ? "/mois" : "/month"}
+            </div>
+            <div className="small muted">{fr ? `jusqu'à ${p.storage_gb} Go · conservée ${p.retention_days} jours` : `up to ${p.storage_gb} GB · kept ${p.retention_days} days`}</div>
+          </div>
+        ))}
+      </div>
+      <p className="small muted" style={{ marginTop: 10 }}>
+        {fr
+          ? "Plafonds stricts : quand les heures ou les Go du mois sont utilisés, l'enregistrement s'arrête — jamais de dépassement facturé. Disponible après la période d'essai."
+          : "Hard caps: when the month's hours or gigabytes are used, recording stops — never an overage. Available after the trial period."}
+      </p>
     </section>
   );
 }
