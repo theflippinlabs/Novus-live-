@@ -150,7 +150,7 @@ export interface WatcherOptions {
   silenceMs?: number;
 }
 
-const DEFAULTS = { confirmAfterMs: 5_000, confirmWindowMs: 90_000, silenceMs: 4 * 60_000 };
+const DEFAULTS = { confirmAfterMs: 5_000, confirmWindowMs: 90_000, silenceMs: 4 * 60_000, quickRetryMs: 15_000 };
 
 export class TikTokLiveWatcher {
   private username: string | null = null;
@@ -163,6 +163,8 @@ export class TikTokLiveWatcher {
   private generation = 0;
   private queue: Promise<void> = Promise.resolve();
   private lastActivity = 0;
+  /** The last connection stayed silent: the next one comes sooner (once in a row). */
+  private silentRetry = false;
   private opts: WatcherOptions & typeof DEFAULTS;
 
   constructor(
@@ -268,6 +270,7 @@ export class TikTokLiveWatcher {
       this.confirmTimer = null;
       this.live = true;
       this.loggedOffline = false;
+      this.silentRetry = false;
       this.lastActivity = Date.now();
       this.sink.alive();
       this.opts.log?.(`[tiktok] @${username} is LIVE (activity confirmed ${Math.round((Date.now() - connectedAt) / 1000)}s after connecting)`);
@@ -330,6 +333,7 @@ export class TikTokLiveWatcher {
     } catch (e) {
       if (gen !== this.generation) return;
       if (isOffline(e)) {
+        this.silentRetry = false;
         if (!this.loggedOffline) this.opts.log?.(`[tiktok] @${username} not live (${describeError(e)}) — checking every ${Math.round(this.opts.pollMs / 1000)}s`);
         this.loggedOffline = true;
         this.sink.waiting(`Waiting for @${username} to go LIVE`);
@@ -356,7 +360,10 @@ export class TikTokLiveWatcher {
       this.opts.log?.(`[tiktok] @${username}: connected but the room shows no activity — not counted as a LIVE`);
       this.dropConnection();
       this.sink.waiting(`Waiting for @${username} to go LIVE`);
-      this.schedule(gen, this.opts.pollMs);
+      // A silent first connection is often a LIVE whose events never reached us: a fresh
+      // connection soon after usually gets them. Only once in a row (each try is a provider call).
+      this.schedule(gen, this.silentRetry ? this.opts.pollMs : this.opts.quickRetryMs);
+      this.silentRetry = !this.silentRetry;
     }, this.opts.confirmWindowMs);
   }
 }

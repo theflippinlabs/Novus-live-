@@ -158,11 +158,17 @@ describe("TikTok live watcher", () => {
     await vi.advanceTimersByTimeAsync(89_000);
     expect(watcher.isLive).toBe(false);
     expect(runtime.session).toBeNull();
-    // After the confirmation window it gives up and polls again later.
+    // After the confirmation window it gives up and tries once more soon (a fresh connection
+    // often receives the events the first one missed)…
     await vi.advanceTimersByTimeAsync(2_000);
     expect(attempts).toBe(1);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(15_000);
     expect(attempts).toBe(2);
+    // …then, still silent, back to the normal polling pace.
+    await vi.advanceTimersByTimeAsync(91_000 + 15_000);
+    expect(attempts).toBe(2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(attempts).toBe(3);
     expect(runtime.session).toBeNull();
     watcher.stop();
   });
