@@ -2556,3 +2556,13 @@ main.view {
 .btn.block svg {
   vertical-align: -3px;
 }
+
+/* Viewer: the TikTok @handle under the display name */
+.viewer-handle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

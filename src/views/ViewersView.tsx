@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ViewerListItem } from "../../shared/types";
 import { api } from "../api";
 import { Avatar, Segmented, SeverityBadge } from "../components/ui";
+import { nicknameOf } from "../viewerName";
 import { categoryLabel, useLang, useT } from "../i18n";
 import { ago } from "../format";
 import { openViewer, serverNow, useStore } from "../store";
@@ -64,14 +65,16 @@ export function ViewersView() {
           {list.length === 0 ? <div className="empty">{t("noViewers")}</div> : null}
           {list.map((v) => {
             const topCat = (Object.entries(v.categories).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0] ?? null) as keyof typeof v.categories | null;
+            const nick = nicknameOf(v.viewer);
             return (
               <button key={v.viewer.id} className="list-row" style={{ width: "100%", textAlign: "left" }} onClick={() => openViewer(v.viewer.id)}>
                 <Avatar viewer={v.viewer} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row" style={{ gap: 6 }}>
-                    <b style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14 }}>@{v.viewer.username}</b>
+                    <b style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14 }}>{nick ?? `@${v.viewer.username}`}</b>
                     {v.flag ? <span className={`chip ${v.flag === "trusted" ? "on" : ""}`} style={{ minHeight: 20, fontSize: 10.5 }}>{t(v.flag)}</span> : null}
                   </div>
+                  {nick ? <div className="viewer-handle">@{v.viewer.username}</div> : null}
                   <div className="small muted">
                     {v.messageCount} {t("msgShort")} · {ago(v.lastSeen, now)}
                     {v.warnings ? ` · ${v.warnings} ⚠` : ""}

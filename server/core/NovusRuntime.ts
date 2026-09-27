@@ -348,6 +348,8 @@ export class NovusRuntime {
     } else {
       v.lastSeen = Math.max(v.lastSeen, t);
       if (viewer.avatarUrl && !v.viewer.avatarUrl) v.viewer = { ...v.viewer, avatarUrl: viewer.avatarUrl };
+      // Keep the latest TikTok display name (it can arrive later, or change during the LIVE).
+      if (viewer.displayName && viewer.displayName !== v.viewer.displayName) v.viewer = { ...v.viewer, displayName: viewer.displayName };
     }
     return v;
   }
@@ -914,7 +916,7 @@ export class NovusRuntime {
   viewerList(opts: { q?: string; sort?: "risk" | "messages" | "recent"; filter?: ViewerFlag | "flagged" | "all"; limit?: number }): ViewerListItem[] {
     const q = opts.q?.toLowerCase().replace(/^@/, "");
     let list = [...this.viewers.values()].filter((v) => v.messageCount > 0 || v.gifts > 0);
-    if (q) list = list.filter((v) => v.viewer.username.toLowerCase().includes(q));
+    if (q) list = list.filter((v) => v.viewer.username.toLowerCase().includes(q) || Boolean(v.viewer.displayName?.toLowerCase().includes(q)));
     if (opts.filter && opts.filter !== "all") {
       list = list.filter((v) => {
         const f = this.flagFor(v.viewer.username);

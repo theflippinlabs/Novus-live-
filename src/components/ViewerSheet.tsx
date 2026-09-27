@@ -8,6 +8,7 @@ import { SendToChatButton } from "./SendToChat";
 import { useCan } from "../permissions";
 import { Sparkline } from "./Charts";
 import { Avatar, Segmented, SeverityBadge, Sheet } from "./ui";
+import { nicknameOf } from "../viewerName";
 
 const ACTIONS: ActionType[] = ["watch", "warn", "mute", "block", "report"];
 
@@ -87,8 +88,9 @@ function ViewerSheetInner({ id }: { id: string }) {
         <Avatar viewer={p.viewer} size="lg" />
         <div style={{ minWidth: 0 }}>
           <div className="alert-user" style={{ fontSize: 19 }}>
-            @{p.viewer.username}
+            {nicknameOf(p.viewer) ?? `@${p.viewer.username}`}
           </div>
+          {nicknameOf(p.viewer) ? <div className="viewer-handle">@{p.viewer.username}</div> : null}
           <div className="small muted">
             {t("firstSeen")} {hm(p.firstSeen)}
             {p.language ? ` · ${p.language.toUpperCase()}` : ""}
