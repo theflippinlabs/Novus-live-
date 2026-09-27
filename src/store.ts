@@ -36,6 +36,8 @@ export interface AppState {
   rooms: RoomSummary[];
   view: View;
   settingsPage: SettingsPage | null;
+  /** The moderation screen used last (the Moderation tab reopens it). */
+  lastModeration: "alerts" | "viewers";
   session: LiveSessionInfo | null;
   stats: LiveStats;
   comments: AnalyzedComment[];
@@ -77,6 +79,7 @@ let state: AppState = {
   rooms: [],
   view: (sessionStorageGet("novus:view") as View) ?? "live",
   settingsPage: (sessionStorageGet("novus:settings-page") as SettingsPage | null) ?? null,
+  lastModeration: sessionStorageGet("novus:view") === "viewers" ? "viewers" : "alerts",
   session: null,
   stats: emptyStats,
   comments: [],
@@ -146,7 +149,7 @@ export function navigate(view: View): void {
   }
   // Tapping Settings again goes back to its menu.
   if (view === "settings" && state.view === "settings") return openSettings(null);
-  setState({ view });
+  setState(view === "alerts" || view === "viewers" ? { view, lastModeration: view } : { view });
 }
 
 /** Open Settings on one of its sub-pages (or its menu). */

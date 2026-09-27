@@ -592,7 +592,8 @@ main.view {
   width: 100%;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
   max-width: 1280px;
   margin: 0 auto;
   padding: 4px 4px calc(4px + var(--safe-bottom));
@@ -2811,4 +2812,104 @@ main.view {
   color: var(--gold);
   border-color: var(--gold-line);
   background: var(--gold-soft);
+}
+
+/* ---------------------------------------------------------------- bottom nav: copilot in the middle */
+.nav-btn {
+  font-size: 11px;
+}
+.nav-live-dot {
+  position: absolute;
+  top: 9px;
+  left: calc(50% + 9px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--r-critical);
+  box-shadow: 0 0 8px var(--r-critical);
+  animation: pulse-soft 1.4s ease-in-out infinite;
+}
+.nav-center {
+  justify-content: flex-end;
+  padding-bottom: 6px;
+}
+.nav-center.active {
+  background: none;
+}
+.nav-center.active::after {
+  display: none;
+}
+.nav-orb {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-top: -26px;
+  margin-bottom: 2px;
+  border-radius: 50%;
+  background: var(--chrome);
+  color: #16120c;
+  font-size: 24px;
+  border: 3px solid var(--bg);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.55),
+    0 0 16px rgba(240, 190, 110, 0.28);
+  transition: transform 0.15s ease;
+}
+.nav-center:active .nav-orb {
+  transform: scale(0.94);
+}
+.nav-center.active .nav-orb {
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.55),
+    0 0 24px rgba(240, 190, 110, 0.55);
+}
+.nav-center.active {
+  color: var(--gold);
+}
+
+/* Moderation tab: alerts ↔ viewers switch */
+.mod-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.mod-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-3);
+  font-weight: 700;
+  font-size: 14.5px;
+  cursor: pointer;
+}
+.mod-tabs button.on {
+  background: var(--surface-3);
+  color: var(--platinum);
+  box-shadow: inset 0 0 0 1px var(--gold-line);
+}
+.mod-count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 20px;
+  background: var(--r-warning);
+  color: #1a0e02;
+}
+.mod-count.hot {
+  background: var(--r-critical);
+  color: #fff;
 }

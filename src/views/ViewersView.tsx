@@ -5,6 +5,7 @@ import { Avatar, Segmented, SeverityBadge } from "../components/ui";
 import { nicknameOf } from "../viewerName";
 import { categoryLabel, useLang, useT } from "../i18n";
 import { ago } from "../format";
+import { ModerationTabs } from "../components/ModerationTabs";
 import { openViewer, serverNow, useStore } from "../store";
 
 type Sort = "risk" | "messages" | "recent";
@@ -40,6 +41,7 @@ export function ViewersView() {
   return (
     <div className="scroll">
       <div className="narrow">
+        <ModerationTabs />
         <input className="input" type="search" placeholder={t("searchViewers")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("searchViewers")} autoCapitalize="off" autoCorrect="off" />
         <div style={{ marginTop: 8 }}>
           <Segmented

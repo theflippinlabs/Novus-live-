@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { AlertCard } from "../components/AlertCard";
 import { Segmented } from "../components/ui";
 import { useT } from "../i18n";
+import { ModerationTabs } from "../components/ModerationTabs";
 import { useStore } from "../store";
 
 type Filter = "open" | "watching" | "closed" | "all";
@@ -33,6 +34,7 @@ export function AlertsView() {
   return (
     <div className="scroll">
       <div className="narrow">
+        <ModerationTabs />
         <Segmented
           label={t("alertFilter")}
           value={filter}
