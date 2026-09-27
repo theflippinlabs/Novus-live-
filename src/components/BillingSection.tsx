@@ -275,6 +275,7 @@ const UPGRADE = {
     plan_limit_ai: "This month's AI allowance is used. Local moderation keeps running; a higher plan includes more AI.",
     history_retention: "This LIVE is older than your plan's history window. It is kept — a higher plan shows more history.",
     workspace_restricted: "Your workspace is read-only. Reactivate your subscription to resume monitoring.",
+    trial_quota: "You've reached your trial LIVE intelligence limit. Upgrade to continue protecting your LIVE activity.",
     see: "See plans",
     later: "Not now",
   },
@@ -285,6 +286,7 @@ const UPGRADE = {
     plan_limit_ai: "Le quota IA du mois est atteint. La modération locale continue ; une offre supérieure inclut plus d'IA.",
     history_retention: "Ce LIVE est plus ancien que l'historique de votre offre. Il est conservé — une offre supérieure affiche plus d'historique.",
     workspace_restricted: "Votre espace est en lecture seule. Réactivez votre abonnement pour reprendre la surveillance.",
+    trial_quota: "Vous avez atteint la limite d'intelligence LIVE de l'essai. Passez à une offre pour continuer à protéger vos LIVE.",
     see: "Voir les offres",
     later: "Plus tard",
   },
@@ -298,7 +300,8 @@ export function UpgradeSheet() {
   const founder = useStore((s) => !s.me || s.me.kind === "founder");
   if (!code) return null;
   const tx = UPGRADE[lang];
-  const text = (tx as Record<string, string>)[code] ?? tx.plan_limit_creators;
+  const text = (tx as Record<string, string>)[code];
+  if (!text) return null;
   return (
     <div className="sheet-backdrop" role="dialog" aria-modal="true" onClick={() => setState({ upgrade: null })}>
       <div className="sheet-card" onClick={(e) => e.stopPropagation()}>

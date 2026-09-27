@@ -125,7 +125,13 @@ export async function refreshBilling(): Promise<void> {
 
 /** A 402 from the API: show the matching upgrade prompt (once per code per minute). */
 let lastPrompt = { code: "", at: 0 };
+/** The 402 codes that mean "your NOVUS plan doesn't allow this". */
+const PLAN_CODES = new Set(["plan_limit_creators", "plan_limit_seats", "plan_limit_exports", "plan_limit_ai", "history_retention", "workspace_restricted", "trial_quota"]);
+
 export function showUpgrade(code: string): void {
+  // Anything else is an ordinary error (shown where it happened), and a complimentary
+  // space (owner, testers) has nothing to buy.
+  if (!PLAN_CODES.has(code) || getState().billing?.comped) return;
   const now = Date.now();
   if (lastPrompt.code === code && now - lastPrompt.at < 60_000) return;
   lastPrompt = { code, at: now };

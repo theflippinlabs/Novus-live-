@@ -170,7 +170,8 @@ export class EulerChatSender {
     const detail = `${res.status} ${body.message ?? ""}`.trim().slice(0, 200);
     this.lastError = detail;
     console.warn(`[chat] Euler refused the message: ${detail}`);
-    if (res.status === 401 || res.status === 403) throw new ChatSendError("chat_plan_required", 402, detail);
+    // Euler Stream's own plan (not the NOVUS subscription): never a 402, which means "NOVUS plan limit".
+    if (res.status === 401 || res.status === 403) throw new ChatSendError("chat_plan_required", 403, detail);
     throw new ChatSendError("chat_failed", 502, detail);
   }
 

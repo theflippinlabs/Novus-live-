@@ -19,6 +19,7 @@ const COPY = {
     login: "Log in",
     heroTitle: "Run smarter LIVE operations.",
     heroSub: "AI moderation, real-time intelligence and complete control of your TikTok LIVE activity.",
+    compedNotice: "Your NOVUS workspace already has full access (complimentary). There's nothing to buy — these plans are what your customers see.",
     monthly: "Monthly",
     yearly: "Yearly",
     twoFree: "2 months free",
@@ -89,6 +90,7 @@ const COPY = {
     login: "Se connecter",
     heroTitle: "Pilotez vos LIVE avec intelligence.",
     heroSub: "Modération IA, intelligence en temps réel et contrôle complet de votre activité TikTok LIVE.",
+    compedNotice: "Ton espace NOVUS a déjà l'accès complet (offert). Il n'y a rien à acheter — ces offres sont celles que voient tes clients.",
     monthly: "Mensuel",
     yearly: "Annuel",
     twoFree: "2 mois offerts",
@@ -369,6 +371,8 @@ export function PricingPage({ success }: { success?: boolean }) {
 
   const choose = async (id: Paid, founding = false) => {
     track(founding ? "founding_offer_selected" : "plan_selected", { plan: id, cycle });
+    // A complimentary space (owner, testers) already has everything: never a second workspace.
+    if (me?.comped) return setNotice(COPY[lang].compedNotice);
     if (!pricing?.checkoutEnabled) return setFlow({ kind: "lead" });
     // Logged-in customers: change plan (prorated) or subscribe their existing workspace.
     if (me && !me.comped) {
@@ -425,6 +429,7 @@ export function PricingPage({ success }: { success?: boolean }) {
             </button>
           ))}
         </div>
+        {me?.comped && !notice ? <div className="pricing-notice">{tx.compedNotice}</div> : null}
         {notice ? <div className="pricing-notice">{notice}</div> : null}
       </section>
 
