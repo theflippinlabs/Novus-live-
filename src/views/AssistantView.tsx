@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CatchUp, ChatPulse, CoachTip, CopilotTurn, Supporter } from "../../shared/types";
 import { api, ApiError } from "../api";
 import { Avatar, Segmented } from "../components/ui";
 import { useCan } from "../permissions";
 import { nicknameOf } from "../viewerName";
-import { canSpeak, speak, stopSpeaking, useDictation } from "../voice";
-import { IconMic, IconSpeaker, IconSpeakerOff } from "../components/Icons";
+import { AskPanel } from "../components/AskPanel";
 import { LineChart } from "../components/Charts";
 import { errorText, tr, useLang, useT } from "../i18n";
 import { ago, compact, hm } from "../format";
@@ -550,157 +549,12 @@ function TipCard({ tip, onDismiss, onAsk, onAnswered }: { tip: CoachTip; onDismi
   );
 }
 
-const historyKey = (room: string) => `novus:copilot:${room}`;
-function loadHistory(room: string): CopilotTurn[] {
-  try {
-    const v = JSON.parse(sessionStorage.getItem(historyKey(room)) ?? "[]");
-    return Array.isArray(v) ? v.slice(-20) : [];
-  } catch {
-    return [];
-  }
-}
-
 function AskNovus({ pending, onPendingDone }: { pending: string | null; onPendingDone: () => void }) {
   const lang = useLang();
   const cx = CX[lang];
   const room = useStore((s) => s.room);
-  const aiOn = useStore((s) => s.ai.state !== "local_only");
-  const [turns, setTurns] = useState<CopilotTurn[]>(() => loadHistory(room));
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
-  const [voice, setVoice] = useState(() => {
-    try {
-      return localStorage.getItem("novus:copilot-voice") === "1";
-    } catch {
-      return false;
-    }
-  });
-  const toggleVoice = () => {
-    const next = !voice;
-    setVoice(next);
-    if (!next) stopSpeaking();
-    try {
-      localStorage.setItem("novus:copilot-voice", next ? "1" : "0");
-    } catch {
-      /* private mode */
-    }
-  };
-
-  useEffect(() => setTurns(loadHistory(room)), [room]);
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(historyKey(room), JSON.stringify(turns.slice(-20)));
-    } catch {
-      /* private mode */
-    }
-  }, [turns, room]);
-  useEffect(() => endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }), [turns.length, busy]);
-
-  const ask = useCallback(
-    async (question: string, spoken = false) => {
-      const q = question.trim();
-      if (!q || busy) return;
-      const before = turns;
-      setTurns([...before, { role: "user", text: q }]);
-      setInput("");
-      setBusy(true);
-      try {
-        const { text } = await api.askCopilot(q, before.slice(-10), lang);
-        setTurns((t) => [...t, { role: "assistant", text }]);
-        // Asked by voice (or voice answers on): Novus answers out loud.
-        if (spoken || voice) speak(text, lang);
-      } catch (e) {
-        setTurns(before);
-        setInput(q);
-        toast(errMsg(e, lang), "warn");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, turns, lang, voice],
-  );
-
-  const dictation = useDictation(
-    lang,
-    (partial) => setInput(partial),
-    (final) => void ask(final, true),
-    (e) => toast(e === "unsupported" ? cx.micUnsupported : e === "denied" ? cx.micDenied : e === "no-speech" ? cx.micNothing : cx.micFailed, "warn"),
-  );
-  const mic = () => {
-    if (dictation.listening) return dictation.stop();
-    stopSpeaking();
-    if (!dictation.supported) return toast(cx.micUnsupported, "info");
-    setInput("");
-    dictation.start();
-  };
-
-  useEffect(() => {
-    if (pending) {
-      void ask(pending);
-      onPendingDone();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending]);
-
-  return (
-    <div className="card copilot-chat">
-      <div className="card-title">
-        <span className="gold">✦</span> {cx.ask}
-        <span className="spacer" />
-        {aiOn && canSpeak() ? (
-          <button className={`icon-btn ${voice ? "on" : ""}`} onClick={toggleVoice} aria-pressed={voice} aria-label={voice ? cx.voiceOn : cx.voiceOff} title={voice ? cx.voiceOn : cx.voiceOff}>
-            {voice ? <IconSpeaker width={18} height={18} /> : <IconSpeakerOff width={18} height={18} />}
-          </button>
-        ) : null}
-        {turns.length ? (
-          <button className="link-btn small" onClick={() => setTurns([])}>
-            {cx.clear}
-          </button>
-        ) : null}
-      </div>
-      {!aiOn ? (
-        <div className="small muted">{cx.aiOff}</div>
-      ) : (
-        <>
-          {turns.length === 0 ? <div className="small muted">{cx.askHint}</div> : null}
-          <div className="bubbles">
-            {turns.map((m, i) => (
-              <div key={i} className={`bubble ${m.role}`}>
-                {m.text}
-              </div>
-            ))}
-            {busy ? <div className="bubble assistant typing">{cx.thinking}</div> : null}
-            <div ref={endRef} />
-          </div>
-          <div className="chips-scroll">
-            {cx.chips.map((c) => (
-              <button key={c} className="chip" disabled={busy} onClick={() => ask(c)}>
-                {c}
-              </button>
-            ))}
-          </div>
-          <div className="row ask-row">
-            <button className={`btn mic-btn ${dictation.listening ? "listening" : ""}`} disabled={busy} onClick={mic} aria-label={dictation.listening ? cx.micStop : cx.mic} aria-pressed={dictation.listening}>
-              <IconMic width={22} height={22} />
-            </button>
-            <input
-              className="input"
-              value={input}
-              maxLength={500}
-              placeholder={dictation.listening ? cx.listening : cx.placeholder}
-              aria-label={cx.ask}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && ask(input)}
-            />
-            <button className="btn gold" disabled={busy || !input.trim()} onClick={() => ask(input)} aria-label={cx.ask}>
-              ↑
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
+  const ask = useCallback((q: string, history: CopilotTurn[]) => api.askCopilot(q, history, lang).then((r) => r.text), [lang]);
+  return <AskPanel title={cx.ask} hint={cx.askHint} chips={cx.chips} storageKey={`novus:copilot:${room}`} ask={ask} pending={pending} onPendingDone={onPendingDone} />;
 }
 
 function Copilot() {

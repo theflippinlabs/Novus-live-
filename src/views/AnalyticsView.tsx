@@ -1,5 +1,6 @@
+import { StatsInsightsPanel } from "../components/StatsInsights";
 import { useCallback, useEffect, useState } from "react";
-import type { AnalyticsSummary, Category, HistoryEntry } from "../../shared/types";
+import type { AnalyticsSummary, Category, HistoryEntry, StatsInsights } from "../../shared/types";
 import { api, fetchExport, saveFile } from "../api";
 import { BarChart, LineChart } from "../components/Charts";
 import { Avatar, Segmented } from "../components/ui";
@@ -163,7 +164,7 @@ function ExportCard({ sessionId }: { sessionId: string }) {
 }
 
 /** Full statistics of one LIVE (running or from history). */
-function AnalyticsBody({ d, sessionId, interactive }: { d: AnalyticsSummary; sessionId?: string; interactive: boolean }) {
+function AnalyticsBody({ d, sessionId, interactive, insights }: { d: AnalyticsSummary; sessionId?: string; interactive: boolean; insights?: StatsInsights | null }) {
   const t = useT();
   const lang = useLang();
   const tx = TX[lang];
@@ -193,6 +194,8 @@ function AnalyticsBody({ d, sessionId, interactive }: { d: AnalyticsSummary; ses
           <Kpi v={d.avgResponseTimeMs !== null ? `${(d.avgResponseTimeMs / 1000).toFixed(1)}s` : "—"} l={t("responseTime")} />
         </div>
       </div>
+
+      {insights ? <StatsInsightsPanel insights={insights} sessionId={sessionId} /> : null}
 
       {d.audience ? (
         <div className="card">
@@ -382,11 +385,16 @@ function CurrentLive() {
   const session = useStore((s) => s.session);
   const room = useStore((s) => s.room);
   const [data, setData] = useState<AnalyticsSummary | null>(null);
+  const [insights, setInsights] = useState<StatsInsights | null>(null);
 
   const load = useCallback(() => {
     api
       .analytics()
       .then(setData)
+      .catch(() => undefined);
+    api
+      .insights()
+      .then(setInsights)
       .catch(() => undefined);
   }, []);
 
@@ -398,7 +406,7 @@ function CurrentLive() {
 
   if (!data) return <div className="empty">…</div>;
   if (!data.session) return <div className="empty">{TX[lang].noSession}</div>;
-  return <AnalyticsBody d={data} sessionId={data.session.id} interactive />;
+  return <AnalyticsBody d={data} sessionId={data.session.id} interactive insights={insights} />;
 }
 
 function StatusBadge({ e }: { e: HistoryEntry }) {
@@ -460,12 +468,17 @@ function HistoryList({ onOpen }: { onOpen: (id: string) => void }) {
 function HistoryDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const tx = TX[useLang()];
   const [detail, setDetail] = useState<{ entry: HistoryEntry; analytics: AnalyticsSummary } | null>(null);
+  const [insights, setInsights] = useState<StatsInsights | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
     api
       .historyDetail(id)
       .then(setDetail)
       .catch(() => setError(true));
+    api
+      .historyInsights(id)
+      .then(setInsights)
+      .catch(() => undefined);
   }, [id]);
   return (
     <>
@@ -477,7 +490,7 @@ function HistoryDetail({ id, onBack }: { id: string; onBack: () => void }) {
       {detail ? (
         <>
           {detail.entry.status === "interrupted" ? <div className="card small muted">{tx.interruptedHint}</div> : null}
-          <AnalyticsBody d={detail.analytics} sessionId={detail.entry.sessionId} interactive={false} />
+          <AnalyticsBody d={detail.analytics} sessionId={detail.entry.sessionId} interactive={false} insights={insights} />
         </>
       ) : null}
     </>

@@ -24,6 +24,7 @@ import {
   copilotReplySchema,
   copilotSendSchema,
   profileSchema,
+  statsAskSchema,
   pushEndpointSchema,
   pushPrefsUpdateSchema,
   pushSubscribeSchema,
@@ -48,6 +49,7 @@ import { aiCostSummary, funnel, saasMetrics, workspaceEconomics } from "./billin
 import { AnthropicCostReport } from "./billing/AnthropicCost";
 import { ResendMailer, type Mailer } from "./mail/Mailer";
 import { recoveryMail } from "./mail/templates";
+import { deriveInsights } from "./analytics/insights";
 import { DEFAULT_PREFS, type PushOwner, type PushService } from "./push/Push";
 import { testMessage } from "./push/messages";
 import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
@@ -1037,6 +1039,51 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       }
       rooms.broadcastSummaries(true);
       return { session: room.runtime.session, rooms: rooms.summaries() };
+    }),
+  );
+
+  // ---------------------------------------------------------------- stats insights & "make the numbers talk"
+  /** The account's previous LIVEs for comparisons (only for people allowed to see the history). */
+  const pastLives = async (req: Request, room: Room) => (can(principal(req), "history") ? (await sp(req).history.list(20, room)).filter((e) => e.startedAt >= historyCutoff(req)) : []);
+  /** Summary + insights of the current LIVE of the room, or of one LIVE of the history. */
+  const statsFor = async (req: Request, sessionId?: string) => {
+    const room = roomIn(req);
+    if (!sessionId || sessionId === room.runtime.session?.id) {
+      const summary = room.runtime.analyticsSummary();
+      return { summary, insights: deriveInsights(summary, await pastLives(req, room)) };
+    }
+    need(req, "history");
+    const detail = await historyDetail(req, sessionId);
+    if (!detail) throw new HttpError(404, "session_not_found");
+    const account = detail.entry.account;
+    const scope: Room = account ? ({ ...room, kind: "tiktok", username: account } as Room) : room;
+    return { summary: detail.analytics, insights: deriveInsights(detail.analytics, await pastLives(req, scope)) };
+  };
+  api.get("/analytics/insights", h(async (req) => (await statsFor(req)).insights));
+  api.get("/history/:id/insights", h(async (req) => (await statsFor(req, param(req, "id"))).insights));
+  api.post(
+    "/analytics/ask",
+    rateLimit("copilot", 20),
+    h(async (req) => {
+      const { question, history, sessionId, lang } = parse(statsAskSchema, req.body);
+      const { summary, insights } = await statsFor(req, sessionId);
+      // Compact figures for the AI: no per-minute detail beyond ~2 hours, no report text.
+      const context = JSON.stringify({
+        kind: "LIVE statistics",
+        live: summary.session ? { title: summary.session.title, account: summary.session.account, status: summary.session.status, startedAt: new Date(summary.session.startedAt).toISOString() } : null,
+        durationMin: insights.ratios.durationMin,
+        totals: summary.totals,
+        audience: summary.audience,
+        gifts: summary.gifts ? { ...summary.gifts, top: summary.gifts.top.slice(0, 5).map((g) => ({ handle: g.viewer.username, gifts: g.gifts, diamonds: g.diamonds })) } : null,
+        insights,
+        perMinute: summary.buckets.slice(-120).map((b) => ({ t: new Date(b.t).toISOString().slice(11, 16), viewers: b.viewers, messages: b.messages, alerts: b.alerts, toxicity: b.toxicity, sentiment: b.sentiment })),
+        topParticipants: summary.topParticipants.slice(0, 8).map((p) => ({ handle: p.viewer.username, messages: p.messages, maxRisk: p.maxRisk })),
+        topQuestions: summary.topQuestions.slice(0, 8).map((q) => ({ question: q.question, times: q.count, answered: q.answered })),
+        topTopics: summary.topTopics.slice(0, 8),
+        categories: summary.categoryCounts,
+        incidents: (summary.incidents ?? []).slice(0, 12).map((i) => ({ t: new Date(i.t).toISOString().slice(11, 16), handle: i.username, severity: i.severity, text: i.text.slice(0, 120) })),
+      });
+      return copilotCall(req, () => roomIn(req).runtime.askAbout(context, question, history, lang ?? sp(req).rooms.settings.language));
     }),
   );
 

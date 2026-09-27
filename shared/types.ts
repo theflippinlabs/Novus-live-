@@ -537,6 +537,38 @@ export interface HistoryEntry {
   alerts: number;
 }
 
+/** Derived, easier-to-read figures for one LIVE (Stats page). */
+export interface StatsInsights {
+  /** Indicative LIVE score 0-100 and its four parts. */
+  score: { total: number; engagement: number; audience: number; safety: number; monetization: number };
+  ratios: {
+    durationMin: number;
+    messagesPerMin: number;
+    messagesPerChatter: number | null;
+    /** Share of the audience that wrote in the chat (%). */
+    participation: number | null;
+    /** New followers per 100 viewers seen. */
+    followsPer100: number | null;
+    /** Per-hour rates need at least 10 minutes of LIVE (null before). */
+    giftsPerHour: number | null;
+    diamondsPerHour: number | null;
+    /** Share of the viewers seen who sent a gift (%). */
+    donorRate: number | null;
+    alertsPer1k: number;
+    /** Alerts the team acted on (%). */
+    handledPct: number | null;
+    avgResponseSec: number | null;
+  };
+  moments: { kind: "chat_peak" | "audience_peak" | "tense" | "quiet"; t: number; value: number }[];
+  /** Against the average of this account's previous LIVEs (null without history). */
+  comparison: {
+    lives: number;
+    metrics: { key: "duration" | "messagesPerMin" | "peakViewers" | "uniqueChatters" | "gifts" | "diamonds" | "alertsPer1k"; value: number; average: number; deltaPct: number; higherIsBetter: boolean }[];
+  } | null;
+  /** Up to the last 10 LIVEs of the account, oldest first (this one included). */
+  trend: { sessionId: string; startedAt: number; peakViewers: number; messages: number; diamonds: number; alerts: number; current: boolean }[];
+}
+
 /** A saved chat line, for history exports. */
 export interface ChatLine {
   t: number;

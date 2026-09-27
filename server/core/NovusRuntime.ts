@@ -1064,6 +1064,13 @@ export class NovusRuntime {
     return ai.copilot({ mode: "chat", instruction: question, history, context: this.copilotContext(), language: lang, streamerName: this.settings.streamerName });
   }
 
+  /** The AI answers a question about data given as context (e.g. a LIVE's statistics). */
+  async askAbout(context: string, question: string, history: CopilotTurn[], lang: "en" | "fr" = this.settings.language): Promise<string> {
+    const ai = this.deps.ai;
+    if (!ai.available() || !ai.copilot) throw new Error("ai_unavailable");
+    return ai.copilot({ mode: "chat", instruction: question, history, context, language: lang, streamerName: this.settings.streamerName });
+  }
+
   /** The AI copilot drafts one chat message (answer a question, thank a gifter, welcome, revive the chat). */
   async draftChatMessage(req: { kind: "question" | "thanks" | "welcome" | "revive"; questionId?: string; viewerId?: string }, lang: "en" | "fr" = this.settings.language): Promise<string> {
     const ai = this.deps.ai;

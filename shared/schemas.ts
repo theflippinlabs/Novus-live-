@@ -196,6 +196,17 @@ export const copilotAskSchema = z
     lang,
   })
   .strict();
+export const statsAskSchema = z
+  .object({
+    question: z.string().trim().min(1).max(500),
+    history: z
+      .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(2000) }).strict())
+      .max(12)
+      .default([]),
+    sessionId: z.string().max(80).optional(),
+    lang,
+  })
+  .strict();
 export const copilotReplySchema = z
   .object({
     kind: z.enum(["question", "thanks", "welcome", "revive"]),

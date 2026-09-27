@@ -47,6 +47,7 @@ export function BarChart({
   highlight = "#c9a55a",
   format = (p: Point) => `${p.v}`,
   label,
+  axisLabel = (t: number) => new Date(t).toTimeString().slice(0, 5),
 }: {
   data: Point[];
   height?: number;
@@ -54,6 +55,8 @@ export function BarChart({
   highlight?: string;
   format?: (p: Point) => string;
   label: string;
+  /** Text under the first and last bars (default: the time of day). */
+  axisLabel?: (t: number) => string;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -113,10 +116,10 @@ export function BarChart({
           {data.length > 1 ? (
             <>
               <text x={padL} y={height - 4} fill={AXIS} fontSize={10}>
-                {new Date(data[0].t).toTimeString().slice(0, 5)}
+                {axisLabel(data[0].t)}
               </text>
               <text x={width} y={height - 4} fill={AXIS} fontSize={10} textAnchor="end">
-                {new Date(data[data.length - 1].t).toTimeString().slice(0, 5)}
+                {axisLabel(data[data.length - 1].t)}
               </text>
             </>
           ) : null}
