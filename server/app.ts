@@ -1171,6 +1171,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
       useExport(req);
+      // Score, ratios and the comparison with the account's previous LIVEs.
+      const insights = (await statsFor(req, id).catch(() => null))?.insights;
       const pdf = await buildReportPdf({
         entry: detail.entry,
         analytics: detail.analytics,
@@ -1178,6 +1180,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
         lang: langOf(req),
         timeZone,
         logo: reportLogo(),
+        insights,
       });
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName(detail.entry.title, detail.entry.startedAt, "pdf")}"`);
