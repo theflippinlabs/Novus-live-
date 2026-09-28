@@ -116,6 +116,33 @@ export const settingsPatchSchema = z
       )
       .refine((r) => Object.keys(r).length <= MAX_PROFILES, "too many accounts")
       .transform((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v]))),
+    tiktokTiers: z
+      .record(
+        z.union([z.literal("*"), tiktokHandle.pipe(z.string().min(2))]),
+        z
+          .object({
+            period: z.enum(["week", "month"]),
+            validDayMinutes: z.number().int().min(1).max(1440),
+            tiers: z
+              .array(
+                z
+                  .object({
+                    percent: z.number().min(0).max(100),
+                    label: z.string().trim().max(40).optional(),
+                    validDays: z.number().int().min(1).max(31).optional(),
+                    hours: z.number().min(0.5).max(744).optional(),
+                    diamonds: z.number().int().min(1).max(1_000_000_000).optional(),
+                    follows: z.number().int().min(1).max(10_000_000).optional(),
+                  })
+                  .strict(),
+              )
+              .min(1)
+              .max(10),
+          })
+          .strict(),
+      )
+      .refine((r) => Object.keys(r).length <= MAX_PROFILES + 1, "too many accounts")
+      .transform((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v]))),
     tiktokVideo: z
       .array(tiktokHandle.pipe(z.string().min(2)))
       .max(MAX_PROFILES)

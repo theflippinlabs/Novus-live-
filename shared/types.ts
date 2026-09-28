@@ -259,6 +259,51 @@ export interface Settings {
   tiktokVideo?: string[];
   /** Weekly goals per followed account (lowercase handle), set by the manager. */
   tiktokGoals?: Record<string, WeeklyGoals>;
+  /**
+   * TikTok's reward tiers (entered by the agency from TikTok Backstage — TikTok exposes no
+   * API for them), per streamer (lowercase handle) or "*" for every streamer.
+   */
+  tiktokTiers?: Record<string, TierProgram>;
+}
+
+/** One TikTok reward tier: its share and what it takes over the period. */
+export interface RewardTier {
+  /** Reward rate of the tier (%), as TikTok announces it. */
+  percent: number;
+  label?: string;
+  /** Days with at least `validDayMinutes` of LIVE. */
+  validDays?: number;
+  hours?: number;
+  diamonds?: number;
+  follows?: number;
+}
+
+export interface TierProgram {
+  period: "week" | "month";
+  /** Minutes of LIVE that make a day "valid" (TikTok's usual rule: 60). */
+  validDayMinutes: number;
+  /** From the lowest to the highest tier. */
+  tiers: RewardTier[];
+}
+
+export type TierKey = "validDays" | "hours" | "diamonds" | "follows";
+export const TIER_KEYS: TierKey[] = ["validDays", "hours", "diamonds", "follows"];
+
+/** Where the streamer stands against the TikTok tiers (estimated from the LIVEs Novus followed). */
+export interface TierProgress {
+  period: TierProgram["period"];
+  periodStart: number;
+  periodEnd: number;
+  /** Share of the period already gone (%). */
+  elapsed: number;
+  validDayMinutes: number;
+  /** "*": the space-wide tiers; otherwise this streamer's own. */
+  source: "account" | "all";
+  done: Record<TierKey, number>;
+  tiers: (RewardTier & { reached: boolean; missing: Partial<Record<TierKey, number>> })[];
+  /** Highest tier reached (index), and the next one to aim for. */
+  current: number | null;
+  next: number | null;
 }
 
 /** A streamer's goals for the week (Monday to Sunday); unset = no goal. */
@@ -285,6 +330,8 @@ export interface GoalProgress {
   /** This week so far, the running LIVE included. */
   done: Required<WeeklyGoals>;
   livesCounted: number;
+  /** TikTok reward tiers, when the agency entered them. */
+  tiers: TierProgress | null;
 }
 
 export interface TikTokGroup {

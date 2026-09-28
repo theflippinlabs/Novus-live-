@@ -279,7 +279,15 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const changed = [...new Set([...Object.keys(before), ...Object.keys(patch.tiktokGoals)])].filter((u) => JSON.stringify(before[u] ?? null) !== JSON.stringify(patch.tiktokGoals![u] ?? null));
       if (changed.some((u) => !canSeeAccount(p, u))) throw new HttpError(403, "forbidden");
     }
-    if (keys.some((k) => k !== "language" && k !== "tiktokManual" && k !== "tiktokVideo" && k !== "tiktokGoals" && !accountKeys.includes(k))) need(req, "settings");
+    if (patch.tiktokTiers) {
+      need(req, "manage_accounts");
+      const p = principal(req);
+      const before = sp(req).rooms.settings.tiktokTiers ?? {};
+      const changed = [...new Set([...Object.keys(before), ...Object.keys(patch.tiktokTiers)])].filter((u) => JSON.stringify(before[u] ?? null) !== JSON.stringify(patch.tiktokTiers![u] ?? null));
+      // The space-wide tiers ("*") are for those who see every streamer.
+      if (changed.some((u) => (u === "*" ? p.kind === "member" && p.member.accounts !== null : !canSeeAccount(p, u)))) throw new HttpError(403, "forbidden");
+    }
+    if (keys.some((k) => k !== "language" && k !== "tiktokManual" && k !== "tiktokVideo" && k !== "tiktokGoals" && k !== "tiktokTiers" && !accountKeys.includes(k))) need(req, "settings");
   };
   /** A LIVE of the history, if this person may see its streamer (and it is within the plan's history window). */
   const historyDetail = async (req: Request, id: string) => {
@@ -1190,8 +1198,11 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       if (room.kind !== "tiktok" || !room.username) throw new HttpError(404, "no_goals");
       const account = room.username.toLowerCase();
       const goals = sp(req).rooms.settings.tiktokGoals?.[account] ?? {};
-      const entries = await sp(req).history.list(60, { kind: "tiktok", username: room.username });
-      return goalProgress(account, goals, entries, Date.now(), timeZone);
+      // A monthly TikTok program needs the whole month of LIVEs.
+      const entries = await sp(req).history.list(200, { kind: "tiktok", username: room.username });
+      const tiers = sp(req).rooms.settings.tiktokTiers ?? {};
+      const program = tiers[account] ? { program: tiers[account], source: "account" as const } : tiers["*"] ? { program: tiers["*"], source: "all" as const } : undefined;
+      return goalProgress(account, goals, entries, Date.now(), timeZone, program);
     }),
   );
 

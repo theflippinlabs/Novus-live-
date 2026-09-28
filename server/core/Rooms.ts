@@ -114,7 +114,7 @@ export class RoomRegistry {
   /** Save settings once, share them with every room, then follow/unfollow TikTok accounts. */
   async updateSettings(patch: Partial<Settings>): Promise<Settings> {
     // Groups and manual-mode entries only keep accounts that are still followed.
-    if (patch.tiktokProfiles || patch.tiktokGroups || patch.tiktokManual || patch.tiktokVideo || patch.tiktokGoals) {
+    if (patch.tiktokProfiles || patch.tiktokGroups || patch.tiktokManual || patch.tiktokVideo || patch.tiktokGoals || patch.tiktokTiers) {
       const followed = new Set((patch.tiktokProfiles ?? this.settings.tiktokProfiles ?? []).map((u) => u.toLowerCase()));
       patch = {
         ...patch,
@@ -122,6 +122,7 @@ export class RoomRegistry {
         tiktokManual: (patch.tiktokManual ?? this.settings.tiktokManual ?? []).filter((u) => followed.has(u)),
         tiktokVideo: (patch.tiktokVideo ?? this.settings.tiktokVideo ?? []).filter((u) => followed.has(u)),
         tiktokGoals: Object.fromEntries(Object.entries(patch.tiktokGoals ?? this.settings.tiktokGoals ?? {}).filter(([u]) => followed.has(u))),
+        tiktokTiers: Object.fromEntries(Object.entries(patch.tiktokTiers ?? this.settings.tiktokTiers ?? {}).filter(([u]) => u === "*" || followed.has(u))),
       };
     }
     const settings = await this.main.runtime.updateSettings(patch);
