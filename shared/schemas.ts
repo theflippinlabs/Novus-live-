@@ -101,6 +101,21 @@ export const settingsPatchSchema = z
       .array(tiktokHandle.pipe(z.string().min(2)))
       .max(MAX_PROFILES)
       .transform((list) => [...new Set(list.map((u) => u.toLowerCase()))]),
+    tiktokGoals: z
+      .record(
+        tiktokHandle.pipe(z.string().min(2)),
+        z
+          .object({
+            diamonds: z.number().int().min(1).max(1_000_000_000).optional(),
+            hours: z.number().min(0.5).max(168).optional(),
+            lives: z.number().int().min(1).max(100).optional(),
+            follows: z.number().int().min(1).max(10_000_000).optional(),
+            peakViewers: z.number().int().min(1).max(10_000_000).optional(),
+          })
+          .strict(),
+      )
+      .refine((r) => Object.keys(r).length <= MAX_PROFILES, "too many accounts")
+      .transform((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v]))),
     tiktokVideo: z
       .array(tiktokHandle.pipe(z.string().min(2)))
       .max(MAX_PROFILES)

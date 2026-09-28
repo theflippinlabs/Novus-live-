@@ -54,6 +54,7 @@ import { recoveryMail } from "./mail/templates";
 import { deriveInsights } from "./analytics/insights";
 import { buildDonors, donorsCsv } from "./analytics/donors";
 import { buildLeaderboard } from "./analytics/leaderboard";
+import { goalProgress } from "./analytics/goals";
 import { DEFAULT_PREFS, type PushOwner, type PushService } from "./push/Push";
 import { testMessage } from "./push/messages";
 import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
@@ -270,7 +271,15 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
         if (!video?.ready) throw new HttpError(503, "video_unavailable");
       }
     }
-    if (keys.some((k) => k !== "language" && k !== "tiktokManual" && k !== "tiktokVideo" && !accountKeys.includes(k))) need(req, "settings");
+    if (patch.tiktokGoals) {
+      need(req, "manage_accounts");
+      // A member limited to some streamers may only change the goals of those.
+      const p = principal(req);
+      const before = sp(req).rooms.settings.tiktokGoals ?? {};
+      const changed = [...new Set([...Object.keys(before), ...Object.keys(patch.tiktokGoals)])].filter((u) => JSON.stringify(before[u] ?? null) !== JSON.stringify(patch.tiktokGoals![u] ?? null));
+      if (changed.some((u) => !canSeeAccount(p, u))) throw new HttpError(403, "forbidden");
+    }
+    if (keys.some((k) => k !== "language" && k !== "tiktokManual" && k !== "tiktokVideo" && k !== "tiktokGoals" && !accountKeys.includes(k))) need(req, "settings");
   };
   /** A LIVE of the history, if this person may see its streamer (and it is within the plan's history window). */
   const historyDetail = async (req: Request, id: string) => {
@@ -1172,6 +1181,19 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     return buildDonors(rows);
   };
   api.get("/donors", h(async (req) => donorsFor(req)));
+
+  // ---------------------------------------------------------------- weekly goals of the room's streamer
+  api.get(
+    "/goals",
+    h(async (req) => {
+      const room = roomIn(req);
+      if (room.kind !== "tiktok" || !room.username) throw new HttpError(404, "no_goals");
+      const account = room.username.toLowerCase();
+      const goals = sp(req).rooms.settings.tiktokGoals?.[account] ?? {};
+      const entries = await sp(req).history.list(60, { kind: "tiktok", username: room.username });
+      return goalProgress(account, goals, entries, Date.now(), timeZone);
+    }),
+  );
 
   // ---------------------------------------------------------------- ranking of the followed streamers
   const boardCache = new Map<string, { at: number; board: Leaderboard }>();

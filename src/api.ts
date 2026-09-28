@@ -4,6 +4,7 @@ import type {
   StatsInsights,
   DonorDirectory,
   Leaderboard,
+  GoalProgress,
   VideoInfo,
   CopilotTurn,
   ActionRecord,
@@ -140,6 +141,7 @@ export const api = {
 
   settings: () => request<Settings>("GET", "/settings"),
   saveSettings: (patch: Partial<Settings>) => request<Settings>("PUT", "/settings", patch),
+  goals: () => request<GoalProgress>("GET", "/goals"),
 
   rooms: () => request<{ rooms: RoomSummary[] }>("GET", "/rooms"),
   setRecording: (action: "start" | "stop") => request<{ session: LiveSessionInfo | null; rooms: RoomSummary[] }>("POST", "/rooms/recording", { action }),

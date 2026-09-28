@@ -4,6 +4,7 @@ import { api, ApiError } from "../api";
 import { directModeration, runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
+import { WeeklyGoalsCard } from "../components/WeeklyGoals";
 import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
 import { actionLabel, errorText, tr, useLang, useT } from "../i18n";
 import { navigate, openSettings, openViewer, switchRoom, toast, useStore } from "../store";
@@ -169,6 +170,7 @@ function StartPanel() {
         ) : (
           <DemoCard secondary={false} />
         )}
+        {followed ? <WeeklyGoalsCard defaultOpen /> : null}
         {session?.status === "ended" ? (
           <button className="btn block" onClick={() => navigate("analytics")}>
             {t("report")} →
@@ -326,6 +328,7 @@ export function LiveView() {
       </div>
       <div className="live-split">
         <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+          <WeeklyGoalsCard />
           <CriticalStrip />
           <ChatStream flaggedOnly={flaggedOnly} />
         </div>

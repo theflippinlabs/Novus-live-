@@ -26,6 +26,7 @@ export function defaultSettings(): Settings {
     tiktokGroups: [],
     tiktokManual: [],
     tiktokVideo: [],
+    tiktokGoals: {},
   };
 }
 

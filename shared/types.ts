@@ -257,6 +257,34 @@ export interface Settings {
    * option; the moderator confirmed having the streamer's consent when switching it on.
    */
   tiktokVideo?: string[];
+  /** Weekly goals per followed account (lowercase handle), set by the manager. */
+  tiktokGoals?: Record<string, WeeklyGoals>;
+}
+
+/** A streamer's goals for the week (Monday to Sunday); unset = no goal. */
+export interface WeeklyGoals {
+  diamonds?: number;
+  hours?: number;
+  lives?: number;
+  follows?: number;
+  peakViewers?: number;
+}
+
+export type GoalKey = keyof WeeklyGoals;
+export const GOAL_KEYS: GoalKey[] = ["diamonds", "hours", "lives", "follows", "peakViewers"];
+
+/** GET /api/goals — the week's goals of the room's streamer and where they stand. */
+export interface GoalProgress {
+  account: string;
+  /** Monday 00:00 and next Monday 00:00 (the space's time zone). */
+  weekStart: number;
+  weekEnd: number;
+  /** Share of the week already gone (%), to tell ahead from behind. */
+  weekElapsed: number;
+  goals: WeeklyGoals;
+  /** This week so far, the running LIVE included. */
+  done: Required<WeeklyGoals>;
+  livesCounted: number;
 }
 
 export interface TikTokGroup {
