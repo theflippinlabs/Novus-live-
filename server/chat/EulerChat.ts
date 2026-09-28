@@ -20,6 +20,13 @@ const DEFAULT_AUTHORIZE_URL = "https://www.eulerstream.com/oauth/authorize";
 const SECRET_ID = "euler_chat_oauth";
 const STATE_TTL_MS = 10 * 60_000;
 export const CHAT_MAX_LENGTH = 150;
+/** Moderation through Euler's documented REST API (mute, kick, comments on/off). */
+export const MODERATION_SCOPES = ["webcast:mute", "webcast:ban", "webcast:comments"] as const;
+/** Only what Novus uses: sending a message, and the three moderation actions. */
+const SCOPES = ["webcast:chat", ...MODERATION_SCOPES];
+/** TikTok's mute lengths (seconds; -1 = until unmuted). */
+export const MUTE_DURATIONS = [5, 30, 60, 300, -1] as const;
+export type MuteDuration = (typeof MUTE_DURATIONS)[number];
 
 export interface EulerChatConfig {
   apiKey?: string;
@@ -38,11 +45,23 @@ interface StoredTokens {
   username?: string;
   nickname?: string;
   connectedAt: number;
+  /** Scopes asked for when this account was connected (older connections: chat only). */
+  scopes?: string[];
 }
 
 export class ChatSendError extends Error {
   constructor(
-    public code: "chat_not_configured" | "chat_not_connected" | "chat_plan_required" | "chat_session_expired" | "chat_failed" | "chat_not_live",
+    public code:
+      | "chat_not_configured"
+      | "chat_not_connected"
+      | "chat_plan_required"
+      | "chat_session_expired"
+      | "chat_failed"
+      | "chat_not_live"
+      /** The connected account was connected before moderation was added: reconnect it. */
+      | "mod_reconnect"
+      /** TikTok refused: the connected account is not a moderator of this LIVE (or the viewer can't be acted on). */
+      | "mod_refused",
     public status: number,
     detail?: string,
   ) {
@@ -92,7 +111,19 @@ export class EulerChatSender {
       nickname: this.tokens?.nickname,
       connectedAt: this.tokens?.connectedAt,
       lastError: this.lastError,
+      moderation: this.canModerateNow(),
     };
+  }
+
+  /** Connected with the moderation scopes (mute, kick, comments). */
+  private canModerateNow(): boolean {
+    const granted = this.tokens?.scopes ?? [];
+    return this.configured && Boolean(this.tokens) && MODERATION_SCOPES.every((s) => granted.includes(s));
+  }
+
+  async canModerate(): Promise<boolean> {
+    await this.load();
+    return this.canModerateNow();
   }
 
   /** Start the OAuth flow: returns the Euler authorize URL and the one-time state. */
@@ -106,7 +137,7 @@ export class EulerChatSender {
     url.searchParams.set("client_id", this.cfg.clientId!);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
-    if (!url.searchParams.get("scope")) url.searchParams.set("scope", "webcast:chat");
+    url.searchParams.set("scope", SCOPES.join(" "));
     url.searchParams.set("state", state);
     return { url: url.toString(), state };
   }
@@ -124,7 +155,7 @@ export class EulerChatSender {
     if (!pending || pending.expires < this.now()) throw new ChatSendError("chat_session_expired", 400, "OAuth state missing or expired");
     const tokens = await this.exchange({ grant_type: "authorization_code", code, redirect_uri: pending.redirectUri });
     const info = await this.userInfo(tokens.accessToken).catch(() => null);
-    this.tokens = { ...tokens, username: info?.uniqueId, nickname: info?.nickName, connectedAt: this.now() };
+    this.tokens = { ...tokens, username: info?.uniqueId, nickname: info?.nickName, connectedAt: this.now(), scopes: [...SCOPES] };
     this.lastError = undefined;
     await this.repo.saveSecret(SECRET_ID, this.tokens);
     return this.status();
@@ -172,6 +203,60 @@ export class EulerChatSender {
     console.warn(`[chat] Euler refused the message: ${detail}`);
     // Euler Stream's own plan (not the NOVUS subscription): never a 402, which means "NOVUS plan limit".
     if (res.status === 401 || res.status === 403) throw new ChatSendError("chat_plan_required", 403, detail);
+    throw new ChatSendError("chat_failed", 502, detail);
+  }
+
+  // ---------------------------------------------------------------- moderation (connected account must moderate the LIVE)
+
+  /** Mute a viewer in the LIVE of `roomId` (TikTok user id, seconds or -1 = until unmuted). */
+  mute(roomId: string, userId: string, duration: MuteDuration): Promise<void> {
+    return this.moderate("PUT", roomId, "mutes", { user_id: userId, duration: String(duration) });
+  }
+
+  unmute(roomId: string, userId: string): Promise<void> {
+    return this.moderate("DELETE", roomId, "mutes", { user_id: userId });
+  }
+
+  /** Remove a viewer from the LIVE (TikTok "kick"; they can be let back in with `unkick`). */
+  kick(roomId: string, userId: string): Promise<void> {
+    return this.moderate("PUT", roomId, "bans", { tiktok_user_id: userId });
+  }
+
+  unkick(roomId: string, userId: string): Promise<void> {
+    return this.moderate("DELETE", roomId, "bans", { tiktok_user_id: userId });
+  }
+
+  /** Turn the LIVE's comments off (raid) or back on. */
+  setComments(roomId: string, enabled: boolean): Promise<void> {
+    return this.moderate("POST", roomId, "toggle_comments", { enabled: String(enabled) });
+  }
+
+  private async moderate(method: "PUT" | "DELETE" | "POST", roomId: string, what: string, query: Record<string, string>): Promise<void> {
+    if (!this.configured) throw new ChatSendError("chat_not_configured", 503);
+    await this.load();
+    if (!this.tokens) throw new ChatSendError("chat_not_connected", 409);
+    if (!this.canModerateNow()) throw new ChatSendError("mod_reconnect", 409);
+    if (!roomId) throw new ChatSendError("chat_not_live", 409);
+    const token = await this.freshToken();
+    const q = new URLSearchParams({ ...query, apiKey: this.cfg.apiKey! });
+    const res = await this.http(`${API}/webcast/rooms/${encodeURIComponent(roomId)}/moderation/${what}?${q}`, {
+      method,
+      headers: { Accept: "application/json", "x-api-key": this.cfg.apiKey!, "x-oauth-token": token },
+      signal: AbortSignal.timeout(15_000),
+    });
+    // Euler wraps TikTok's own answer: { code, message, response: { data: { status_code, data } } }.
+    const body = (await res.json().catch(() => ({}))) as { code?: number; message?: string; response?: { data?: { status_code?: number; data?: { message?: string; prompts?: string } } } };
+    const tiktokStatus = body.response?.data?.status_code;
+    if (res.ok && (tiktokStatus === undefined || tiktokStatus === 0)) {
+      this.lastError = undefined;
+      return;
+    }
+    const detail = `${res.status} ${body.message ?? body.response?.data?.data?.prompts ?? body.response?.data?.data?.message ?? ""}${tiktokStatus ? ` (TikTok ${tiktokStatus})` : ""}`.trim().slice(0, 200);
+    this.lastError = detail;
+    console.warn(`[moderation] ${what} refused: ${detail}`);
+    if (res.status === 401 && /scope/i.test(body.message ?? "")) throw new ChatSendError("mod_reconnect", 409, detail);
+    // Refused by TikTok or Euler (not a moderator of this LIVE, Euler plan, viewer protected…): the exact reason is kept.
+    if (res.ok || res.status === 401 || res.status === 403) throw new ChatSendError("mod_refused", 403, detail);
     throw new ChatSendError("chat_failed", 502, detail);
   }
 

@@ -3122,7 +3122,7 @@ main.view {
 .video-toggle.on {
   color: var(--gold);
   border-color: var(--gold-line);
-  background: rgba(212, 175, 55, 0.08);
+  background: var(--gold-soft);
 }
 
 .video-toggle.locked {
@@ -3135,4 +3135,13 @@ main.view {
   margin-top: 10px;
   border-radius: 12px;
   background: #000;
+}
+
+.mute-menu {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
 }

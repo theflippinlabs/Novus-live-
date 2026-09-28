@@ -112,6 +112,8 @@ export interface RuntimeDeps {
   account?: string;
   /** Moments worth a push notification (a LIVE starting or ending, a new critical alert). */
   events?: RuntimeEvents;
+  /** Moderation actions for this room's real LIVEs (default: manual steps). */
+  actions?: ModerationActionAdapter;
 }
 
 export interface RuntimeEvents {
@@ -689,7 +691,7 @@ export class NovusRuntime {
   // ---------------------------------------------------------------- actions
 
   private actionAdapter(): ModerationActionAdapter {
-    return this.session?.source === "demo" ? this.simulated : this.manual;
+    return this.session?.source === "demo" ? this.simulated : (this.deps.actions ?? this.manual);
   }
 
   private makeRecord(
@@ -724,27 +726,28 @@ export class NovusRuntime {
     return record;
   }
 
-  async actOnAlert(alertId: string, action: ActionType, note?: string): Promise<{ record: ActionRecord; alert: ModerationAlert } | null> {
+  async actOnAlert(alertId: string, action: ActionType, note?: string, muteSeconds?: number): Promise<{ record: ActionRecord; alert: ModerationAlert } | null> {
     const alert = this.alerts.get(alertId);
     if (!alert) return null;
-    const record = await this.performAction(alert.viewer, action, alert, note);
+    const record = await this.performAction(alert.viewer, action, alert, note, muteSeconds);
     return { record, alert: this.alerts.get(alertId)! };
   }
 
-  async actOnViewer(viewerId: string, action: ActionType, note?: string): Promise<ActionRecord | null> {
+  async actOnViewer(viewerId: string, action: ActionType, note?: string, muteSeconds?: number): Promise<ActionRecord | null> {
     const vs = this.viewers.get(viewerId);
     if (!vs) return null;
     const openId = this.openAlertByViewer.get(viewerId);
-    return this.performAction(vs.viewer, action, openId ? this.alerts.get(openId) : undefined, note);
+    return this.performAction(vs.viewer, action, openId ? this.alerts.get(openId) : undefined, note, muteSeconds);
   }
 
-  private async performAction(viewer: ViewerRef, action: ActionType, alert: ModerationAlert | undefined, note?: string): Promise<ActionRecord> {
+  private async performAction(viewer: ViewerRef, action: ActionType, alert: ModerationAlert | undefined, note?: string, muteSeconds?: number): Promise<ActionRecord> {
     const adapter = this.actionAdapter();
     const result = await runAction(adapter, action, {
       viewer,
       alertText: alert?.text,
       reasons: alert?.reasons,
       language: this.settings.language,
+      muteSeconds,
     });
     const record = this.makeRecord(viewer, action, result, alert, adapter.id, note);
     const vs = this.viewers.get(viewer.id);

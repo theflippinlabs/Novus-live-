@@ -327,6 +327,8 @@ export interface ChatSenderStatus {
   nickname?: string;
   connectedAt?: number;
   lastError?: string;
+  /** Connected with the moderation permissions (mute, kick, comments): actions run from Novus. */
+  moderation?: boolean;
 }
 
 export interface TikTokIntegrationStatus {

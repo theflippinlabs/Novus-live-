@@ -9,6 +9,8 @@ export interface ActionTarget {
   alertText?: string;
   reasons?: string[];
   language: "en" | "fr";
+  /** Mute length in seconds (-1 = until unmuted); adapters that cannot choose ignore it. */
+  muteSeconds?: number;
 }
 
 export interface ActionResult {

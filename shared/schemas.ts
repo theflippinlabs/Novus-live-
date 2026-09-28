@@ -132,6 +132,8 @@ export const actionRequestSchema = z
   .object({
     action: z.enum(ACTION_TYPES as [string, ...string[]]),
     note: z.string().max(300).optional(),
+    /** Mute length (seconds; -1 = until unmuted), when TikTok moderation runs from Novus. */
+    muteSeconds: z.union([z.literal(5), z.literal(30), z.literal(60), z.literal(300), z.literal(-1)]).optional(),
   })
   .strict();
 
@@ -274,6 +276,7 @@ export const checkoutSchema = z
   .strict();
 
 export const changePlanSchema = z.object({ plan: selfServePlan, cycle }).strict();
+export const commentsToggleSchema = z.object({ enabled: z.boolean() }).strict();
 export const videoPackSchema = z.object({ pack: z.enum(VIDEO_PACK_IDS).nullable() }).strict();
 
 export const leadSchema = z

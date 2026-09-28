@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ActionRecord, ActionType, Category, ModerationAlert, ViewerFlag, ViewerProfile } from "../../shared/types";
-import { api } from "../api";
+import { api, type MuteSeconds } from "../api";
+import { directModeration, MUTE_CHOICES } from "../actions";
 import { actionCopy, actionLabel, categoryLabel, pick, useLang, useT, word } from "../i18n";
 import { clock, hm } from "../format";
 import { openViewer, toast, useStore } from "../store";
@@ -26,6 +27,8 @@ function ViewerSheetInner({ id }: { id: string }) {
   const [alerts, setAlerts] = useState<ModerationAlert[]>([]);
   const [missing, setMissing] = useState(false);
   const [lastManual, setLastManual] = useState<ActionRecord | null>(null);
+  const [muteMenu, setMuteMenu] = useState(false);
+  const direct = useStore((st) => directModeration(st.chatSender, st.room));
   const [busy, setBusy] = useState(false);
   const close = useCallback(() => openViewer(null), []);
 
@@ -51,10 +54,15 @@ function ViewerSheetInner({ id }: { id: string }) {
     toast(`@${r.profile.viewer.username} → ${flag === "none" ? t("none") : t(flag)}`, "ok");
   };
 
-  const act = async (action: ActionType) => {
+  const act = async (action: ActionType, muteSeconds?: MuteSeconds) => {
+    if (action === "mute" && direct && muteSeconds === undefined) {
+      setMuteMenu((m) => !m);
+      return;
+    }
+    setMuteMenu(false);
     setBusy(true);
     try {
-      const r = await api.viewerAction(id, action);
+      const r = await api.viewerAction(id, action, muteSeconds);
       setProfile(r.profile);
       if (r.record.status === "manual_required") setLastManual(r.record);
       else toast(`${actionLabel(action, lang)} · ${r.record.status === "simulated" ? t("simulated") : actionCopy(r.record, lang).message}`, "ok");
@@ -222,6 +230,16 @@ function ViewerSheetInner({ id }: { id: string }) {
             {actionLabel(x, lang)}
           </button>
         ))}
+        {muteMenu ? (
+          <div className="mute-menu" role="group" aria-label={lang === "fr" ? "Durée de la sourdine" : "Mute length"}>
+            <span className="small muted">{lang === "fr" ? "Sourdine dans TikTok :" : "Mute in TikTok:"}</span>
+            {MUTE_CHOICES.map((c) => (
+              <button key={c.s} className="btn sm" onClick={() => void act("mute", c.s)} disabled={busy}>
+                {c[lang]}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="section-title">{t("recentComments")}</div>

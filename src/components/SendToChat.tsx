@@ -58,7 +58,7 @@ export function SendToChatButton({ record, text, onSent }: { record: ActionRecor
 
 const CARD = {
   en: {
-    title: "Send in chat",
+    title: "TikTok moderator account",
     connectedAs: (u: string) => `Connected as @${u}`,
     connected: "TikTok account connected",
     connect: "Connect my TikTok account",
@@ -66,11 +66,15 @@ const CARD = {
     confirmDisconnect: "Disconnect your TikTok account from Novus?",
     notConfigured: "Not set up on the server yet (Euler Stream OAuth client missing).",
     how: "Connect the TikTok account you moderate with. A \"Send in chat\" button then appears next to each suggested warning: one tap posts it in the LIVE chat under your name. Nothing is ever sent automatically.",
-    risk: "Uses Euler Stream, an unofficial third party (not TikTok). Sending needs a paid Euler plan and can be limited by TikTok. Mute, block and report stay manual.",
+    risk: "Uses Euler Stream, an unofficial third party (not TikTok). Needs a paid Euler plan and can be limited by TikTok. Reports stay manual.",
+    modOn: "Moderation from Novus: on — Mute and Block act directly in the LIVE.",
+    modOff: "Moderation from Novus: reconnect this account to allow Mute, Block and turning comments off.",
+    reconnect: "Reconnect",
+    modHow: "For Mute / Block / comments to work, this account must be a moderator of each streamer's LIVE (the streamer adds it once in TikTok: LIVE settings › Moderators). Otherwise TikTok refuses and Novus shows the manual steps.",
     lastError: "Last refusal:",
   },
   fr: {
-    title: "Envoyer dans le chat",
+    title: "Compte TikTok modérateur",
     connectedAs: (u: string) => `Connecté en tant que @${u}`,
     connected: "Compte TikTok connecté",
     connect: "Connecter mon compte TikTok",
@@ -78,7 +82,11 @@ const CARD = {
     confirmDisconnect: "Déconnecter ton compte TikTok de Novus ?",
     notConfigured: "Pas encore configuré sur le serveur (client OAuth Euler Stream manquant).",
     how: "Connecte le compte TikTok avec lequel tu modères. Un bouton « Envoyer dans le chat » apparaît alors à côté de chaque avertissement suggéré : un toucher le publie dans le chat du LIVE à ton nom. Rien n'est jamais envoyé automatiquement.",
-    risk: "Passe par Euler Stream, un service tiers non officiel (pas TikTok). L'envoi demande un abonnement Euler payant et peut être limité par TikTok. Mute, blocage et signalement restent manuels.",
+    risk: "Passe par Euler Stream, un service tiers non officiel (pas TikTok). Demande un abonnement Euler payant et peut être limité par TikTok. Les signalements restent manuels.",
+    modOn: "Modération depuis Novus : activée — Sourdine et Bloquer agissent directement dans le LIVE.",
+    modOff: "Modération depuis Novus : reconnecte ce compte pour autoriser la sourdine, le blocage et la coupure des commentaires.",
+    reconnect: "Reconnecter",
+    modHow: "Pour que Sourdine / Bloquer / commentaires marchent, ce compte doit être modérateur du LIVE de chaque liver (le liver l'ajoute une fois dans TikTok : réglages du LIVE › Modérateurs). Sinon TikTok refuse et Novus affiche les étapes manuelles.",
     lastError: "Dernier refus :",
   },
 };
@@ -126,12 +134,20 @@ export function ChatSenderCard() {
         <div className="list-row">
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>{sender.username ? tx.connectedAs(sender.username) : tx.connected}</div>
+            <div className="small" style={{ color: sender.moderation ? "var(--ok)" : "var(--gold)", marginTop: 2 }}>
+              {sender.moderation ? tx.modOn : tx.modOff}
+            </div>
             {sender.lastError ? (
               <div className="small" style={{ color: "var(--gold)" }}>
                 {tx.lastError} {sender.lastError}
               </div>
             ) : null}
           </div>
+          {!sender.moderation ? (
+            <button className="btn sm gold" onClick={connect} disabled={busy}>
+              {tx.reconnect}
+            </button>
+          ) : null}
           <button className="btn sm ghost" onClick={disconnect} disabled={busy}>
             {tx.disconnect}
           </button>
@@ -143,6 +159,8 @@ export function ChatSenderCard() {
       )}
       <div className="small muted" style={{ marginTop: 6 }}>
         {tx.how}
+        <br />
+        {tx.modHow}
         <br />
         {tx.risk}
       </div>

@@ -23,6 +23,8 @@ import { RealtimeHub } from "./realtime/RealtimeHub";
 import { MAIN_ROOM, RoomRegistry, tiktokRoomId, type Room } from "./core/Rooms";
 import { EulerChatSender } from "./chat/EulerChat";
 import { LiveRecorder } from "./core/LiveRecorder";
+import { EulerActionAdapter } from "./actions/EulerActionAdapter";
+import type { ModerationActionAdapter } from "./actions/ModerationActionAdapter";
 import { createClient } from "@supabase/supabase-js";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -112,6 +114,11 @@ async function main() {
   const buildSpace = async (tenant: string): Promise<Space> => {
     const isOwner = tenant === OWNER_TENANT;
     const spaceRepo = repo.scoped(tenant);
+    // The space's TikTok moderator account (Euler OAuth): "Send in chat", mute, remove, comments on/off.
+    const spaceChat = new EulerChatSender(
+      { apiKey: config.eulerApiKey, clientId: config.eulerClientId, clientSecret: config.eulerClientSecret, authorizeUrl: config.eulerOAuthAuthorizeUrl },
+      spaceRepo,
+    );
     // This space's share of the AI: counted, and cut off (local rules only) past its allowance.
     const spaceAi = new MeteredAIProvider(ai, {
       allowed: () => billing.allowed(tenant, "ai"),
@@ -122,7 +129,7 @@ async function main() {
       },
     });
     /** Build one room: its own runtime, realtime hub and TikTok status. */
-    const buildRoom = async (tiktok: TikTokAdapter, mock?: MockLiveAdapter, account?: string) => {
+    const buildRoom = async (tiktok: TikTokAdapter, mock?: MockLiveAdapter, account?: string, actions?: ModerationActionAdapter) => {
       let runtime: NovusRuntime | null = null;
       const hub = new RealtimeHub(200, () => {
         if (!runtime) return {};
@@ -142,7 +149,7 @@ async function main() {
             },
           }
         : undefined;
-      runtime = new NovusRuntime({ repo: spaceRepo, ai: spaceAi, tiktok, mock, hub, aiQueueOptions, account, events });
+      runtime = new NovusRuntime({ repo: spaceRepo, ai: spaceAi, tiktok, mock, hub, aiQueueOptions, account, events, actions });
       await runtime.init();
       hub.start();
       return { runtime, hub };
@@ -185,7 +192,9 @@ async function main() {
       const tiktok = new TikTokAdapter(false);
       tiktok.unofficialLiveConnector = config.tiktokLiveConnector;
       await tiktok.connect(username);
-      const { runtime, hub } = await buildRoom(tiktok, undefined, username);
+      // Mute / remove from the LIVE through Euler, as the space's connected moderator account.
+      const actions = new EulerActionAdapter({ chat: () => spaceChat, roomId: () => watcher?.roomId });
+      const { runtime, hub } = await buildRoom(tiktok, undefined, username, actions);
       runtimeRef = runtime;
       const recorder = new LiveRecorder(username, runtime, {
         waiting: (detail) => {
@@ -281,11 +290,7 @@ async function main() {
     await rooms.syncProfiles();
     rooms.start();
 
-    const chat = new EulerChatSender(
-      { apiKey: config.eulerApiKey, clientId: config.eulerClientId, clientSecret: config.eulerClientSecret, authorizeUrl: config.eulerOAuthAuthorizeUrl },
-      spaceRepo,
-    );
-    return { id: tenant, rooms, chat };
+    return { id: tenant, rooms, chat: spaceChat };
   };
 
   const connectionFactory = defaultConnectionFactory(config.eulerApiKey, (m) => console.log(m));

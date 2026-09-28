@@ -447,6 +447,8 @@ const ERRORS: Record<string, { en: string; fr: string }> = {
   save_failed: { en: "Save failed.", fr: "Échec de l'enregistrement." },
   internal_error: { en: "Server error — try again.", fr: "Erreur du serveur — réessaie." },
   plan_limit_creators: { en: "Your plan's creator limit is reached.", fr: "La limite de créateurs de votre offre est atteinte." },
+  mod_reconnect: { en: "Reconnect your TikTok account in Settings to allow moderation from Novus.", fr: "Reconnecte ton compte TikTok dans Réglages pour autoriser la modération depuis Novus." },
+  mod_refused: { en: "TikTok refused: your connected account must be a moderator of this LIVE.", fr: "TikTok a refusé : ton compte connecté doit être modérateur de ce LIVE." },
   plan_video_option: { en: "LIVE video needs the Video option.", fr: "La vidéo des LIVE nécessite l'option Vidéo." },
   video_after_trial: { en: "The Video option can be added once your trial has ended.", fr: "L'option Vidéo s'ajoute une fois l'essai terminé." },
   video_unavailable: { en: "Video recording isn't available on the server right now.", fr: "L'enregistrement vidéo n'est pas disponible sur le serveur pour le moment." },

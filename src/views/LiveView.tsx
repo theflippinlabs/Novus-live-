@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { DemoSpeed } from "../../shared/types";
 import { api, ApiError } from "../api";
-import { runAlertAction } from "../actions";
+import { directModeration, runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
 import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
@@ -242,6 +242,34 @@ function SideQueue() {
   );
 }
 
+/** Turn the LIVE's comments off during a raid, and back on (as the connected moderator account). */
+function CommentsSwitch() {
+  const lang = useLang();
+  const [off, setOff] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const fr = lang === "fr";
+  const toggle = async () => {
+    const next = !off;
+    if (next && !window.confirm(fr ? "Couper les commentaires du LIVE pour tout le monde ?" : "Turn the LIVE's comments off for everyone?")) return;
+    setBusy(true);
+    try {
+      await api.setComments(!next);
+      setOff(next);
+      toast(next ? (fr ? "Commentaires coupés dans TikTok" : "Comments turned off in TikTok") : fr ? "Commentaires rouverts" : "Comments back on", "ok");
+    } catch (e) {
+      toast(errorText(e instanceof ApiError ? e.code : "internal_error", lang), "warn");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const label = off ? (fr ? "Rouvrir le chat" : "Reopen chat") : fr ? "Couper le chat" : "Turn chat off";
+  return (
+    <button className={`btn sm ${off ? "gold" : "ghost"}`} onClick={() => void toggle()} disabled={busy} title={label} aria-pressed={off}>
+      {busy ? "…" : `${off ? "▶" : "⏸"} ${label}`}
+    </button>
+  );
+}
+
 export function LiveView() {
   const t = useT();
   const lang = useLang();
@@ -251,6 +279,7 @@ export function LiveView() {
   const canManage = useCan("manage_accounts");
   const canModerate = useCan("moderate");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const direct = useStore((s) => directModeration(s.chatSender, s.room));
 
   if (!session || session.status !== "live") return <StartPanel />;
 
@@ -290,6 +319,7 @@ export function LiveView() {
           onChange={(v) => setFlaggedOnly(v === "flagged")}
         />
         <span className="spacer" />
+        {direct && canModerate && session.source === "tiktok" ? <CommentsSwitch /> : null}
         <button className="end-btn" onClick={end} aria-label={endLabel} title={endLabel} style={{ display: (followedRoom ? canManage : canModerate) ? undefined : "none" }}>
           ■ {t("endShort")}
         </button>

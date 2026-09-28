@@ -77,6 +77,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await res.json()) as T;
 }
 
+/** TikTok mute lengths (seconds; -1 = until unmuted). */
+export type MuteSeconds = 5 | 30 | 60 | 300 | -1;
+
 export const api = {
   authStatus: () => request<{ required: boolean; authenticated: boolean }>("GET", "/auth/status"),
   login: (key: string) => request<{ ok: boolean }>("POST", "/auth/login", { key }),
@@ -92,8 +95,9 @@ export const api = {
   setDemoSpeed: (speed: DemoSpeed) => request<{ ok: boolean }>("POST", "/demo/speed", { speed }),
   endSession: () => request<{ session: LiveSessionInfo | null; report: StreamReport | null }>("POST", "/session/end"),
 
-  alertAction: (id: string, action: ActionType, note?: string) =>
-    request<{ record: ActionRecord; alert: ModerationAlert }>("POST", `/alerts/${encodeURIComponent(id)}/action`, { action, note }),
+  alertAction: (id: string, action: ActionType, note?: string, muteSeconds?: MuteSeconds) =>
+    request<{ record: ActionRecord; alert: ModerationAlert }>("POST", `/alerts/${encodeURIComponent(id)}/action`, { action, note, muteSeconds }),
+  setComments: (enabled: boolean) => request<{ enabled: boolean }>("POST", "/live/comments", { enabled }),
   confirmAction: (id: string) => request<{ record: ActionRecord }>("POST", `/actions/${encodeURIComponent(id)}/confirm`),
   sendToChat: (id: string, text: string) => request<{ record: ActionRecord | null }>("POST", `/actions/${encodeURIComponent(id)}/send-chat`, { text }),
   chatSender: () => request<ChatSenderStatus>("GET", "/chat-sender"),
@@ -106,8 +110,8 @@ export const api = {
   },
   viewer: (id: string) => request<{ profile: ViewerProfile; alerts: ModerationAlert[] }>("GET", `/viewers/${encodeURIComponent(id)}`),
   setFlag: (id: string, flag: ViewerFlag | null) => request<{ profile: ViewerProfile }>("POST", `/viewers/${encodeURIComponent(id)}/flag`, { flag }),
-  viewerAction: (id: string, action: ActionType) =>
-    request<{ record: ActionRecord; profile: ViewerProfile }>("POST", `/viewers/${encodeURIComponent(id)}/action`, { action }),
+  viewerAction: (id: string, action: ActionType, muteSeconds?: MuteSeconds) =>
+    request<{ record: ActionRecord; profile: ViewerProfile }>("POST", `/viewers/${encodeURIComponent(id)}/action`, { action, muteSeconds }),
 
   pulse: () => request<ChatPulse>("GET", "/assistant/pulse"),
   pushConfig: () => request<{ publicKey: string | null }>("GET", "/push/config"),

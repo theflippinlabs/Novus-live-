@@ -19,6 +19,7 @@ import {
   checkoutSchema,
   changePlanSchema,
   videoPackSchema,
+  commentsToggleSchema,
   leadSchema,
   adminConfigSchema,
   copilotAskSchema,
@@ -823,8 +824,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     h(async (req) => {
       need(req, "moderate");
       const { runtime } = roomIn(req);
-      const { action, note } = parse(actionRequestSchema, req.body);
-      const out = await runtime.actOnAlert(param(req, "id"), action as ActionType, note);
+      const { action, note, muteSeconds } = parse(actionRequestSchema, req.body);
+      const out = await runtime.actOnAlert(param(req, "id"), action as ActionType, note, muteSeconds);
       if (!out) throw new HttpError(404, "alert_not_found");
       return out;
     }),
@@ -882,6 +883,25 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     }),
   );
 
+  // Turn the LIVE's comments off (raid) or back on, as the connected moderator account.
+  api.post(
+    "/live/comments",
+    rateLimit("chat", 30),
+    h(async (req) => {
+      need(req, "moderate");
+      const room = roomIn(req);
+      const { enabled } = parse(commentsToggleSchema, req.body);
+      const roomId = room.liveRoomId?.();
+      if (!roomId) throw new HttpError(409, "chat_not_live");
+      try {
+        await sp(req).chat.setComments(roomId, enabled);
+      } catch (e) {
+        throw chatError(e);
+      }
+      return { enabled };
+    }),
+  );
+
   api.get(
     "/viewers",
     h((req) => {
@@ -916,8 +936,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     h(async (req) => {
       need(req, "moderate");
       const { runtime } = roomIn(req);
-      const { action, note } = parse(actionRequestSchema, req.body);
-      const record = await runtime.actOnViewer(param(req, "id"), action as ActionType, note);
+      const { action, note, muteSeconds } = parse(actionRequestSchema, req.body);
+      const record = await runtime.actOnViewer(param(req, "id"), action as ActionType, note, muteSeconds);
       if (!record) throw new HttpError(404, "viewer_not_found");
       return { record, profile: runtime.viewerProfile(param(req, "id")) };
     }),

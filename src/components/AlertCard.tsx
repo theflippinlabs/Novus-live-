@@ -3,8 +3,9 @@ import type { ActionType, ModerationAlert, RecommendedAction } from "../../share
 import { api } from "../api";
 import { actionCopy, actionLabel, categoryLabel, pick, severityLabel, tr, useLang, useT, word } from "../i18n";
 import { ago } from "../format";
-import { runAlertAction } from "../actions";
-import { openViewer, serverNow, toast, upsertAlert } from "../store";
+import { directModeration, MUTE_CHOICES, runAlertAction } from "../actions";
+import type { MuteSeconds } from "../api";
+import { openViewer, serverNow, toast, upsertAlert, useStore } from "../store";
 import { SendToChatButton } from "./SendToChat";
 import { useCan } from "../permissions";
 import { Avatar, SeverityBadge } from "./ui";
@@ -35,16 +36,24 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
   const canModerate = useCan("moderate");
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [muteMenu, setMuteMenu] = useState(false);
+  const direct = useStore((s) => directModeration(s.chatSender, s.room));
   const rec = recommendedSet(alert.recommendedAction);
   const closed = alert.status === "resolved" || alert.status === "dismissed";
   const res = alert.resolution;
   const pendingManual = res?.status === "manual_required" && !res.confirmedAt;
   const copyOfRes = res ? actionCopy(res, lang) : null;
 
-  const act = async (action: ActionType) => {
+  const act = async (action: ActionType, muteSeconds?: MuteSeconds) => {
+    // Muting directly in TikTok: pick how long first.
+    if (action === "mute" && direct && muteSeconds === undefined) {
+      setMuteMenu((m) => !m);
+      return;
+    }
+    setMuteMenu(false);
     setBusy(action);
     try {
-      await runAlertAction(alert, action, lang);
+      await runAlertAction(alert, action, lang, muteSeconds);
     } catch {
       toast(lang === "fr" ? "Échec de l'action" : "Action failed", "warn");
     } finally {
@@ -181,6 +190,16 @@ export const AlertCard = memo(function AlertCard({ alert, compact }: { alert: Mo
               {busy === a ? "…" : actionLabel(a, lang)}
             </button>
           ))}
+          {muteMenu ? (
+            <div className="mute-menu" role="group" aria-label={lang === "fr" ? "Durée de la sourdine" : "Mute length"}>
+              <span className="small muted">{lang === "fr" ? "Sourdine dans TikTok :" : "Mute in TikTok:"}</span>
+              {MUTE_CHOICES.map((c) => (
+                <button key={c.s} className="btn sm" onClick={() => void act("mute", c.s)} disabled={busy !== null}>
+                  {c[lang]}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </article>
