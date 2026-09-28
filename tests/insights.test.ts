@@ -100,3 +100,25 @@ describe("Stats insights on a short LIVE", () => {
     expect(i.ratios.diamondsPerHour).toBeNull();
   });
 });
+
+describe("Conversion KPIs", () => {
+  it("builds the funnel and conversion rates from the LIVE's audience", () => {
+    const i = deriveInsights(summary());
+    expect(i.funnel).toEqual({ seen: 240, chatters: 60, followers: 12, donors: 12 });
+    expect(i.conversions.viewerToChatter).toBe(25);
+    expect(i.conversions.viewerToFollower).toBe(5);
+    expect(i.conversions.viewerToDonor).toBe(5);
+    expect(i.conversions.chatterToDonor).toBe(20);
+    expect(i.conversions.avgBasket).toBe(125);
+    expect(i.conversions.diamondsPerViewer).toBe(6.3);
+    expect(i.conversions.retention).toBe(66.7);
+    expect(i.conversions.joinsPerHour).toBe(400);
+    expect(i.conversions.followsPerHour).toBe(12);
+    // No audience data: no funnel, never invented numbers.
+    const bare = deriveInsights(summary({ audience: undefined, gifts: undefined }));
+    expect(bare.funnel).toBeNull();
+    expect(bare.conversions.viewerToChatter).toBeNull();
+    expect(bare.conversions.avgBasket).toBeNull();
+  });
+});
+

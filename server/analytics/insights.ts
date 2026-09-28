@@ -89,5 +89,23 @@ export function deriveInsights(d: AnalyticsSummary, history: HistoryEntry[] = []
   ];
   const trend = trendSource.sort((a, b) => a.startedAt - b.startedAt).slice(-10);
 
-  return { score: { total, engagement, audience, safety, monetization }, ratios, moments, comparison, trend };
+  // Conversion funnel over the viewers Novus saw individually.
+  const chatters = Math.min(t.uniqueChatters, seen || t.uniqueChatters);
+  const funnel = seen > 0 ? { seen, chatters, followers: Math.min(follows, seen), donors: Math.min(senders, seen) } : null;
+  const pct = (a: number, b: number) => (b > 0 ? r1(Math.min(100, (a / b) * 100)) : null);
+  const peak = d.audience?.peakViewers ?? 0;
+  const avgViewers = d.audience?.avgViewers ?? null;
+  const conversions: StatsInsights["conversions"] = {
+    viewerToChatter: funnel ? pct(funnel.chatters, seen) : null,
+    viewerToFollower: funnel ? pct(funnel.followers, seen) : null,
+    viewerToDonor: funnel ? pct(funnel.donors, seen) : null,
+    chatterToDonor: t.uniqueChatters >= 5 ? pct(Math.min(senders, t.uniqueChatters), t.uniqueChatters) : null,
+    avgBasket: senders ? Math.round(diamonds / senders) : null,
+    diamondsPerViewer: seen >= 10 ? r1(diamonds / seen) : null,
+    retention: avgViewers !== null && peak > 0 ? pct(avgViewers, peak) : null,
+    joinsPerHour: minutes >= 10 && d.audience ? Math.round(d.audience.joins / hours) : null,
+    followsPerHour: minutes >= 10 ? r1(follows / hours) : null,
+  };
+
+  return { score: { total, engagement, audience, safety, monetization }, ratios, moments, comparison, funnel, conversions, trend };
 }

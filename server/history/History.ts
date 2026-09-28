@@ -46,6 +46,11 @@ export class HistoryService {
       diamonds: analytics?.gifts?.diamonds ?? 0,
       peakViewers: analytics?.audience?.peakViewers ?? 0,
       alerts: analytics?.totals.alerts ?? 0,
+      avgViewers: analytics?.audience?.avgViewers ?? undefined,
+      seenViewers: analytics?.audience?.seenViewers,
+      follows: analytics?.audience?.follows ?? analytics?.totals.follows,
+      joins: analytics?.audience?.joins,
+      donors: analytics?.gifts?.senders,
     };
   }
 

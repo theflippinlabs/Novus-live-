@@ -37,7 +37,7 @@ import {
   settingsPatchSchema,
   tiktokConnectSchema,
 } from "../shared/schemas";
-import { PERMISSIONS, type ActionType, type DemoSpeed, type LiveEvent, type Me, type Permission, type Settings, type ViewerFlag } from "../shared/types";
+import { PERMISSIONS, type ActionType, type DemoSpeed, type Leaderboard, type LiveEvent, type Me, type Permission, type Settings, type ViewerFlag } from "../shared/types";
 import type { Config } from "./config";
 import { RecordingError } from "./core/LiveRecorder";
 import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
@@ -53,6 +53,7 @@ import { ResendMailer, type Mailer } from "./mail/Mailer";
 import { recoveryMail } from "./mail/templates";
 import { deriveInsights } from "./analytics/insights";
 import { buildDonors, donorsCsv } from "./analytics/donors";
+import { buildLeaderboard } from "./analytics/leaderboard";
 import { DEFAULT_PREFS, type PushOwner, type PushService } from "./push/Push";
 import { testMessage } from "./push/messages";
 import { accessKeys, AUTH_COOKIE, authKey, matchKey, rateLimit, readCookie, requireJson, safeEqual, securityHeaders, sessionCookieValue } from "./http/security";
@@ -1171,6 +1172,26 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     return buildDonors(rows);
   };
   api.get("/donors", h(async (req) => donorsFor(req)));
+
+  // ---------------------------------------------------------------- ranking of the followed streamers
+  const boardCache = new Map<string, { at: number; board: Leaderboard }>();
+  api.get(
+    "/leaderboard",
+    h(async (req) => {
+      need(req, "history");
+      const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : null;
+      const p = principal(req);
+      const key = `${sp(req).id}|${days}|${p.kind === "member" ? p.member.id : "all"}`;
+      const hit = boardCache.get(key);
+      if (hit && Date.now() - hit.at < 3 * 60_000) return hit.board;
+      const cutoff = historyCutoff(req);
+      const entries = (await sp(req).history.list(400)).filter((e) => e.startedAt >= cutoff && canSeeAccount(p, e.account));
+      const board = buildLeaderboard(entries, days);
+      if (boardCache.size > 200) boardCache.clear();
+      boardCache.set(key, { at: Date.now(), board });
+      return board;
+    }),
+  );
   api.get(
     "/donors.csv",
     rateLimit("pdf", 20),

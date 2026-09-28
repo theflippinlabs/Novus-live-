@@ -32,6 +32,20 @@ const TX = {
       handledPct: "alerts handled",
       avgResponseSec: "s to react",
     },
+    conv: "Conversion",
+    convHint: "Of the viewers Novus saw during the LIVE: how many chatted, followed and gave.",
+    funnel: { seen: "Viewers seen", chatters: "Chatted", followers: "Followed", donors: "Gave a gift" },
+    c: {
+      viewerToChatter: "viewers → chat",
+      viewerToFollower: "viewers → followers",
+      viewerToDonor: "viewers → donors",
+      chatterToDonor: "chatters → donors",
+      avgBasket: "diamonds per donor",
+      diamondsPerViewer: "diamonds per viewer",
+      retention: "audience kept (avg / peak)",
+      joinsPerHour: "arrivals / hour",
+      followsPerHour: "followers / hour",
+    },
     moments: "Key moments",
     m: {
       chat_peak: (v: number) => `Chat peak — ${v} messages in a minute`,
@@ -66,6 +80,20 @@ const TX = {
       alertsPer1k: "alertes / 1 000 msg",
       handledPct: "des alertes traitées",
       avgResponseSec: "s pour réagir",
+    },
+    conv: "Conversion",
+    convHint: "Parmi les spectateurs vus par Novus pendant le LIVE : combien ont écrit, se sont abonnés et ont offert.",
+    funnel: { seen: "Spectateurs vus", chatters: "Ont écrit", followers: "Se sont abonnés", donors: "Ont offert" },
+    c: {
+      viewerToChatter: "spectateurs → chat",
+      viewerToFollower: "spectateurs → abonnés",
+      viewerToDonor: "spectateurs → donateurs",
+      chatterToDonor: "participants → donateurs",
+      avgBasket: "diamants par donateur",
+      diamondsPerViewer: "diamants par spectateur",
+      retention: "audience gardée (moy. / pic)",
+      joinsPerHour: "arrivées / heure",
+      followsPerHour: "abonnés / heure",
     },
     moments: "Moments forts",
     m: {
@@ -173,6 +201,49 @@ export function StatsInsightsPanel({ insights, sessionId }: { insights: StatsIns
           ))}
         </div>
       </div>
+
+      {insights.funnel || Object.values(insights.conversions ?? {}).some((v) => v !== null) ? (
+        <div className="card">
+          <div className="card-title">
+            <span className="gold">◆</span> {tx.conv}
+          </div>
+          {insights.funnel ? (
+            <div className="funnel" role="list">
+              {(["seen", "chatters", "followers", "donors"] as const).map((k) => {
+                const v = insights.funnel![k];
+                const pct = insights.funnel!.seen ? (v / insights.funnel!.seen) * 100 : 0;
+                return (
+                  <div key={k} className="funnel-row" role="listitem">
+                    <span className="funnel-label">{tx.funnel[k]}</span>
+                    <span className="funnel-bar">
+                      <span style={{ width: `${Math.max(2, pct)}%` }} />
+                    </span>
+                    <span className="funnel-val">
+                      <b>{v.toLocaleString(locale)}</b>
+                      {k !== "seen" ? <span className="small muted"> · {pct.toLocaleString(locale, { maximumFractionDigits: 1 })} %</span> : null}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          <div className="ratio-grid" style={{ marginTop: insights.funnel ? 12 : 0 }}>
+            {(Object.keys(tx.c) as (keyof StatsInsights["conversions"])[])
+              .filter((k) => insights.conversions?.[k] !== null && insights.conversions?.[k] !== undefined)
+              .map((k) => {
+                const v = insights.conversions[k] as number;
+                const pctKey = k === "viewerToChatter" || k === "viewerToFollower" || k === "viewerToDonor" || k === "chatterToDonor" || k === "retention";
+                return (
+                  <div key={k} className="ratio">
+                    <b>{pctKey ? `${v.toLocaleString(locale, { maximumFractionDigits: 1 })} %` : v.toLocaleString(locale, { maximumFractionDigits: 1 })}</b>
+                    <span>{tx.c[k]}</span>
+                  </div>
+                );
+              })}
+          </div>
+          <div className="small muted" style={{ marginTop: 8 }}>{tx.convHint}</div>
+        </div>
+      ) : null}
 
       {insights.moments.length ? (
         <div className="card">

@@ -542,6 +542,12 @@ export interface HistoryEntry {
   diamonds: number;
   peakViewers: number;
   alerts: number;
+  /** Audience detail (LIVEs recorded since these were kept). */
+  avgViewers?: number;
+  seenViewers?: number;
+  follows?: number;
+  joins?: number;
+  donors?: number;
   /** Video of this LIVE (video option), when one was recorded and not yet expired. */
   video?: VideoInfo;
 }
@@ -574,6 +580,29 @@ export interface StatsInsights {
     lives: number;
     metrics: { key: "duration" | "messagesPerMin" | "peakViewers" | "uniqueChatters" | "gifts" | "diamonds" | "alertsPer1k"; value: number; average: number; deltaPct: number; higherIsBetter: boolean }[];
   } | null;
+  /** Conversion funnel: of the viewers Novus saw, how many chatted, followed and gave (null without audience data). */
+  funnel: { seen: number; chatters: number; followers: number; donors: number } | null;
+  /** Conversion KPIs (null when the data is missing or too thin). */
+  conversions: {
+    /** % of the viewers seen who wrote in the chat. */
+    viewerToChatter: number | null;
+    /** % of the viewers seen who followed. */
+    viewerToFollower: number | null;
+    /** % of the viewers seen who sent a gift. */
+    viewerToDonor: number | null;
+    /** % of the chatters who also sent a gift. */
+    chatterToDonor: number | null;
+    /** Average diamonds per donor (basket). */
+    avgBasket: number | null;
+    /** Diamonds per viewer seen. */
+    diamondsPerViewer: number | null;
+    /** Average audience as a % of the peak (how well the LIVE keeps its viewers). */
+    retention: number | null;
+    /** Viewers joining per hour (10+ minutes of LIVE). */
+    joinsPerHour: number | null;
+    /** New followers per hour (10+ minutes of LIVE). */
+    followsPerHour: number | null;
+  };
   /** Up to the last 10 LIVEs of the account, oldest first (this one included). */
   trend: { sessionId: string; startedAt: number; peakViewers: number; messages: number; diamonds: number; alerts: number; current: boolean }[];
 }
@@ -809,4 +838,41 @@ export interface VideoInfo {
   startedAt: number;
   endedAt?: number;
   expiresAt: number;
+}
+
+// ---------------------------------------------------------------- leaderboard (Stats › Ranking)
+
+export type LeaderboardBadge = "top_diamonds" | "top_engagement" | "top_audience" | "most_active" | "safest";
+
+/** One followed streamer over the period, with the parts of their score. */
+export interface LeaderboardEntry {
+  account: string;
+  rank: number;
+  /** Overall score 0-100 (weighted parts below). */
+  score: number;
+  parts: { monetization: number; engagement: number; audience: number; activity: number; safety: number };
+  lives: number;
+  hours: number;
+  diamonds: number;
+  diamondsPerHour: number;
+  avgViewers: number;
+  peakViewers: number;
+  /** Average share of the audience that chatted (%). */
+  engagementRate: number | null;
+  messagesPerMin: number;
+  /** New followers per 100 viewers seen (%). */
+  followConversion: number | null;
+  /** Viewers seen who sent a gift (%). */
+  donorConversion: number | null;
+  alertsPer1k: number;
+  lastLiveAt: number;
+  badges: LeaderboardBadge[];
+}
+
+export interface Leaderboard {
+  days: number | null;
+  entries: LeaderboardEntry[];
+  /** LIVEs taken into account. */
+  lives: number;
+  generatedAt: number;
 }

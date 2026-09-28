@@ -1,5 +1,6 @@
 import { StatsInsightsPanel } from "../components/StatsInsights";
 import { DonorsView } from "./DonorsView";
+import { LeaderboardView } from "./LeaderboardView";
 import { useCallback, useEffect, useState } from "react";
 import type { AnalyticsSummary, Category, HistoryEntry, StatsInsights } from "../../shared/types";
 import { api, fetchExport, saveFile } from "../api";
@@ -504,7 +505,7 @@ export function AnalyticsView() {
   const t = useT();
   const lang = useLang();
   const tx = TX[lang];
-  const [tab, setTab] = useState<"current" | "history" | "donors">("current");
+  const [tab, setTab] = useState<"current" | "history" | "donors" | "ranking">("current");
   const [openId, setOpenId] = useState<string | null>(null);
   const canHistory = useCan("history");
 
@@ -531,10 +532,11 @@ export function AnalyticsView() {
             { value: "current", label: tx.thisLive },
             { value: "history", label: tx.history },
             { value: "donors", label: lang === "fr" ? "Donateurs" : "Donors" },
+            { value: "ranking", label: lang === "fr" ? "Classement" : "Ranking" },
           ]}
           gold
         />
-        {tab === "current" ? <CurrentLive /> : tab === "donors" ? <DonorsView /> : openId ? <HistoryDetail id={openId} onBack={() => setOpenId(null)} /> : <HistoryList onOpen={setOpenId} />}
+        {tab === "current" ? <CurrentLive /> : tab === "donors" ? <DonorsView /> : tab === "ranking" ? <LeaderboardView /> : openId ? <HistoryDetail id={openId} onBack={() => setOpenId(null)} /> : <HistoryList onOpen={setOpenId} />}
       </div>
     </div>
   );
