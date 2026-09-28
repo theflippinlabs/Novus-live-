@@ -33,6 +33,10 @@ const TX = {
     livesN: (n: number) => `${n} LIVE${n > 1 ? "s" : ""}`,
     more: (n: number) => `Show ${n} more`,
     unknownRoom: "Other LIVE",
+    podium: "Top donors",
+    awards: "Awards",
+    award: { loyal: "Most loyal", basket: "Biggest per LIVE", rooms: "Most rooms" },
+    awardVal: { loyal: (n: number) => `${n} LIVEs`, basket: (v: string) => `${v} per LIVE`, rooms: (n: number) => `${n} rooms` },
   },
   fr: {
     periods: { 7: "7 jours", 30: "30 jours", 0: "Tout" } as Record<number, string>,
@@ -57,10 +61,87 @@ const TX = {
     livesN: (n: number) => `${n} LIVE`,
     more: (n: number) => `Voir ${n} de plus`,
     unknownRoom: "Autre LIVE",
+    podium: "Top donateurs",
+    awards: "Distinctions",
+    award: { loyal: "Le plus fidèle", basket: "Plus gros par LIVE", rooms: "Le plus de rooms" },
+    awardVal: { loyal: (n: number) => `${n} LIVE`, basket: (v: string) => `${v} par LIVE`, rooms: (n: number) => `${n} rooms` },
   },
 };
 
 const Diamond = () => <span className="gold">◆</span>;
+const PLACE = ["first", "second", "third"] as const;
+const initials = (d: DonorSummary) => (nicknameOf(d.viewer) ?? d.viewer.username).replace(/[^\p{L}\p{N}]/gu, "").slice(0, 2).toUpperCase() || "?";
+
+/** The three biggest donors of the period, on a podium (winner in the middle). */
+function DonorPodium({ donors, lang, onOpen }: { donors: DonorSummary[]; lang: Lang; onOpen: (d: DonorSummary) => void }) {
+  const tx = TX[lang];
+  const n = (v: number) => v.toLocaleString(lang === "fr" ? "fr-FR" : "en-GB");
+  const top = donors.slice(0, 3);
+  const order = [top[1], top[0], top[2]];
+  // Awards: the leader of other ways to be a great donor (among the top 50).
+  const pool = donors.slice(0, 50);
+  const best = (f: (d: DonorSummary) => number, min: number) => {
+    const d = [...pool].sort((a, b) => f(b) - f(a))[0];
+    return d && f(d) >= min ? d : null;
+  };
+  const loyal = best((d) => d.lives, 2);
+  const basket = best((d) => d.avgDiamondsPerLive, 1);
+  const multi = best((d) => d.rooms.length, 2);
+  const awards = [
+    loyal ? { key: "loyal", d: loyal, v: tx.awardVal.loyal(loyal.lives) } : null,
+    basket ? { key: "basket", d: basket, v: tx.awardVal.basket(n(basket.avgDiamondsPerLive)) } : null,
+    multi ? { key: "rooms", d: multi, v: tx.awardVal.rooms(multi.rooms.length) } : null,
+  ].filter((a): a is { key: "loyal" | "basket" | "rooms"; d: DonorSummary; v: string } => Boolean(a));
+
+  return (
+    <div className="card podium-card" style={{ marginTop: 12 }}>
+      <div className="card-title">
+        <span className="gold">♛</span> {tx.podium}
+      </div>
+      <div className="podium" role="list" aria-label={tx.podium}>
+        {order.map((d, i) => {
+          if (!d) return <div key={`empty${i}`} className="podium-col empty" aria-hidden="true" />;
+          const rank = top.indexOf(d) + 1;
+          const nick = nicknameOf(d.viewer);
+          return (
+            <button key={d.viewer.id} className={`podium-col ${PLACE[rank - 1]} podium-btn`} role="listitem" onClick={() => onOpen(d)} aria-label={`${rank}. ${nick ?? `@${d.viewer.username}`} — ${n(d.diamonds)}`}>
+              {rank === 1 ? <div className="podium-crown" aria-hidden="true">♛</div> : null}
+              <div className="podium-avatar">{d.viewer.avatarUrl ? <img src={d.viewer.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials(d)}</div>
+              <div className="podium-name">{nick ?? `@${d.viewer.username}`}</div>
+              <div className="podium-score money">
+                {n(d.diamonds)}
+                <span> ◆</span>
+              </div>
+              <div className="podium-sub">
+                {tx.livesN(d.lives)}
+                {d.favoriteGift ? ` · ${d.favoriteGift.name}` : ""}
+              </div>
+              <div className="podium-step">
+                <span>{rank}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {awards.length ? (
+        <>
+          <div className="card-title" style={{ marginTop: 16 }}>
+            {tx.awards}
+          </div>
+          <div className="award-list">
+            {awards.map((a) => (
+              <button key={a.key} className="award" onClick={() => onOpen(a.d)}>
+                <span className="lb-badge">{tx.award[a.key]}</span>
+                <b className="ellipsis">{nicknameOf(a.d.viewer) ?? `@${a.d.viewer.username}`}</b>
+                <span className="small muted">{a.v}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 function DonorSheet({ d, onClose, lang }: { d: DonorSummary; onClose: () => void; lang: Lang }) {
   const tx = TX[lang];
@@ -241,6 +322,8 @@ export function DonorsView() {
           </div>
         </div>
       ) : null}
+
+      {data && data.donors.length && !q ? <DonorPodium donors={data.donors} lang={lang} onOpen={setOpen} /> : null}
 
       <input className="input" type="search" style={{ marginTop: 12 }} placeholder={tx.search} value={q} onChange={(e) => setQ(e.target.value)} aria-label={tx.search} autoCapitalize="off" autoCorrect="off" />
 
