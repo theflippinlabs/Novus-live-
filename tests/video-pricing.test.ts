@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_COSTS, DEFAULT_PLANS, DEFAULT_VIDEO_PACKS, VIDEO_PACK_IDS, withVideoPack, defaultBillingConfig } from "../shared/plans";
+import { DEFAULT_COSTS, DEFAULT_FOUNDING, DEFAULT_PLANS, DEFAULT_VIDEO_PACKS, VIDEO_PACK_IDS, withVideoPack, defaultBillingConfig } from "../shared/plans";
 import { allowanceLeft, effectiveEntitlements } from "../server/billing/Entitlements";
 import type { Workspace } from "../server/billing/Store";
 
@@ -40,5 +40,28 @@ describe("Video option pricing", () => {
     // Recording stops at either cap: hours or gigabytes.
     expect(allowanceLeft(withPack, { ...usage, recording_hours: 150 }, "video")).toBe(false);
     expect(allowanceLeft(withPack, { ...usage, video_gb: 120 }, "video")).toBe(false);
+  });
+});
+
+describe("Plan pricing", () => {
+  it("every self-serve plan keeps a healthy margin even when a customer uses all of it", () => {
+    const c = DEFAULT_COSTS;
+    // Measured September 2026: ≈ 2,350 input and 155 output tokens per AI review.
+    const perReview = (2350 * c.per_1m_input_tokens + 155 * c.per_1m_output_tokens) / 1e6;
+    // Bulk LIVE check: a followed account costs a few dozen provider requests a day.
+    const providerPerCreator = 60 * 30 * c.per_provider_request;
+    for (const id of ["moderator_pro", "creator_pro", "agency", "agency_pro"] as const) {
+      const p = DEFAULT_PLANS[id];
+      const price = p.monthly! / 100;
+      const e = p.entitlements;
+      const cost = e.ai_requests * perReview + e.creator_limit * providerPerCreator + c.per_workspace_month + price * 0.015 + 0.25;
+      expect(1 - cost / price, `${id} margin at its caps`).toBeGreaterThan(0.6);
+      // The AI allowance follows the LIVE hours (≈ 10 reviews an hour).
+      expect(e.ai_requests).toBeLessThanOrEqual(e.live_monitoring_hours * 10);
+    }
+    // The founding price too.
+    const f = (DEFAULT_PLANS.agency.monthly! - DEFAULT_FOUNDING.discountCents) / 100;
+    const e = DEFAULT_PLANS.agency.entitlements;
+    expect(1 - (e.ai_requests * perReview + e.creator_limit * providerPerCreator + 1 + f * 0.015 + 0.25) / f).toBeGreaterThan(0.55);
   });
 });

@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PLANS, defaultBillingConfig, mergeBillingConfig } from "../shared/plans";
+import { DEFAULT_FOUNDING, DEFAULT_PLANS, defaultBillingConfig, mergeBillingConfig } from "../shared/plans";
 import { MeteredAIProvider, type AIProvider } from "../server/ai/AIProvider";
 import { createApp, type AppDeps, type Space } from "../server/app";
 import { AnthropicCostReport } from "../server/billing/AnthropicCost";
@@ -121,16 +121,15 @@ async function makeApp(extra: Pick<AppDeps, "mailer" | "aiCost"> & { supportEmai
 
 describe("Pricing catalog", () => {
   it("has the commercial structure and its value anchors", () => {
-    expect(DEFAULT_PLANS.moderator_pro.monthly).toBe(2499);
-    expect(DEFAULT_PLANS.creator_pro.monthly).toBe(4999);
-    expect(DEFAULT_PLANS.agency.monthly).toBe(19900);
-    expect(DEFAULT_PLANS.agency_pro.monthly).toBe(39900);
+    // Priced from the measured cost of a LIVE hour (September 2026 audit).
+    expect(DEFAULT_PLANS.moderator_pro.monthly).toBe(2900);
+    expect(DEFAULT_PLANS.creator_pro.monthly).toBe(5900);
+    expect(DEFAULT_PLANS.agency.monthly).toBe(24900);
+    expect(DEFAULT_PLANS.agency_pro.monthly).toBe(59900);
     expect(DEFAULT_PLANS.enterprise.monthly).toBeNull();
-    expect(DEFAULT_PLANS.agency.yearly).toBe(199000);
-    // ≈ €13.27 per creator (15 creators), founding ≈ €9.93, Agency Pro < €10 (40 creators).
-    expect((19900 / 15 / 100).toFixed(2)).toBe("13.27");
-    expect((14900 / 15 / 100).toFixed(2)).toBe("9.93");
-    expect(39900 / 40 / 100).toBeLessThan(10);
+    expect(DEFAULT_PLANS.agency.yearly).toBe(249000);
+    // Founding Agency: €249 − €50 = €199 a month.
+    expect(DEFAULT_PLANS.agency.monthly! - DEFAULT_FOUNDING.discountCents).toBe(19900);
     // Yearly = 10 months (2 months free) for the agency plans.
     expect(DEFAULT_PLANS.agency.yearly).toBe(DEFAULT_PLANS.agency.monthly! * 10);
     expect(DEFAULT_PLANS.agency_pro.yearly).toBe(DEFAULT_PLANS.agency_pro.monthly! * 10);
@@ -144,7 +143,7 @@ describe("Pricing catalog", () => {
   it("admin overrides merge over the defaults without touching prices", () => {
     const cfg = mergeBillingConfig({ plans: { agency: { entitlements: { creator_limit: 20, bogus: 1 }, monthly: 1 } }, founding: { capacity: 25 } });
     expect(cfg.plans.agency.entitlements.creator_limit).toBe(20);
-    expect(cfg.plans.agency.monthly).toBe(19900);
+    expect(cfg.plans.agency.monthly).toBe(24900);
     expect(cfg.founding.capacity).toBe(25);
     expect(defaultBillingConfig().plans.agency.entitlements.creator_limit).toBe(15);
   });
@@ -225,7 +224,7 @@ describe("Stripe webhooks", () => {
     const active = signed("customer.subscription.updated", sub("sub_1", workspace.id, "active", "novus_agency_month"));
     await billing.handleWebhook(Buffer.from(active.payload), active.header);
     // Founding: €149 for the first 12 months.
-    expect(billing.mrr(billing.workspace(workspace.id)!)).toBe(14900);
+    expect(billing.mrr(billing.workspace(workspace.id)!)).toBe(19900);
 
     const failed = signed("invoice.payment_failed", { id: "in_1", object: "invoice", customer: "cus_1", metadata: {} });
     await billing.handleWebhook(Buffer.from(failed.payload), failed.header);
@@ -242,7 +241,7 @@ describe("Stripe webhooks", () => {
     ws = billing.workspace(workspace.id)!;
     expect(ws.plan).toBe("agency_pro");
     // The founding discount only applies to Agency: after upgrading, full Agency Pro price.
-    expect(billing.mrr(ws)).toBe(39900);
+    expect(billing.mrr(ws)).toBe(59900);
 
     const gone = signed("customer.subscription.deleted", sub("sub_1", workspace.id, "canceled", "novus_agency_pro_month"));
     await billing.handleWebhook(Buffer.from(gone.payload), gone.header);
@@ -280,7 +279,7 @@ describe("Founding Agency offer", () => {
     let now = Date.now();
     const { billing } = await makeBilling({ now: () => now });
     await billing.updateConfig({ founding: { capacity: 2 } });
-    expect(billing.publicPricing().founding).toMatchObject({ available: true, capacity: 2, remaining: 2, monthly: 14900, months: 12 });
+    expect(billing.publicPricing().founding).toMatchObject({ available: true, capacity: 2, remaining: 2, monthly: 19900, months: 12 });
     const a = await billing.signup({ name: "A", email: "a@a.co", plan: "agency" });
     const b = await billing.signup({ name: "B", email: "b@b.co", plan: "agency" });
     const c = await billing.signup({ name: "C", email: "c@c.co", plan: "agency" });
@@ -310,17 +309,17 @@ describe("Founding Agency offer", () => {
 describe("Plan limits on monitoring", () => {
   it("monitors up to the plan's creators, pauses the rest, and stops when restricted — without deleting", async () => {
     const { billing, stripe } = await makeBilling();
-    const { workspace } = await billing.signup({ name: "Grow", email: "g@x.co", plan: "moderator_pro" });
+    const { workspace } = await billing.signup({ name: "Grow", email: "g@x.co", plan: "creator_pro" });
     const repo = new MemoryRepository();
     const s = await space(repo, workspace.id);
     applyPlanToRooms(s.rooms, billing, workspace.id);
-    stripe.subs.set("sub_g", sub("sub_g", workspace.id, "active", "novus_moderator_pro_month"));
+    stripe.subs.set("sub_g", sub("sub_g", workspace.id, "active", "novus_creator_pro_month"));
     await billing.syncSubscription(stripe.subs.get("sub_g")!);
     await s.rooms.updateSettings({ tiktokProfiles: ["a", "b", "c", "d"] });
     expect(s.rooms.all().filter((r) => r.kind === "tiktok").map((r) => r.username)).toEqual(["a", "b", "c"]);
     expect(s.rooms.paused()).toEqual(["d"]);
     // Canceled: read-only, monitoring stops, the followed accounts are kept.
-    await billing.syncSubscription(sub("sub_g", workspace.id, "canceled", "novus_moderator_pro_month"));
+    await billing.syncSubscription(sub("sub_g", workspace.id, "canceled", "novus_creator_pro_month"));
     await s.rooms.syncProfiles();
     expect(s.rooms.all().filter((r) => r.kind === "tiktok")).toHaveLength(0);
     expect(s.rooms.settings.tiktokProfiles).toEqual(["a", "b", "c", "d"]);
@@ -359,9 +358,9 @@ describe("Billing over HTTP", () => {
     const id = res.body.workspaceId as string;
     stripe.subs.set("sub_m", sub("sub_m", id, "active", "novus_moderator_pro_month"));
     await billing.syncSubscription(stripe.subs.get("sub_m")!);
-    for (const u of ["a1", "a2", "a3"]) await request(app).post("/api/integrations/tiktok/connect").set("Cookie", cookie).send({ username: u }).expect(200);
-    // Moderator Pro: 3 creators, then an upgrade prompt.
-    const over = await request(app).post("/api/integrations/tiktok/connect").set("Cookie", cookie).send({ username: "a4" }).expect(402);
+    await request(app).post("/api/integrations/tiktok/connect").set("Cookie", cookie).send({ username: "a1" }).expect(200);
+    // Moderator Pro: 1 creator, then an upgrade prompt.
+    const over = await request(app).post("/api/integrations/tiktok/connect").set("Cookie", cookie).send({ username: "a2" }).expect(402);
     expect(over.body.error).toBe("plan_limit_creators");
     // 1 user: no team seats.
     const seat = await request(app).post("/api/team").set("Cookie", cookie).send({ name: "X", role: "moderator", permissions: ["moderate"], accounts: null }).expect(402);
@@ -370,7 +369,7 @@ describe("Billing over HTTP", () => {
     // The code logs in; the workspace is isolated from the owner's.
     const again = cookieOf(await request(app).post("/api/auth/login").send({ key: res.body.code }).expect(200));
     const rooms = await request(app).get("/api/rooms").set("Cookie", again).expect(200);
-    expect(rooms.body.rooms.map((r: { id: string }) => r.id)).toEqual(["main", "tt:a1", "tt:a2", "tt:a3"]);
+    expect(rooms.body.rooms.map((r: { id: string }) => r.id)).toEqual(["main", "tt:a1"]);
     const ownerRooms = await request(app).get("/api/rooms").set("Cookie", ownerCookie).expect(200);
     expect(ownerRooms.body.rooms.map((r: { id: string }) => r.id)).toEqual(["main"]);
 
@@ -380,8 +379,8 @@ describe("Billing over HTTP", () => {
     await request(app).put("/api/admin/config").set("Cookie", cookie).send({ founding: { capacity: 99 } }).expect(403);
     const admin = await request(app).get("/api/admin/overview").set("Cookie", ownerCookie).expect(200);
     const row = admin.body.workspaces.find((w: { id: string }) => w.id === id);
-    expect(row).toMatchObject({ plan: "moderator_pro", mrr: 24.99, creators: 3 });
-    expect(admin.body.metrics).toMatchObject({ activeSubscriptions: 1, mrr: 24.99 });
+    expect(row).toMatchObject({ plan: "moderator_pro", mrr: 29, creators: 1 });
+    expect(admin.body.metrics).toMatchObject({ activeSubscriptions: 1, mrr: 29 });
     expect(admin.body.metrics.founding).toMatchObject({ capacity: 20, remaining: 20 });
   });
 
@@ -555,15 +554,15 @@ describe("Real AI cost (Anthropic Cost API)", () => {
   it("the admin overview scales AI costs to the real bill", async () => {
     const f = fakeFetch([{ data: [bucket(new Date().toISOString().slice(0, 10), [{ amount: "1000", currency: "USD", workspace_id: null }])], has_more: false, next_page: null }]);
     const { app, billing, ownerCookie } = await makeApp({ aiCost: new AnthropicCostReport({ adminKey: "k" }, f.impl) });
-    // Metered estimate: 1M input tokens = €4.60 at the default price.
+    // Metered estimate: 1M input tokens = €3.68 at the default price (Opus 5.5).
     billing.meterAdd("owner", "ai_input_tokens", 1_000_000);
     const body = (await request(app).get("/api/admin/overview").set("Cookie", ownerCookie).expect(200)).body;
     const ai = body.metrics.ai;
     expect(ai.source).toBe("anthropic");
-    expect(ai.estimated).toBeCloseTo(4.6, 2);
+    expect(ai.estimated).toBeCloseTo(3.68, 2);
     expect(ai.actualUsd).toBe(10);
     expect(ai.actual).toBeCloseTo(9.2, 2); // $10 × 0.92
-    expect(ai.deviation).toBeCloseTo(100, 0);
+    expect(ai.deviation).toBeCloseTo(150, 0);
     const owner = body.workspaces.find((w: { id: string }) => w.id === "owner");
     expect(owner.costs.ai).toBeCloseTo(9.2, 2);
   });
@@ -617,7 +616,7 @@ describe("Video option billing", () => {
     expect(ws.plan).toBe("agency");
     expect(ws.videoPack).toBe("video_150");
     expect(billing.effective(workspace.id).entitlements).toMatchObject({ recording: true, recording_hours: 150, video_storage_gb: 120 });
-    expect(billing.mrr(ws)).toBe(19900 + 4900);
+    expect(billing.mrr(ws)).toBe(24900 + 4900);
 
     // Removing it deletes the Stripe item; the webhook turns video off.
     await billing.setVideoPack(workspace.id, null);

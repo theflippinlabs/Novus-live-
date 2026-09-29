@@ -583,6 +583,8 @@ export class BillingService {
       ws.plan = m[1] as PlanId;
       ws.cycle = m[2] as BillingCycle;
     }
+    // The price this customer really pays (kept when the catalog price changes later).
+    if (typeof item?.price?.unit_amount === "number") ws.planAmount = item.price.unit_amount;
     // The video option is whatever Stripe bills (a pack granted by the admin stays).
     const beforePack = ws.videoPack;
     if (!ws.videoPackGranted) {
@@ -650,7 +652,8 @@ export class BillingService {
   mrr(ws: Workspace): number {
     if (!["active", "past_due"].includes(ws.status)) return 0;
     const plan = this.config.plans[ws.plan];
-    let value = monthlyValue(plan, ws.cycle);
+    // The amount Stripe bills this customer (grandfathered prices), else the catalog.
+    let value = ws.planAmount !== undefined ? (ws.cycle === "year" ? Math.round(ws.planAmount / 12) : ws.planAmount) : monthlyValue(plan, ws.cycle);
     if (ws.founding && ws.plan === "agency" && ws.cycle === "month" && ws.foundingUntil && ws.foundingUntil > this.now()) value -= this.config.founding.discountCents;
     const pack = ws.videoPack && !ws.videoPackGranted ? this.config.video[ws.videoPack] : undefined;
     if (pack) value += ws.cycle === "year" ? Math.round(pack.yearly / 12) : pack.monthly;

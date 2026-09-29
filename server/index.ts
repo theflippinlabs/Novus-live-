@@ -30,6 +30,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomVideo } from "./video/RoomVideo";
+import { BulkLiveChecker } from "./platform/BulkLiveChecker";
 import { LocalVideoStore, SupabaseVideoStore, type VideoStore } from "./video/VideoStore";
 
 async function main() {
@@ -95,6 +96,23 @@ async function main() {
     })().catch((e) => console.warn(`[video] cleanup: ${e instanceof Error ? e.message : e}`));
   }, 3600_000).unref();
 
+  // ---------------------------------------------------------------- bulk LIVE check (Euler quota)
+  // One request tells whether 50 followed accounts are LIVE, with the platform's connected
+  // TikTok account (the owner's). Watchers ask it before connecting.
+  let platformChat: EulerChatSender | null = null;
+  const followersOf = new Map<string, Set<string>>();
+  const liveChecker = new BulkLiveChecker({
+    apiKey: config.eulerApiKey,
+    token: async () => platformChat?.bulkToken() ?? null,
+    loadIds: async () => ((await repo.scoped(OWNER_TENANT).loadSecret("tiktok_numeric_ids")) as Record<string, string> | null) ?? {},
+    saveIds: (ids) => repo.scoped(OWNER_TENANT).saveSecret("tiktok_numeric_ids", ids),
+    meter: (usernames, requests) => {
+      const tenants = new Set(usernames.flatMap((u) => [...(followersOf.get(u) ?? [])]));
+      for (const t of tenants) billing.meterAdd(t, "provider_calls", requests);
+    },
+    log: (m) => console.log(m),
+  });
+
   // ---------------------------------------------------------------- push notifications
   const push = new PushService({
     serverRepo: repo.scoped(OWNER_TENANT),
@@ -119,6 +137,7 @@ async function main() {
       { apiKey: config.eulerApiKey, clientId: config.eulerClientId, clientSecret: config.eulerClientSecret, authorizeUrl: config.eulerOAuthAuthorizeUrl },
       spaceRepo,
     );
+    if (isOwner) platformChat = spaceChat;
     // This space's share of the AI: counted, and cut off (local rules only) past its allowance.
     const spaceAi = new MeteredAIProvider(ai, {
       allowed: () => billing.allowed(tenant, "ai"),
@@ -227,7 +246,16 @@ async function main() {
             },
             alive: () => tiktok.noteHeartbeat(),
           },
-          { pollMs: 60_000, errorBackoffMs: 180_000, log: (m) => console.log(m) },
+          {
+            pollMs: 60_000,
+            errorBackoffMs: 180_000,
+            log: (m) => console.log(m),
+            liveGate: (u) => {
+              const key = u.toLowerCase();
+              followersOf.set(key, (followersOf.get(key) ?? new Set()).add(tenant));
+              return liveChecker.isLive(u);
+            },
+          },
         );
         watcher.watch(username);
         if (videoKit.ready)

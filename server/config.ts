@@ -90,7 +90,7 @@ export function loadConfig(): Config {
     accessTokens,
     ingestToken,
     anthropicApiKey: str("ANTHROPIC_API_KEY"),
-    anthropicModel: str("ANTHROPIC_MODEL") ?? "claude-opus-5",
+    anthropicModel: str("ANTHROPIC_MODEL") ?? "claude-opus-5-5",
     anthropicEffort: effort as Config["anthropicEffort"],
     aiMaxCallsPerMinute: int("AI_MAX_CALLS_PER_MINUTE", 20, 1, 600),
     aiBatchSize: int("AI_BATCH_SIZE", 8, 1, 25),

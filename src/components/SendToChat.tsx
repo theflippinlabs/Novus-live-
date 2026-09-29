@@ -70,6 +70,8 @@ const CARD = {
     modOn: "Moderation from Novus: on — Mute and Block act directly in the LIVE.",
     modOff: "Moderation from Novus: reconnect this account to allow Mute, Block and turning comments off.",
     reconnect: "Reconnect",
+    bulkOff: "Bulk LIVE check: reconnect this account to check 50 streamers per request (divides the Euler quota used by about 50).",
+    bulkOn: "Bulk LIVE check: on — followed accounts are checked 50 at a time.",
     modHow: "For Mute / Block / comments to work, this account must be a moderator of each streamer's LIVE (the streamer adds it once in TikTok: LIVE settings › Moderators). Otherwise TikTok refuses and Novus shows the manual steps.",
     lastError: "Last refusal:",
   },
@@ -86,6 +88,8 @@ const CARD = {
     modOn: "Modération depuis Novus : activée — Sourdine et Bloquer agissent directement dans le LIVE.",
     modOff: "Modération depuis Novus : reconnecte ce compte pour autoriser la sourdine, le blocage et la coupure des commentaires.",
     reconnect: "Reconnecter",
+    bulkOff: "Vérification groupée des LIVE : reconnecte ce compte pour vérifier 50 livers par requête (divise environ par 50 le quota Euler consommé).",
+    bulkOn: "Vérification groupée des LIVE : activée — les comptes suivis sont vérifiés 50 par 50.",
     modHow: "Pour que Sourdine / Bloquer / commentaires marchent, ce compte doit être modérateur du LIVE de chaque liver (le liver l'ajoute une fois dans TikTok : réglages du LIVE › Modérateurs). Sinon TikTok refuse et Novus affiche les étapes manuelles.",
     lastError: "Dernier refus :",
   },
@@ -137,13 +141,18 @@ export function ChatSenderCard() {
             <div className="small" style={{ color: sender.moderation ? "var(--ok)" : "var(--gold)", marginTop: 2 }}>
               {sender.moderation ? tx.modOn : tx.modOff}
             </div>
+            {sender.bulkLiveCheck !== undefined ? (
+              <div className="small" style={{ color: sender.bulkLiveCheck ? "var(--ok)" : "var(--gold)", marginTop: 2 }}>
+                {sender.bulkLiveCheck ? tx.bulkOn : tx.bulkOff}
+              </div>
+            ) : null}
             {sender.lastError ? (
               <div className="small" style={{ color: "var(--gold)" }}>
                 {tx.lastError} {sender.lastError}
               </div>
             ) : null}
           </div>
-          {!sender.moderation ? (
+          {!sender.moderation || sender.bulkLiveCheck === false ? (
             <button className="btn sm gold" onClick={connect} disabled={busy}>
               {tx.reconnect}
             </button>

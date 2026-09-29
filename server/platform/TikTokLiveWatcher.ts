@@ -148,6 +148,11 @@ export interface WatcherOptions {
   confirmWindowMs?: number;
   /** A running LIVE that sends nothing for this long is over (TikTok did not send "stream end"). */
   silenceMs?: number;
+  /**
+   * Cheap "is this account LIVE?" asked before connecting (the bulk LIVE check): false skips
+   * the connection attempt until the next poll; null (unknown) connects as usual.
+   */
+  liveGate?: (username: string) => Promise<boolean | null>;
 }
 
 const DEFAULTS = { confirmAfterMs: 5_000, confirmWindowMs: 90_000, silenceMs: 4 * 60_000, quickRetryMs: 15_000 };
@@ -251,6 +256,17 @@ export class TikTokLiveWatcher {
   private async attempt(gen: number): Promise<void> {
     const username = this.username;
     if (!username || gen !== this.generation) return;
+    // Not LIVE according to the shared bulk check: no connection attempt, no provider call.
+    if (this.opts.liveGate && !this.silentRetry) {
+      const live = await this.opts.liveGate(username).catch(() => null);
+      if (gen !== this.generation) return;
+      if (live === false) {
+        this.loggedOffline = true;
+        this.sink.waiting(`Waiting for @${username} to go LIVE`);
+        this.schedule(gen, this.opts.pollMs);
+        return;
+      }
+    }
     let conn: LiveConnectionLike;
     try {
       conn = await this.factory(username);

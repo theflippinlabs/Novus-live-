@@ -38,6 +38,8 @@ export interface Workspace {
   canceledAt?: number;
   /** Per-workspace allowances set by the admin (e.g. a tester space), merged over the plan's. */
   limits?: Partial<Entitlements>;
+  /** What Stripe actually bills for the plan (cents per cycle): customers keep the price they signed up at. */
+  planAmount?: number;
   /** Video option: the pack Stripe bills (or the admin grants to a complimentary space). */
   videoPack?: VideoPackId;
   /** Granted by the admin rather than bought (kept when Stripe syncs the subscription). */

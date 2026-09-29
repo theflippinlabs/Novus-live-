@@ -82,52 +82,53 @@ const base: Entitlements = {
 export const DEFAULT_PLANS: Record<PlanId, PlanDef> = {
   moderator_pro: {
     id: "moderator_pro",
-    monthly: 2499,
-    yearly: 24900,
+    monthly: 2900,
+    yearly: 29000,
     trialDays: 7,
+    // Allowances follow what a LIVE hour really costs (≈ 10 AI reviews and 25k tokens per hour).
     entitlements: {
       ...base,
-      creator_limit: 3,
+      creator_limit: 1,
       team_seat_limit: 0,
-      ai_requests: 4000,
-      ai_tokens: 8_000_000,
-      live_monitoring_hours: 180,
+      ai_requests: 600,
+      ai_tokens: 1_600_000,
+      live_monitoring_hours: 60,
       history_retention_days: 30,
       exports_limit: 300,
     },
-    trial: { ai_requests: 400, ai_tokens: 800_000, live_monitoring_hours: 12, exports_limit: 10 },
+    trial: { ai_requests: 150, ai_tokens: 400_000, live_monitoring_hours: 12, exports_limit: 10 },
   },
   creator_pro: {
     id: "creator_pro",
-    monthly: 4999,
-    yearly: 49900,
+    monthly: 5900,
+    yearly: 59000,
     trialDays: 7,
     entitlements: {
       ...base,
       creator_limit: 3,
       team_seat_limit: 3,
-      ai_requests: 8000,
-      ai_tokens: 16_000_000,
-      live_monitoring_hours: 240,
+      ai_requests: 1200,
+      ai_tokens: 3_200_000,
+      live_monitoring_hours: 120,
       history_retention_days: 90,
       exports_limit: 500,
       advanced_analytics: true,
       team_roles: true,
     },
-    trial: { ai_requests: 600, ai_tokens: 1_200_000, live_monitoring_hours: 15, exports_limit: 15 },
+    trial: { ai_requests: 200, ai_tokens: 520_000, live_monitoring_hours: 15, exports_limit: 15 },
   },
   agency: {
     id: "agency",
-    monthly: 19900,
-    yearly: 199000,
+    monthly: 24900,
+    yearly: 249000,
     trialDays: 14,
     entitlements: {
       ...base,
       creator_limit: 15,
       team_seat_limit: 10,
-      ai_requests: 40000,
-      ai_tokens: 80_000_000,
-      live_monitoring_hours: 1500,
+      ai_requests: 6000,
+      ai_tokens: 16_000_000,
+      live_monitoring_hours: 600,
       screenshot_limit: 60000,
       history_retention_days: 365,
       exports_limit: 3000,
@@ -138,21 +139,21 @@ export const DEFAULT_PLANS: Record<PlanId, PlanDef> = {
       priority_support: true,
     },
     // Agency trials are the most expensive to serve: fewer creators and a small allowance.
-    trial: { creator_limit: 5, team_seat_limit: 3, ai_requests: 1500, ai_tokens: 3_000_000, live_monitoring_hours: 40, screenshot_limit: 1000, exports_limit: 30 },
+    trial: { creator_limit: 5, team_seat_limit: 3, ai_requests: 400, ai_tokens: 1_040_000, live_monitoring_hours: 40, screenshot_limit: 1000, exports_limit: 30 },
   },
   agency_pro: {
     id: "agency_pro",
-    monthly: 39900,
-    yearly: 399000,
+    monthly: 59900,
+    yearly: 599000,
     // Normally an upgrade from Agency or after onboarding: no self-serve trial.
     trialDays: 0,
     entitlements: {
       ...base,
       creator_limit: 40,
       team_seat_limit: 25,
-      ai_requests: 110000,
-      ai_tokens: 220_000_000,
-      live_monitoring_hours: 4000,
+      ai_requests: 16000,
+      ai_tokens: 42_000_000,
+      live_monitoring_hours: 1600,
       screenshot_limit: 180000,
       history_retention_days: 730,
       exports_limit: 10000,
@@ -245,7 +246,7 @@ export interface FoundingOffer {
   enabled: boolean;
   /** Real cap on founding agencies (counted from the database). */
   capacity: number;
-  /** Discount per month in cents while it lasts (€199 → €149). */
+  /** Discount per month in cents while it lasts (€249 → €199). */
   discountCents: number;
   months: number;
   /** Stripe coupon id created by `npm run stripe:setup`. */
@@ -275,11 +276,12 @@ export interface CostAssumptions {
   usd_to_eur: number;
 }
 
-// AI defaults follow the published claude-opus-5 rates ($5 / $25 per 1M tokens), converted to EUR.
+// AI defaults follow the published claude-opus-5-5 rates ($4 / $20 per 1M tokens), converted to EUR.
+// Provider: Euler Business ($50 / month for 10,000 requests a day ≈ $0.00017 a request).
 export const DEFAULT_COSTS: CostAssumptions = {
-  per_1m_input_tokens: 4.6,
-  per_1m_output_tokens: 23,
-  per_provider_request: 0.0005,
+  per_1m_input_tokens: 3.68,
+  per_1m_output_tokens: 18.4,
+  per_provider_request: 0.00015,
   per_live_hour: 0.02,
   per_recording_hour: 0.003,
   per_video_gb_uploaded: 0.046,

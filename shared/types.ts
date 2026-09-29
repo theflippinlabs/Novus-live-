@@ -404,6 +404,8 @@ export interface ChatSenderStatus {
   lastError?: string;
   /** Connected with the moderation permissions (mute, kick, comments): actions run from Novus. */
   moderation?: boolean;
+  /** Connected with the bulk LIVE check permission (checks 50 accounts per Euler request). */
+  bulkLiveCheck?: boolean;
 }
 
 export interface TikTokIntegrationStatus {

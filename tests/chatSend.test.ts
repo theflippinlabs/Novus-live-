@@ -56,7 +56,7 @@ describe("Send in chat (Euler OAuth)", () => {
     expect(u.searchParams.get("client_id")).toBe("client-1");
     expect(u.searchParams.get("redirect_uri")).toBe("https://novus.example/api/chat-sender/callback");
     expect(u.searchParams.get("state")).toBe(state);
-    expect(u.searchParams.get("scope")).toBe("webcast:chat webcast:mute webcast:ban webcast:comments");
+    expect(u.searchParams.get("scope")).toBe("webcast:chat webcast:mute webcast:ban webcast:comments webcast:bulk_live_check");
     expect(url).not.toContain("secret-1");
 
     await expect(sender.complete("code", "forged-state")).rejects.toMatchObject({ code: "chat_session_expired" });

@@ -23,7 +23,7 @@ describe("TikTok moderation through Euler", () => {
   it("asks only for the permissions Novus uses", () => {
     const { chat } = euler(null);
     const url = new URL(chat.authorizeUrl("https://novus.test/api/chat-sender/callback").url);
-    expect(url.searchParams.get("scope")).toBe("webcast:chat webcast:mute webcast:ban webcast:comments");
+    expect(url.searchParams.get("scope")).toBe("webcast:chat webcast:mute webcast:ban webcast:comments webcast:bulk_live_check");
   });
 
   it("mutes and removes viewers with Euler's documented routes, as the connected account", async () => {

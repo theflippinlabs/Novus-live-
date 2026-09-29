@@ -19,10 +19,10 @@ if (!publicUrl) throw new Error("PUBLIC_URL is required (e.g. https://novus-live
 const stripe = new Stripe(key);
 
 const PLANS = [
-  { id: "moderator_pro", name: "Novus Live — Moderator Pro", month: 2499, year: 24900 },
-  { id: "creator_pro", name: "Novus Live — Creator Pro", month: 4999, year: 49900 },
-  { id: "agency", name: "Novus Live — Agency", month: 19900, year: 199000 },
-  { id: "agency_pro", name: "Novus Live — Agency Pro", month: 39900, year: 399000 },
+  { id: "moderator_pro", name: "Novus Live — Moderator Pro", month: 2900, year: 29000 },
+  { id: "creator_pro", name: "Novus Live — Creator Pro", month: 5900, year: 59000 },
+  { id: "agency", name: "Novus Live — Agency", month: 24900, year: 249000 },
+  { id: "agency_pro", name: "Novus Live — Agency Pro", month: 59900, year: 599000 },
 ];
 // Video option (add-on subscription items; same interval as the plan they join).
 const VIDEO = [

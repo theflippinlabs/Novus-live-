@@ -859,7 +859,15 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   );
 
   // ---------------------------------------------------------------- "Send in chat" (Euler OAuth, one tap per message)
-  api.get("/chat-sender", h((req) => sp(req).chat.status()));
+  api.get(
+    "/chat-sender",
+    h(async (req) => {
+      const status = await sp(req).chat.status();
+      // Only the platform owner's account runs the bulk LIVE check.
+      if (sp(req).id !== OWNER_TENANT) delete status.bulkLiveCheck;
+      return status;
+    }),
+  );
   api.post(
     "/chat-sender/connect",
     h((req) => {

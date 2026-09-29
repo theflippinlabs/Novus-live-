@@ -22,8 +22,10 @@ const STATE_TTL_MS = 10 * 60_000;
 export const CHAT_MAX_LENGTH = 150;
 /** Moderation through Euler's documented REST API (mute, kick, comments on/off). */
 export const MODERATION_SCOPES = ["webcast:mute", "webcast:ban", "webcast:comments"] as const;
-/** Only what Novus uses: sending a message, and the three moderation actions. */
-const SCOPES = ["webcast:chat", ...MODERATION_SCOPES];
+/** Checking up to 50 followed accounts' LIVE status in one request (saves Euler quota). */
+export const BULK_SCOPE = "webcast:bulk_live_check";
+/** Only what Novus uses: sending a message, the three moderation actions, and the bulk LIVE check. */
+const SCOPES = ["webcast:chat", ...MODERATION_SCOPES, BULK_SCOPE];
 /** TikTok's mute lengths (seconds; -1 = until unmuted). */
 export const MUTE_DURATIONS = [5, 30, 60, 300, -1] as const;
 export type MuteDuration = (typeof MUTE_DURATIONS)[number];
@@ -112,7 +114,15 @@ export class EulerChatSender {
       connectedAt: this.tokens?.connectedAt,
       lastError: this.lastError,
       moderation: this.canModerateNow(),
+      bulkLiveCheck: this.configured && Boolean(this.tokens?.scopes?.includes(BULK_SCOPE)),
     };
+  }
+
+  /** Token for the bulk LIVE check, when this account granted it (null otherwise). */
+  async bulkToken(): Promise<string | null> {
+    await this.load();
+    if (!this.configured || !this.tokens?.scopes?.includes(BULK_SCOPE)) return null;
+    return this.freshToken().catch(() => null);
   }
 
   /** Connected with the moderation scopes (mute, kick, comments). */

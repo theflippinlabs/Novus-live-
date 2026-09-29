@@ -184,7 +184,7 @@ function highlights(id: Paid, e: Entitlements, lang: Lang): { text: string; soon
   switch (id) {
     case "moderator_pro":
       return [
-        { text: fr ? `Jusqu'à ${e.creator_limit} créateurs LIVE gérés` : `Up to ${e.creator_limit} managed LIVE creators` },
+        { text: e.creator_limit === 1 ? (fr ? "1 créateur LIVE géré" : "1 managed LIVE creator") : fr ? `Jusqu'à ${e.creator_limit} créateurs LIVE gérés` : `Up to ${e.creator_limit} managed LIVE creators` },
         { text: fr ? "Monitoring des LIVE en temps réel" : "Real-time LIVE monitoring" },
         { text: fr ? "Modération IA et alertes contextuelles" : "AI moderation and context-aware alerts" },
         { text: fr ? "Intelligence du chat" : "Chat intelligence" },
@@ -320,8 +320,8 @@ const FAQ: Record<Lang, [string, string][]> = {
     ["What happens to recordings after retention expires?", "They are deleted automatically. Your LIVE history, reports and chat transcripts are not affected."],
     ["What happens if payment fails?", "Stripe retries the payment automatically and we warn you in the app. Your workspace keeps working for 14 days; after that it becomes read-only (history and exports stay available) until the payment method is updated. Nothing is deleted."],
     ["Is my data deleted if I cancel?", "No. Your workspace becomes read-only: your history stays accessible and exportable. Ask us if you want it deleted."],
-    ["How does Founding Agency pricing work?", "The first 20 agencies subscribing to Agency with monthly billing pay €149/month for their first 12 months instead of €199. The number of remaining spots shown is counted from real subscriptions."],
-    ["What happens after the first 12 months?", "Your subscription continues automatically at the standard Agency price of €199/month. No action needed — and you can cancel anytime."],
+    ["How does Founding Agency pricing work?", "The first 20 agencies subscribing to Agency with monthly billing pay €199/month for their first 12 months instead of €249. The number of remaining spots shown is counted from real subscriptions."],
+    ["What happens after the first 12 months?", "Your subscription continues automatically at the standard Agency price of €249/month. No action needed — and you can cancel anytime."],
     ["Can large agencies get custom pricing?", "Yes. Enterprise covers 50+ creators with custom limits, retention, support and SLA. Use “Talk to us”."],
   ],
   fr: [
@@ -336,8 +336,8 @@ const FAQ: Record<Lang, [string, string][]> = {
     ["Que deviennent les enregistrements après la durée de conservation ?", "Ils sont supprimés automatiquement. Votre historique de LIVE, vos rapports et vos conversations ne sont pas touchés."],
     ["Que se passe-t-il si un paiement échoue ?", "Stripe relance automatiquement le paiement et nous vous prévenons dans l'app. Votre espace continue de fonctionner 14 jours ; ensuite il passe en lecture seule (historique et exports restent disponibles) jusqu'à la mise à jour du moyen de paiement. Rien n'est supprimé."],
     ["Mes données sont-elles supprimées si je résilie ?", "Non. Votre espace passe en lecture seule : votre historique reste consultable et exportable. Demandez-nous si vous souhaitez sa suppression."],
-    ["Comment fonctionne le tarif Founding Agency ?", "Les 20 premières agences qui souscrivent Agency en mensuel paient 149 €/mois pendant leurs 12 premiers mois au lieu de 199 €. Le nombre de places restantes affiché est calculé à partir des abonnements réels."],
-    ["Et après les 12 premiers mois ?", "L'abonnement continue automatiquement au tarif Agency standard de 199 €/mois. Aucune action nécessaire — résiliable à tout moment."],
+    ["Comment fonctionne le tarif Founding Agency ?", "Les 20 premières agences qui souscrivent Agency en mensuel paient 199 €/mois pendant leurs 12 premiers mois au lieu de 249 €. Le nombre de places restantes affiché est calculé à partir des abonnements réels."],
+    ["Et après les 12 premiers mois ?", "L'abonnement continue automatiquement au tarif Agency standard de 249 €/mois. Aucune action nécessaire — résiliable à tout moment."],
     ["Les grandes agences peuvent-elles avoir un tarif sur mesure ?", "Oui. Enterprise couvre 50+ créateurs avec limites, conservation, support et SLA sur mesure. Utilisez « Parlons-en »."],
   ],
 };
@@ -517,9 +517,7 @@ function PlanCard({ id, pricing, cycle, lang, current, busy, onChoose }: { id: P
         <div className="plan-anchor">
           <b>{tx.creatorsIncluded(creators)}</b>
           <span>
-            {id === "agency_pro"
-              ? tx.underPerCreator(euro(1000, lang))
-              : tx.perCreator(euro((founding ? pricing.founding.monthly : perMonth) / creators, lang, 2))}
+            {tx.perCreator(euro((founding ? pricing.founding.monthly : perMonth) / creators, lang, 2))}
           </span>
         </div>
       ) : null}
