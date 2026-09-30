@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { TikTokIntegrationState } from "../../shared/types";
+import type { CapabilityInfo, ChatSenderStatus, TikTokIntegrationState } from "../../shared/types";
 import { api } from "../api";
 import { refreshChatSender } from "../chatSender";
 import { ChatSenderCard } from "../components/SendToChat";
@@ -57,11 +57,25 @@ const EXPLAIN_LIVE: Record<"en" | "fr", Record<TikTokIntegrationState, string>> 
   },
 };
 
+/** With the moderator account connected (Euler), warn / mute / block run from Novus. */
+function withModeratorAccount(caps: CapabilityInfo[], chat: ChatSenderStatus | null | undefined, lang: "en" | "fr"): CapabilityInfo[] {
+  if (!chat?.connected) return caps;
+  const fr = lang === "fr";
+  return caps.map((c) => {
+    if (c.capability === "Warn a viewer")
+      return { ...c, status: "implemented", detail: fr ? "Un appui envoie l'avertissement dans le chat du LIVE depuis ton compte modérateur. Rien n'est envoyé automatiquement." : "One tap posts the warning in the LIVE chat from your moderator account. Nothing is sent automatically." };
+    if (chat.moderation && (c.capability === "Mute a viewer" || c.capability === "Block / remove a viewer"))
+      return { ...c, status: "implemented", detail: fr ? "Le bouton agit directement dans le LIVE si ton compte est modérateur de ce LIVE ; sinon TikTok refuse et Novus affiche les étapes manuelles." : "The button acts directly in the LIVE when your account is a moderator of that LIVE; otherwise TikTok refuses and Novus shows the manual steps." };
+    return c;
+  });
+}
+
 export function TikTokIntegration() {
   const t = useT();
   const lang = useLang();
   const status = useStore((s) => s.tiktok);
   const founder = useIsFounder();
+  const chat = useStore((s) => s.chatSender);
 
   useEffect(() => {
     api
@@ -104,7 +118,11 @@ export function TikTokIntegration() {
       <TikTokProfiles />
       {founder ? <ChatSenderCard /> : null}
       <div className="small muted" style={{ marginTop: 6 }}>
-        {status.source === "unofficial_live_connector"
+        {status.source === "unofficial_live_connector" && chat?.connected && chat.moderation
+          ? lang === "fr"
+            ? "Novus ne demande jamais ton mot de passe TikTok. Avertir, mettre en sourdine et bloquer passent par ton compte modérateur connecté ; le signalement reste manuel dans TikTok."
+            : "Novus never asks for your TikTok password. Warn, mute and block go through your connected moderator account; reporting stays manual in TikTok."
+          : status.source === "unofficial_live_connector"
           ? lang === "fr"
             ? "Novus ne demande jamais ton mot de passe TikTok. Il suit le LIVE public de ce compte ; mute, blocage et signalement restent manuels dans TikTok."
             : "Novus never asks for your TikTok password. It follows this account's public LIVE; mute, block and report stay manual in TikTok."
@@ -116,7 +134,7 @@ export function TikTokIntegration() {
       <div className="card-title" style={{ marginTop: 14 }}>
         {t("capabilities")}
       </div>
-      {status.capabilities.map((c) => (
+      {withModeratorAccount(status.capabilities, chat, lang).map((c) => (
         <div key={c.capability} className="list-row" style={{ alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13.5, fontWeight: 600 }}>{tr(c.capability, lang)}</div>
