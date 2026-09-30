@@ -206,6 +206,7 @@ export class EulerChatSender {
     const body = (await res.json().catch(() => ({}))) as { message?: string; code?: number };
     if (res.ok) {
       this.lastError = undefined;
+      console.log("[chat] message sent in the LIVE chat");
       return;
     }
     const detail = `${res.status} ${body.message ?? ""}`.trim().slice(0, 200);
@@ -259,6 +260,7 @@ export class EulerChatSender {
     const tiktokStatus = body.response?.data?.status_code;
     if (res.ok && (tiktokStatus === undefined || tiktokStatus === 0)) {
       this.lastError = undefined;
+      console.log(`[moderation] ${method} ${what} done`);
       return;
     }
     const detail = `${res.status} ${body.message ?? body.response?.data?.data?.prompts ?? body.response?.data?.data?.message ?? ""}${tiktokStatus ? ` (TikTok ${tiktokStatus})` : ""}`.trim().slice(0, 200);
