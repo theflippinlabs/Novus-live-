@@ -28,6 +28,7 @@ const T = {
     churn: "Churn (30 d)",
     pastDue: "Past due",
     cost: "Est. infra cost",
+    platform: "Subscriptions (Euler, Supabase, Railway)",
     profit: "Est. gross profit",
     margin: "Est. gross margin",
     founding: "Founding Agency",
@@ -107,6 +108,7 @@ const T = {
     churn: "Churn (30 j)",
     pastDue: "Impayés",
     cost: "Coût infra estimé",
+    platform: "Abonnements (Euler, Supabase, Railway)",
     profit: "Marge brute estimée",
     margin: "Taux de marge estimé",
     founding: "Founding Agency",
@@ -238,6 +240,7 @@ function Overview({ d, lang }: { d: AdminOverview; lang: "en" | "fr" }) {
         <Kpi label={tx.churn} value={pct(m.churn30)} />
         <Kpi label={tx.pastDue} value={m.pastDue} />
         <Kpi label={tx.cost} value={eur(m.estimatedCost, lang)} />
+        <Kpi label={tx.platform} value={eur(m.platformCost, lang)} />
         <Kpi label={tx.profit} value={eur(m.grossProfit, lang)} />
         <Kpi label={tx.margin} value={pct(m.grossMargin)} />
         <Kpi label={tx.founding} value={`${m.founding.used}/${m.founding.capacity} ${tx.used} · ${m.founding.remaining} ${tx.left}`} />

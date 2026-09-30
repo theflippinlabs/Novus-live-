@@ -371,6 +371,7 @@ export const adminConfigSchema = z
         per_storage_gb_month: z.number().min(0),
         per_1000_screenshots: z.number().min(0),
         per_workspace_month: z.number().min(0),
+        platform_month: z.number().min(0),
         usd_to_eur: z.number().min(0.1).max(10),
       })
       .partial()

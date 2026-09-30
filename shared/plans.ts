@@ -272,6 +272,9 @@ export interface CostAssumptions {
   per_1000_screenshots: number;
   /** Fixed monthly cost per paying workspace (support, hosting share…). */
   per_workspace_month: number;
+  /** Flat monthly platform subscriptions in EUR, counted once (Euler Business + Premium Webcast
+   *  Routes $100, Supabase Pro $25, Railway ≈ $5). Euler is flat-rate: requests inside the quota cost nothing more. */
+  platform_month: number;
   /** EUR per US dollar, to convert the real Anthropic bill (billed in USD). */
   usd_to_eur: number;
 }
@@ -281,7 +284,8 @@ export interface CostAssumptions {
 export const DEFAULT_COSTS: CostAssumptions = {
   per_1m_input_tokens: 3.68,
   per_1m_output_tokens: 18.4,
-  per_provider_request: 0.00015,
+  // Euler bills a flat plan (in platform_month); requests inside its daily quota cost nothing more.
+  per_provider_request: 0,
   per_live_hour: 0.02,
   per_recording_hour: 0.003,
   per_video_gb_uploaded: 0.046,
@@ -289,6 +293,7 @@ export const DEFAULT_COSTS: CostAssumptions = {
   per_video_gb_served: 0.083,
   per_1000_screenshots: 0.02,
   per_workspace_month: 1,
+  platform_month: 120,
   usd_to_eur: 0.92,
 };
 

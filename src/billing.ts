@@ -77,6 +77,7 @@ export interface AdminOverview {
     last30: { newSubscriptions: number; upgrades: number; downgrades: number; cancellations: number; paymentsFailed: number; paymentsRecovered: number };
     churn30: number | null;
     estimatedCost: number;
+    platformCost: number;
     ai: {
       source: "anthropic" | "estimate";
       estimated: number;

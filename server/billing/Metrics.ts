@@ -115,6 +115,8 @@ export interface SaasMetrics {
   last30: { newSubscriptions: number; upgrades: number; downgrades: number; cancellations: number; paymentsFailed: number; paymentsRecovered: number };
   churn30: number | null;
   estimatedCost: number;
+  /** Flat platform subscriptions (Euler, Supabase, Railway), included in estimatedCost. */
+  platformCost: number;
   /** AI cost this month: metered estimate vs the real Anthropic bill (EUR). */
   ai: AICostSummary;
   grossProfit: number;
@@ -186,7 +188,8 @@ export function saasMetrics(
   const cancellations = count("subscription_cancelled");
   const churnBase = paying.length + cancellations;
   // Real AI spend no workspace accounts for still costs money.
-  const cost = economics.reduce((s, e) => s + e.costs.total, 0) + ai.unallocated;
+  const platform = billing.config.costs.platform_month ?? 0;
+  const cost = economics.reduce((s, e) => s + e.costs.total, 0) + ai.unallocated + platform;
   const trend = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now);
     d.setUTCMonth(d.getUTCMonth() - (5 - i));
@@ -216,6 +219,7 @@ export function saasMetrics(
     },
     churn30: churnBase ? Math.round((cancellations / churnBase) * 1000) / 10 : null,
     estimatedCost: round(cost),
+    platformCost: round(platform),
     ai,
     grossProfit: round(mrr - cost),
     grossMargin: mrr > 0 ? Math.round(((mrr - cost) / mrr) * 1000) / 10 : null,
