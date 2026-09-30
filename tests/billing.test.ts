@@ -242,6 +242,11 @@ describe("Stripe webhooks", () => {
     expect(ws.plan).toBe("agency_pro");
     // The founding discount only applies to Agency: after upgrading, full Agency Pro price.
     expect(billing.mrr(ws)).toBe(59900);
+    // A Stripe test-mode subscription (test card, complimentary space) brings no revenue.
+    const test = signed("customer.subscription.updated", { ...sub("sub_1", workspace.id, "active", "novus_agency_pro_month"), livemode: false });
+    await billing.handleWebhook(Buffer.from(test.payload), test.header);
+    expect(billing.mrr(billing.workspace(workspace.id)!)).toBe(0);
+    expect(billing.effective(workspace.id).access).toBe("full");
 
     const gone = signed("customer.subscription.deleted", sub("sub_1", workspace.id, "canceled", "novus_agency_pro_month"));
     await billing.handleWebhook(Buffer.from(gone.payload), gone.header);

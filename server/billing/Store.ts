@@ -40,6 +40,8 @@ export interface Workspace {
   limits?: Partial<Entitlements>;
   /** What Stripe actually bills for the plan (cents per cycle): customers keep the price they signed up at. */
   planAmount?: number;
+  /** The subscription lives in Stripe live mode (false: test mode, no real money). */
+  stripeLive?: boolean;
   /** Video option: the pack Stripe bills (or the admin grants to a complimentary space). */
   videoPack?: VideoPackId;
   /** Granted by the admin rather than bought (kept when Stripe syncs the subscription). */

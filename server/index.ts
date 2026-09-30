@@ -55,7 +55,7 @@ async function main() {
   const billingStore: BillingStore =
     repo.kind === "supabase" && config.supabaseUrl && config.supabaseServiceRoleKey ? new SupabaseBillingStore(config.supabaseUrl, config.supabaseServiceRoleKey) : new MemoryBillingStore();
   const stripe = config.stripeSecretKey ? (new Stripe(config.stripeSecretKey) as unknown as StripeLike) : undefined;
-  const billing = new BillingService({ store: billingStore, stripe, webhookSecret: config.stripeWebhookSecret, portalConfiguration: config.stripePortalConfiguration, log: (m) => console.log(m) });
+  const billing = new BillingService({ store: billingStore, stripe, webhookSecret: config.stripeWebhookSecret, portalConfiguration: config.stripePortalConfiguration, stripeLiveMode: stripe ? /^(sk|rk)_live_/.test(config.stripeSecretKey ?? "") : undefined, log: (m) => console.log(m) });
   try {
     await billing.init();
   } catch (err) {

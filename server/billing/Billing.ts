@@ -72,6 +72,8 @@ export interface BillingDeps {
   webhookSecret?: string;
   /** Customer Portal configuration (bpc_…) when the Stripe account is shared with other apps. */
   portalConfiguration?: string;
+  /** The Stripe key moves real money (sk_live / rk_live). Test-mode subscriptions bring no revenue. */
+  stripeLiveMode?: boolean;
   now?: () => number;
   log?: (m: string) => void;
 }
@@ -585,6 +587,7 @@ export class BillingService {
     }
     // The price this customer really pays (kept when the catalog price changes later).
     if (typeof item?.price?.unit_amount === "number") ws.planAmount = item.price.unit_amount;
+    if (typeof sub.livemode === "boolean") ws.stripeLive = sub.livemode;
     // The video option is whatever Stripe bills (a pack granted by the admin stays).
     const beforePack = ws.videoPack;
     if (!ws.videoPackGranted) {
@@ -651,6 +654,8 @@ export class BillingService {
   /** Monthly recurring revenue in cents for a workspace (0 unless paying). */
   mrr(ws: Workspace): number {
     if (!["active", "past_due"].includes(ws.status)) return 0;
+    // Stripe test mode (a test card, or a space given for free) is not revenue.
+    if ((ws.stripeLive ?? this.deps.stripeLiveMode) === false) return 0;
     const plan = this.config.plans[ws.plan];
     // The amount Stripe bills this customer (grandfathered prices), else the catalog.
     let value = ws.planAmount !== undefined ? (ws.cycle === "year" ? Math.round(ws.planAmount / 12) : ws.planAmount) : monthlyValue(plan, ws.cycle);
