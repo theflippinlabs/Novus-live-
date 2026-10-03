@@ -40,6 +40,9 @@ const TX = {
     ready: "Ready — tap to save",
     noHistory: "No LIVE recorded yet. Every LIVE Novus follows (and every demo) is saved here automatically.",
     showDemos: "Show demos",
+    onlyVideos: "Videos only",
+    video: "Video",
+    noVideos: "No recorded LIVE yet. Turn on recording for an account in Settings › TikTok accounts (Video option).",
     back: "History",
     live: "LIVE",
     ended: "Ended",
@@ -75,6 +78,9 @@ const TX = {
     ready: "Prêt — touche pour enregistrer",
     noHistory: "Aucun LIVE enregistré pour l'instant. Chaque LIVE suivi par Novus (et chaque démo) est sauvegardé ici automatiquement.",
     showDemos: "Afficher les démos",
+    onlyVideos: "Vidéos seulement",
+    video: "Vidéo",
+    noVideos: "Aucun LIVE enregistré en vidéo pour l'instant. Active l'enregistrement d'un compte dans Réglages › Comptes TikTok (option Vidéo).",
     back: "Historique",
     live: "EN LIVE",
     ended: "Terminé",
@@ -179,6 +185,7 @@ function AnalyticsBody({ d, sessionId, interactive, insights }: { d: AnalyticsSu
 
   return (
     <>
+      {sessionId ? <VideoCard sessionId={sessionId} /> : null}
       <div className="card">
         <div className="card-title">
           <span className="gold">◆</span> {d.session ? tr(d.session.title, lang) : "—"}
@@ -378,7 +385,6 @@ function AnalyticsBody({ d, sessionId, interactive, insights }: { d: AnalyticsSu
         </div>
       ) : null}
 
-      {sessionId ? <VideoCard sessionId={sessionId} /> : null}
       {sessionId ? <ExportCard sessionId={sessionId} /> : null}
     </>
   );
@@ -424,6 +430,7 @@ function HistoryList({ onOpen }: { onOpen: (id: string) => void }) {
   const tx = TX[lang];
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
   const [demos, setDemos] = useState(false);
+  const [onlyVideos, setOnlyVideos] = useState(false);
   const locale = lang === "fr" ? "fr-FR" : "en-GB";
   const fmt = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const n = (v: number) => v.toLocaleString(locale);
@@ -440,17 +447,23 @@ function HistoryList({ onOpen }: { onOpen: (id: string) => void }) {
   }, []);
 
   if (!entries) return <div className="empty">…</div>;
-  const shown = entries.filter((e) => demos || e.source !== "demo");
+  const shown = entries.filter((e) => (demos || e.source !== "demo") && (!onlyVideos || e.video));
   return (
     <>
-      <label className="row small muted" style={{ gap: 8, justifyContent: "flex-end" }}>
-        <input type="checkbox" checked={demos} onChange={(e) => setDemos(e.target.checked)} /> {tx.showDemos}
-      </label>
-      {shown.length === 0 ? <div className="card muted">{tx.noHistory}</div> : null}
+      <div className="row small muted" style={{ gap: 14, justifyContent: "flex-end" }}>
+        <label className="row" style={{ gap: 6 }}>
+          <input type="checkbox" checked={onlyVideos} onChange={(e) => setOnlyVideos(e.target.checked)} /> ▶ {tx.onlyVideos}
+        </label>
+        <label className="row" style={{ gap: 6 }}>
+          <input type="checkbox" checked={demos} onChange={(e) => setDemos(e.target.checked)} /> {tx.showDemos}
+        </label>
+      </div>
+      {shown.length === 0 ? <div className="card muted">{onlyVideos ? tx.noVideos : tx.noHistory}</div> : null}
       {shown.map((e) => (
         <button key={e.sessionId} className="card history-row" onClick={() => onOpen(e.sessionId)}>
           <div className="row" style={{ gap: 8 }}>
             <b style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tr(e.title, lang)}</b>
+            {e.video ? <span className="state-badge gold" style={{ fontSize: 10 }}>▶ {tx.video}</span> : null}
             <StatusBadge e={e} />
           </div>
           <div className="small muted" style={{ marginTop: 2 }}>
