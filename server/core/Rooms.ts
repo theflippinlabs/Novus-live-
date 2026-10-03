@@ -31,6 +31,8 @@ export interface Room {
   mode?: () => "auto" | "manual";
   /** Start / stop recording the current LIVE (manual mode, or to stop early). */
   setRecording?: (on: boolean) => Promise<void>;
+  /** HLS URL to watch the current LIVE in the app, straight from TikTok (followed accounts only). */
+  watchUrl?: () => Promise<string | null>;
   /** Video of the current LIVE (followed accounts with the video option). */
   video?: () => { on: boolean; recording: boolean };
   /** Start / stop the video to match the LIVE, the setting and the option. */

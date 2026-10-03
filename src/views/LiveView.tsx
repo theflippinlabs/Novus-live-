@@ -4,6 +4,7 @@ import { api, ApiError } from "../api";
 import { directModeration, runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
+import { WatchLive } from "../components/WatchLive";
 import { setChatTranslation, useChatTranslation, type ChatLang } from "../chatTranslate";
 import { WeeklyGoalsCard } from "../components/WeeklyGoals";
 import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
@@ -282,6 +283,7 @@ export function LiveView() {
   const canManage = useCan("manage_accounts");
   const canModerate = useCan("moderate");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const [watching, setWatching] = useState(false);
   const direct = useStore((s) => directModeration(s.chatSender, s.room));
 
   if (!session || session.status !== "live") return <StartPanel />;
@@ -322,6 +324,11 @@ export function LiveView() {
           onChange={(v) => setFlaggedOnly(v === "flagged")}
         />
         <TranslateSwitch />
+        {session.source === "tiktok" ? (
+          <button className={`btn sm ${watching ? "gold" : "ghost"}`} onClick={() => setWatching((w) => !w)} aria-pressed={watching}>
+            📺 {lang === "fr" ? (watching ? "Masquer le LIVE" : "Regarder le LIVE") : watching ? "Hide the LIVE" : "Watch the LIVE"}
+          </button>
+        ) : null}
         <span className="spacer" />
         {direct && canModerate && session.source === "tiktok" ? <CommentsSwitch /> : null}
         <button className="end-btn" onClick={end} aria-label={endLabel} title={endLabel} style={{ display: (followedRoom ? canManage : canModerate) ? undefined : "none" }}>
@@ -330,6 +337,7 @@ export function LiveView() {
       </div>
       <div className="live-split">
         <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+          {watching && session.source === "tiktok" ? <WatchLive onClose={() => setWatching(false)} /> : null}
           <WeeklyGoalsCard />
           <CriticalStrip />
           <ChatStream flaggedOnly={flaggedOnly} />

@@ -452,6 +452,8 @@ const ERRORS: Record<string, { en: string; fr: string }> = {
   plan_video_option: { en: "LIVE video needs the Video option.", fr: "La vidéo des LIVE nécessite l'option Vidéo." },
   video_after_trial: { en: "The Video option can be added once your trial has ended.", fr: "L'option Vidéo s'ajoute une fois l'essai terminé." },
   video_unavailable: { en: "Video recording isn't available on the server right now.", fr: "L'enregistrement vidéo n'est pas disponible sur le serveur pour le moment." },
+  watch_not_live: { en: "This account isn't LIVE right now.", fr: "Ce compte n'est pas en LIVE en ce moment." },
+  watch_unavailable: { en: "TikTok doesn't offer this LIVE's video to watch right now. Try again in a moment.", fr: "TikTok ne donne pas la vidéo de ce LIVE pour l'instant. Réessaie dans un instant." },
   subtitles_not_configured: { en: "Subtitles aren't switched on on the server yet (speech-to-text key missing).", fr: "Les sous-titres ne sont pas encore activés sur le serveur (clé de transcription manquante)." },
   subtitles_running: { en: "Subtitles are already being made for this video.", fr: "Les sous-titres de cette vidéo sont déjà en préparation." },
   subtitles_limit: { en: "Not enough subtitle minutes left this month for this video.", fr: "Plus assez de minutes de sous-titres ce mois-ci pour cette vidéo." },

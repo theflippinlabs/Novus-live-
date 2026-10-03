@@ -1449,6 +1449,24 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       res.send("\uFEFF" + toSrt(subs.cues));
     }),
   );
+  /**
+   * Watch the LIVE of this room in the app: TikTok's own HLS stream, read by the phone straight from
+   * TikTok's CDN (nothing through the server). When TikTok offers none, the recording in progress
+   * (about a minute behind).
+   */
+  api.get(
+    "/rooms/watch",
+    rateLimit("watch", 30),
+    h(async (req) => {
+      const room = roomIn(req);
+      if (room.kind !== "tiktok" || !room.detected?.()) throw new HttpError(404, "watch_not_live");
+      const url = await room.watchUrl?.().catch(() => null);
+      if (url) return { url, delayed: false };
+      const session = room.runtime.session;
+      if (session && room.video?.().recording && can(principal(req), "history")) return { url: `/api/history/${encodeURIComponent(session.id)}/video.m3u8`, delayed: true };
+      throw new HttpError(404, "watch_unavailable");
+    }),
+  );
   /** Stats › Videos: every LIVE video of the space this person may see. */
   api.get(
     "/videos",

@@ -205,3 +205,14 @@ describe.skipIf(!hasFfmpeg)("Video API", () => {
     await request(app).get(`/api/history/unknown/video`).expect(404);
   }, 60_000);
 });
+
+describe("Watch the LIVE in the app", () => {
+  it("takes TikTok's HLS stream (480p first) and only from TikTok's CDNs", async () => {
+    const { pickWatchUrl } = await import("../server/video/streamUrl");
+    const streamData = JSON.stringify({ data: { hd: { main: { hls: "https://pull-hls-l1.tiktokcdn.com/stage/hd/index.m3u8?sig=1" } }, sd: { main: { flv: "https://pull-flv-l1.tiktokcdn.com/sd.flv", hls: "https://pull-hls-l1.tiktokcdn.com/stage/sd/index.m3u8?sig=2" } } } });
+    expect(pickWatchUrl({ data: { stream_url: { live_core_sdk_data: { pull_data: { stream_data: streamData } } } } })).toBe("https://pull-hls-l1.tiktokcdn.com/stage/sd/index.m3u8?sig=2");
+    expect(pickWatchUrl({ stream_url: { hls_pull_url: "https://pull-hls-f16.tiktokcdn-us.com/game/x.m3u8" } })).toBe("https://pull-hls-f16.tiktokcdn-us.com/game/x.m3u8");
+    expect(pickWatchUrl({ stream_url: { hls_pull_url: "https://evil.example.com/x.m3u8", flv_pull_url: { SD1: "https://pull-flv.tiktokcdn.com/x.flv" } } })).toBeNull();
+    expect(pickWatchUrl({ data: { status: 4 } })).toBeNull();
+  });
+});
