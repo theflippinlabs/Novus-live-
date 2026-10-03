@@ -47,29 +47,3 @@ export function pickStreamUrl(roomInfo: unknown): string | null {
   candidates.push(str(stream.hls_pull_url), str(stream.rtmp_pull_url));
   return candidates.find((u): u is string => Boolean(u) && isTikTokStreamUrl(u!)) ?? null;
 }
-
-/**
- * URL to WATCH the LIVE in the app (HLS, which iPhone plays natively; hls.js elsewhere), or null.
- * The phone reads it straight from TikTok's CDN: nothing goes through the server.
- */
-export function pickWatchUrl(roomInfo: unknown): string | null {
-  const root = obj(roomInfo);
-  const info = obj(root?.data) ?? root;
-  const stream = obj(info?.stream_url);
-  if (!stream) return null;
-  const candidates: (string | undefined)[] = [];
-  const sdk = obj(obj(obj(stream.live_core_sdk_data)?.pull_data));
-  const raw = str(sdk?.stream_data);
-  if (raw) {
-    try {
-      const qualities = obj(obj(JSON.parse(raw))?.data);
-      for (const q of ["sd", "hd", "ld", "origin"]) candidates.push(str(obj(obj(qualities?.[q])?.main)?.hls));
-    } catch {
-      /* not JSON: use the plain fields */
-    }
-  }
-  const map = obj(stream.hls_pull_url_map);
-  for (const q of ["SD1", "SD2", "HD1", "FULL_HD1"]) candidates.push(str(map?.[q]));
-  candidates.push(str(stream.hls_pull_url));
-  return candidates.find((u): u is string => Boolean(u) && isTikTokStreamUrl(u!) && new URL(u!).pathname.endsWith(".m3u8")) ?? null;
-}

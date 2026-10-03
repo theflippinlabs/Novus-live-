@@ -66,8 +66,7 @@ import type { Translator } from "./ai/Translator";
 import { buildPlaylist, videoInfo, videoParts } from "./video/playlist";
 import { openLocal, segmentPath, type VideoStore } from "./video/VideoStore";
 import { SubtitleService, toSrt } from "./video/Subtitles";
-import { decodeUrl, encodeUrl, rewritePlaylist, WATCH_UA } from "./video/watchProxy";
-import { Readable } from "node:stream";
+import { LiveRelay } from "./video/LiveRelay";
 import { monthKey } from "./billing/Entitlements";
 
 export interface AppDeps {
@@ -1452,86 +1451,61 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     }),
   );
   /**
-   * Watch the LIVE of this room in the app: TikTok's own HLS stream, relayed by the server
-   * (phones often cannot read TikTok's CDN directly). When TikTok offers none, the recording in
+   * Watch the LIVE of this room in the app: the stream the recorder reads, copied by ffmpeg into a
+   * short live HLS stream the phone plays (a few seconds behind). Falls back to the recording in
    * progress (about a minute behind).
    */
-  const watchCache = new Map<string, { url: string; at: number }>();
+  const relay = video?.ready ? new LiveRelay({ tmpRoot: join(tmpdir(), "novus-watch"), log: (m) => console.warn(m) }) : null;
   const servedCarry = new Map<string, number>();
-  const dropped = new Set<string>();
   const liveRoom = (req: Request) => {
     const room = roomIn(req);
     if (room.kind !== "tiktok" || !room.detected?.()) throw new HttpError(404, "watch_not_live");
     return room;
   };
-  /** TikTok's HLS URL of the room's LIVE (kept a minute; `fresh` asks TikTok again). */
-  const tiktokWatchUrl = async (room: Room, fresh = false): Promise<string | null> => {
-    const hit = watchCache.get(room.id);
-    if (!fresh && hit && Date.now() - hit.at < 60_000) return hit.url;
-    const url = await room.watchUrl?.().catch(() => null);
-    if (url) watchCache.set(room.id, { url, at: Date.now() });
-    else watchCache.delete(room.id);
-    return url ?? null;
-  };
-  const tiktokFetch = (url: string) => fetch(url, { headers: { "User-Agent": WATCH_UA, Referer: "https://www.tiktok.com/" }, signal: AbortSignal.timeout(15_000) });
+  const relayKey = (req: Request, room: Room) => `${sp(req).id}|${room.id}`;
+  const startRelay = async (req: Request, room: Room) => Boolean(relay && room.streamUrl && (await relay.ensure(relayKey(req, room), room.streamUrl).catch(() => false)));
   api.get(
     "/rooms/watch",
     rateLimit("watch", 30),
     h(async (req) => {
       const room = liveRoom(req);
-      if (await tiktokWatchUrl(room, true)) return { url: `/api/rooms/watch.m3u8?room=${encodeURIComponent(room.id)}`, delayed: false };
+      if (await startRelay(req, room)) return { url: `/api/rooms/watch/live.m3u8?room=${encodeURIComponent(room.id)}`, delayed: false };
       const session = room.runtime.session;
       if (session && room.video?.().recording && can(principal(req), "history")) return { url: `/api/history/${encodeURIComponent(session.id)}/video.m3u8`, delayed: true };
       throw new HttpError(404, "watch_unavailable");
     }),
   );
   api.get(
-    "/rooms/watch.m3u8",
+    "/rooms/watch/live.m3u8",
     rateLimit("watch-list", 240),
     h(async (req, res) => {
       const room = liveRoom(req);
+      if (!(await startRelay(req, room))) throw new HttpError(404, "watch_unavailable");
+      const text = await relay!.playlist(relayKey(req, room));
+      if (!text) throw new HttpError(503, "watch_unavailable");
       const q = `room=${encodeURIComponent(room.id)}`;
-      let target = req.query.u !== undefined ? decodeUrl(req.query.u) : await tiktokWatchUrl(room);
-      if (!target) throw new HttpError(404, "watch_unavailable");
-      let up = await tiktokFetch(target).catch(() => null);
-      // The signed link expired: ask TikTok for a fresh one (top playlist only).
-      if ((!up || !up.ok) && req.query.u === undefined) {
-        target = await tiktokWatchUrl(room, true);
-        up = target ? await tiktokFetch(target).catch(() => null) : null;
-      }
-      if (!up || !up.ok || !target) throw new HttpError(502, "watch_unavailable");
-      const text = await up.text();
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
       res.setHeader("Cache-Control", "no-store");
-      res.send(rewritePlaylist(text, up.url || target, (u) => `/api/rooms/watch.m3u8?${q}&u=${encodeUrl(u)}`, (u) => `/api/rooms/watch/piece?${q}&u=${encodeUrl(u)}`, (u) => dropped.has(new URL(u).host) || (dropped.add(new URL(u).host), console.warn(`[watch] address outside TikTok's CDNs skipped: ${new URL(u).host}`))));
+      res.send(text.replace(/^(p-\d+\.ts)$/gm, (_m, name: string) => `/api/rooms/watch/live/${name}?${q}`));
     }),
   );
   api.get(
-    "/rooms/watch/piece",
+    "/rooms/watch/live/:name",
     rateLimit("watch-piece", 600),
     h(async (req, res) => {
-      liveRoom(req);
-      const target = decodeUrl(req.query.u);
-      if (!target) throw new HttpError(404, "watch_unavailable");
-      const up = await tiktokFetch(target).catch(() => null);
-      if (!up || !up.ok || !up.body) throw new HttpError(502, "watch_unavailable");
-      res.setHeader("Content-Type", up.headers.get("content-type") ?? "video/mp2t");
-      const len = up.headers.get("content-length");
-      if (len) res.setHeader("Content-Length", len);
+      const room = liveRoom(req);
+      const file = await relay?.piece(relayKey(req, room), param(req, "name"));
+      if (!file) throw new HttpError(404, "watch_unavailable");
+      res.setHeader("Content-Type", "video/mp2t");
       res.setHeader("Cache-Control", "no-store");
-      let bytes = 0;
+      const size = (await stat(file).catch(() => null))?.size ?? 0;
       await new Promise<void>((resolve) => {
-        const body = Readable.fromWeb(up.body as never);
-        body.on("data", (c: Buffer) => (bytes += c.length));
-        res.on("close", () => {
-          body.destroy();
-          resolve();
-        });
-        body.pipe(res);
+        res.on("close", resolve);
+        openLocal(file).on("error", () => res.end()).pipe(res);
       });
       // Relayed video counts as served video (server egress) for the space, in whole megabytes.
       const id = sp(req).id;
-      const total = (servedCarry.get(id) ?? 0) + bytes;
+      const total = (servedCarry.get(id) ?? 0) + size;
       const mb = Math.floor(total / 1_048_576);
       if (mb) billing.meterAdd(id, "video_mb_served", mb);
       servedCarry.set(id, total - mb * 1_048_576);

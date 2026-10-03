@@ -282,7 +282,7 @@ async function main() {
         hub,
         tiktok,
         liveRoomId: () => watcher?.roomId,
-        watchUrl: () => watcher?.watchUrl() ?? Promise.resolve(null),
+        streamUrl: (fresh) => watcher?.streamUrl(fresh) ?? Promise.resolve(null),
         detected: () => recorder.detected,
         mode: () => recorder.mode,
         setRecording: async (on) => {

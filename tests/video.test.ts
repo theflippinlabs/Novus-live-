@@ -206,32 +206,23 @@ describe.skipIf(!hasFfmpeg)("Video API", () => {
   }, 60_000);
 });
 
-describe("Watch the LIVE in the app", () => {
-  it("takes TikTok's HLS stream (480p first) and only from TikTok's CDNs", async () => {
-    const { pickWatchUrl } = await import("../server/video/streamUrl");
-    const streamData = JSON.stringify({ data: { hd: { main: { hls: "https://pull-hls-l1.tiktokcdn.com/stage/hd/index.m3u8?sig=1" } }, sd: { main: { flv: "https://pull-flv-l1.tiktokcdn.com/sd.flv", hls: "https://pull-hls-l1.tiktokcdn.com/stage/sd/index.m3u8?sig=2" } } } });
-    expect(pickWatchUrl({ data: { stream_url: { live_core_sdk_data: { pull_data: { stream_data: streamData } } } } })).toBe("https://pull-hls-l1.tiktokcdn.com/stage/sd/index.m3u8?sig=2");
-    expect(pickWatchUrl({ stream_url: { hls_pull_url: "https://pull-hls-f16.tiktokcdn-us.com/game/x.m3u8" } })).toBe("https://pull-hls-f16.tiktokcdn-us.com/game/x.m3u8");
-    expect(pickWatchUrl({ stream_url: { hls_pull_url: "https://evil.example.com/x.m3u8", flv_pull_url: { SD1: "https://pull-flv.tiktokcdn.com/x.flv" } } })).toBeNull();
-    expect(pickWatchUrl({ data: { status: 4 } })).toBeNull();
-  });
-});
-
-describe("Watch relay", () => {
-  it("points every address of TikTok's playlist at the app, and drops anything off TikTok", async () => {
-    const { rewritePlaylist, decodeUrl, encodeUrl } = await import("../server/video/watchProxy");
-    const base = "https://pull-hls-f16.tiktokcdn.com/game/stream-1/index.m3u8?sig=a";
-    const master = ["#EXTM3U", "#EXT-X-STREAM-INF:BANDWIDTH=900000", "sd/index.m3u8?sig=b"].join("\n");
-    const pl = (u: string) => `/pl?u=${encodeUrl(u)}`;
-    const pc = (u: string) => `/pc?u=${encodeUrl(u)}`;
-    expect(rewritePlaylist(master, base, pl, pc)).toBe(["#EXTM3U", "#EXT-X-STREAM-INF:BANDWIDTH=900000", pl("https://pull-hls-f16.tiktokcdn.com/game/stream-1/sd/index.m3u8?sig=b")].join("\n"));
-    const media = ["#EXTM3U", '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"', "#EXTINF:2.0,", "seg-1.ts", "#EXTINF:2.0,", "https://evil.example.com/x.ts", "#EXTINF:2.0,", "https://pull-hls-f16.tiktokcdn.com/game/seg-3.ts"].join("\n");
-    const out = rewritePlaylist(media, base, pl, pc).split("\n");
-    expect(out).toEqual(["#EXTM3U", `#EXT-X-KEY:METHOD=AES-128,URI="${pc("https://pull-hls-f16.tiktokcdn.com/game/stream-1/key.bin")}"`, "#EXTINF:2.0,", pc("https://pull-hls-f16.tiktokcdn.com/game/stream-1/seg-1.ts"), "#EXTINF:2.0,", pc("https://pull-hls-f16.tiktokcdn.com/game/seg-3.ts")]);
-    // The relay only ever fetches TikTok's CDNs.
-    expect(decodeUrl(encodeUrl("https://pull-hls-f16.tiktokcdn.com/a.ts"))).toBe("https://pull-hls-f16.tiktokcdn.com/a.ts");
-    expect(decodeUrl(encodeUrl("http://169.254.169.254/latest"))).toBeNull();
-    expect(decodeUrl(encodeUrl("https://tiktokcdn.com.evil.io/a.ts"))).toBeNull();
-    expect(decodeUrl(undefined)).toBeNull();
-  });
+describe.skipIf(!hasFfmpeg)("Watch the LIVE (relay)", () => {
+  it("turns the LIVE's stream into a short live HLS stream the phone plays, and only serves its own pieces", async () => {
+    const { LiveRelay } = await import("../server/video/LiveRelay");
+    const root = mkdtempSync(join(tmpdir(), "novus-watch-test-"));
+    const source = join(root, "live.flv");
+    spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "20", "-c:v", "libx264", "-preset", "ultrafast", "-g", "10", "-c:a", "aac", "-f", "flv", source]);
+    const relay = new LiveRelay({ tmpRoot: join(root, "tmp") });
+    expect(await relay.ensure("t|r", async () => null)).toBe(false);
+    expect(await relay.ensure("t|room", async () => source)).toBe(true);
+    const list = await relay.playlist("t|room");
+    expect(list).toContain("#EXTINF");
+    const name = list!.split("\n").find((l) => /^p-\d+\.ts$/.test(l))!;
+    const file = await relay.piece("t|room", name);
+    expect(file && existsSync(file)).toBe(true);
+    expect(await relay.piece("t|room", "../../etc/passwd")).toBeNull();
+    expect(await relay.piece("t|other", name)).toBeNull();
+    await relay.stopAll();
+    expect(await relay.playlist("t|room")).toBeNull();
+  }, 30_000);
 });

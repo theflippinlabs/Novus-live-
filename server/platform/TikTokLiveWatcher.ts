@@ -1,6 +1,6 @@
 import type { LiveEvent } from "../../shared/types";
 import { mapChat, mapFollow, mapGift, mapJoin, mapViewerCount } from "./tiktokMapping";
-import { pickStreamUrl, pickWatchUrl } from "../video/streamUrl";
+import { pickStreamUrl } from "../video/streamUrl";
 
 /*
  * Follows one TikTok account and streams its LIVE chat into Novus.
@@ -22,8 +22,6 @@ export interface LiveConnectionLike {
   readonly roomId?: string;
   /** Video stream URL of the LIVE (from the room info; `fresh` fetches it again). */
   streamUrl?(fresh?: boolean): Promise<string | null>;
-  /** HLS URL to watch the LIVE in the app (from the room info). */
-  watchUrl?(): Promise<string | null>;
 }
 
 export type ConnectionFactory = (username: string) => Promise<LiveConnectionLike>;
@@ -111,8 +109,6 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
       },
       // Pull URLs are signed and expire: a reconnecting recorder asks for fresh ones.
       streamUrl: async (fresh) => pickStreamUrl(fresh ? await conn.fetchRoomInfo() : (conn.roomInfo ?? (await conn.fetchRoomInfo()))),
-      // Fresh room info each time: the signed URL of the start of the LIVE may have expired.
-      watchUrl: async () => pickWatchUrl(await conn.fetchRoomInfo()),
     };
   };
 }
@@ -201,18 +197,6 @@ export class TikTokLiveWatcher {
       return await conn.streamUrl(fresh);
     } catch (e) {
       this.opts.log?.(`[video] @${this.username}: no stream URL (${describeError(e)})`);
-      return null;
-    }
-  }
-
-  /** HLS URL to watch the confirmed LIVE in the app (null when not live or not offered). */
-  async watchUrl(): Promise<string | null> {
-    const conn = this.live ? this.conn : null;
-    if (!conn?.watchUrl) return null;
-    try {
-      return await conn.watchUrl();
-    } catch (e) {
-      this.opts.log?.(`[watch] @${this.username}: no watch URL (${describeError(e)})`);
       return null;
     }
   }
