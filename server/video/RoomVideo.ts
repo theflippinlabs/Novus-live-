@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn } from "node:child_process";
-import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { VideoRecord } from "../../shared/types";
 import { segmentPath, type VideoStore } from "./VideoStore";
@@ -38,6 +38,8 @@ export interface RoomVideoDeps {
   spawn?: SpawnLike;
   ffmpeg?: string;
   pollMs?: number;
+  /** Largest piece sent to storage in one file; bigger ones are cut (storage refuses huge files). */
+  maxPieceBytes?: number;
   now?: () => number;
   log?: (m: string) => void;
 }
@@ -45,6 +47,14 @@ export interface RoomVideoDeps {
 const SEGMENT_SECONDS = 60;
 const MAX_RESTARTS = 6;
 const RESTART_WINDOW_MS = 10 * 60_000;
+/** When the stream keeps dropping: wait, then try again (never give up while the LIVE goes on). */
+const PAUSE_MS = 2 * 60_000;
+/** Storage upload limit is 50 MB: stay well under it. */
+const MAX_PIECE_BYTES = 40 * 1024 * 1024;
+/** A piece that will not upload is retried on the next checks before being given up. */
+const MAX_UPLOAD_ATTEMPTS = 5;
+/** MPEG-TS packets are 188 bytes: cutting on that boundary keeps every part a valid stream. */
+const TS_PACKET = 188;
 
 export class RoomVideo {
   private rec: VideoRecord | null = null;
@@ -56,8 +66,9 @@ export class RoomVideo {
   private chain: Promise<void> = Promise.resolve();
   private restarts: number[] = [];
   private exited: Promise<void> = Promise.resolve();
-  /** A LIVE whose stream kept dropping: no more attempts for it. */
-  private gaveUpSession: string | null = null;
+  /** The stream kept dropping: no new attempt before this time. */
+  private pausedUntil = 0;
+  private attempts = new Map<string, number>();
   private starting = false;
 
   constructor(private deps: RoomVideoDeps) {}
@@ -85,7 +96,7 @@ export class RoomVideo {
     this.starting = true;
     try {
       if (this.rec && this.rec.sessionId !== sessionId) await this.stop("done");
-      if (this.gaveUpSession === sessionId) return false;
+      if (this.rec?.sessionId === sessionId && this.now() < this.pausedUntil) return false;
       if (!this.deps.allowed()) {
         if (this.rec) await this.stop("stopped_quota");
         return false;
@@ -95,9 +106,10 @@ export class RoomVideo {
         const recent = this.restarts.filter((t) => this.now() - t < RESTART_WINDOW_MS);
         this.restarts = [...recent, this.now()];
         if (recent.length >= MAX_RESTARTS) {
-          this.deps.log?.(`[video] @${this.deps.account}: stream keeps dropping — video stopped for this LIVE`);
-          this.gaveUpSession = sessionId;
-          await this.stop("failed");
+          // Keep the video open and come back: the LIVE may stabilize (a hole, never the end of the video).
+          this.deps.log?.(`[video] @${this.deps.account}: stream keeps dropping — trying again in ${PAUSE_MS / 60_000} min`);
+          this.pausedUntil = this.now() + PAUSE_MS;
+          this.restarts = [];
           return false;
         }
       }
@@ -188,21 +200,64 @@ export class RoomVideo {
     const size = await stat(local).then((s) => s.size).catch(() => 0);
     this.done.add(file);
     if (!size) return;
-    const path = segmentPath(this.deps.tenant, rec.sessionId, file);
-    await this.deps.store.put(path, local);
+    const max = this.deps.maxPieceBytes ?? MAX_PIECE_BYTES;
+    // Too big for storage in one file: cut it into parts (each a valid MPEG-TS stream, played back to back).
+    const parts = size > max ? await this.cut(local, size, max) : [{ file: local, bytes: size }];
+    const base = file.replace(/\.ts$/, "");
+    const uploads = parts.map((p, i) => ({ ...p, path: segmentPath(this.deps.tenant, rec.sessionId, parts.length > 1 ? `${base}-p${i}.ts` : file) }));
+    try {
+      for (const u of uploads) await this.deps.store.put(u.path, u.file);
+    } catch (e) {
+      const n = (this.attempts.get(file) ?? 0) + 1;
+      this.attempts.set(file, n);
+      if (parts.length > 1) await Promise.all(parts.map((p) => rm(p.file, { force: true })));
+      if (n < MAX_UPLOAD_ATTEMPTS) {
+        // Retried on the next check; the following pieces wait so the video stays in order.
+        this.done.delete(file);
+        throw e;
+      }
+      this.deps.log?.(`[video] @${this.deps.account}: piece ${file} could not be stored after ${n} attempts (${e instanceof Error ? e.message : e})`);
+      await rm(local, { force: true });
+      return;
+    }
+    this.attempts.delete(file);
     const first = rec.segments.length === 0;
     const newRun = !first && !rec.segments.some((s) => s.path.includes(`/r${run}-`));
-    rec.segments.push({ path, seconds: Math.round(seconds * 1000) / 1000, bytes: size, ...(newRun ? { discontinuity: true } : {}) });
+    uploads.forEach((u, i) => {
+      const secs = (seconds * u.bytes) / size;
+      rec.segments.push({ path: u.path, seconds: Math.round(secs * 1000) / 1000, bytes: u.bytes, ...(newRun && i === 0 ? { discontinuity: true } : {}) });
+    });
     rec.seconds = Math.round((rec.seconds + seconds) * 1000) / 1000;
     rec.bytes += size;
     this.deps.meter(seconds, size);
     await rm(local, { force: true });
+    if (parts.length > 1) await Promise.all(parts.map((p) => rm(p.file, { force: true })));
     await this.save();
     // The option's hours or gigabytes are used up: stop now.
     if (this.proc && !this.deps.allowed()) {
       this.deps.log?.(`[video] @${this.deps.account}: video option used up — recording stopped`);
       void this.stop("stopped_quota");
     }
+  }
+
+  /** Cut a piece into parts of at most `max` bytes, on MPEG-TS packet boundaries. */
+  private async cut(local: string, size: number, max: number): Promise<{ file: string; bytes: number }[]> {
+    const chunk = Math.max(TS_PACKET, Math.floor(max / TS_PACKET) * TS_PACKET);
+    const fh = await open(local, "r");
+    const parts: { file: string; bytes: number }[] = [];
+    try {
+      for (let offset = 0, i = 0; offset < size; offset += chunk, i += 1) {
+        const len = Math.min(chunk, size - offset);
+        const buf = Buffer.alloc(len);
+        await fh.read(buf, 0, len, offset);
+        const file = `${local}.p${i}`;
+        await writeFile(file, buf);
+        parts.push({ file, bytes: len });
+      }
+    } finally {
+      await fh.close();
+    }
+    return parts;
   }
 
   private async save(): Promise<void> {
@@ -222,6 +277,11 @@ export class RoomVideo {
       clearTimeout(killer);
     }
     await this.poll();
+    // A piece whose upload just failed: a few more tries before the scratch folder is removed.
+    for (let i = 0; i < 3 && this.attempts.size; i += 1) {
+      await new Promise((r) => setTimeout(r, this.deps.pollMs ?? 5000));
+      await this.poll();
+    }
     if (this.poller) clearInterval(this.poller);
     this.poller = null;
     if (this.rec !== rec) return;
@@ -231,6 +291,8 @@ export class RoomVideo {
     await rm(this.dir, { recursive: true, force: true }).catch(() => undefined);
     this.rec = null;
     this.done.clear();
+    this.attempts.clear();
+    this.pausedUntil = 0;
     this.dir = "";
     this.deps.log?.(`[video] @${this.deps.account}: video saved (${Math.round(rec.seconds / 60)} min, ${(rec.bytes / 1024 ** 3).toFixed(2)} GB, ${rec.status})`);
     this.deps.changed?.();

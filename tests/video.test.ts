@@ -80,6 +80,43 @@ describe.skipIf(!hasFfmpeg)("Video recorder (ffmpeg)", () => {
   }, 60_000);
 });
 
+describe.skipIf(!hasFfmpeg)("Video recorder never loses a piece", () => {
+  const root = mkdtempSync(join(tmpdir(), "novus-video-cut-"));
+  const source = join(root, "live.flv");
+  spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=10", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "70", "-c:v", "libx264", "-preset", "ultrafast", "-g", "20", "-c:a", "aac", "-f", "flv", source]);
+
+  it("cuts pieces too big for storage and retries a failed upload, keeping the whole video in order", async () => {
+    const store = new LocalVideoStore(join(root, "store"));
+    const put = store.put.bind(store);
+    let failures = 2;
+    // Storage refuses the first two uploads (network blip), then accepts.
+    store.put = async (path: string, file: string) => {
+      if (failures-- > 0) throw new Error("video upload: temporary failure");
+      return put(path, file);
+    };
+    const video = new RoomVideo({ tenant: "t1", account: "streamer", store, tmpRoot: join(root, "tmp"), streamUrl: async () => source, allowed: () => true, retentionDays: () => 30, meter: () => undefined, pollMs: 100, maxPieceBytes: 100_000 });
+    expect(await video.ensure("s1")).toBe(true);
+    for (let i = 0; i < 100 && video.recording; i++) await new Promise((r) => setTimeout(r, 100));
+    await video.stop("done");
+    const rec = (await store.getRecord("t1", "s1"))!;
+    expect(rec.status).toBe("done");
+    // Every piece is under the limit, nothing is missing, and the durations add up.
+    expect(rec.segments.length).toBeGreaterThan(2);
+    expect(rec.segments.some((s) => /-p1\.ts$/.test(s.path))).toBe(true);
+    for (const s of rec.segments) expect(s.bytes).toBeLessThanOrEqual(100_000);
+    const total = rec.segments.reduce((a, s) => a + s.seconds, 0);
+    expect(total).toBeGreaterThan(65);
+    expect(rec.segments.reduce((a, s) => a + s.bytes, 0)).toBe(rec.bytes);
+    // The parts play back as one continuous video.
+    const list = join(root, "all.m3u8");
+    (await import("node:fs")).writeFileSync(list, buildPlaylist(rec, rec.segments.map((s) => store.localFile(s.path)!)));
+    const probe = spawnSync("ffmpeg", ["-v", "error", "-allowed_extensions", "ALL", "-i", list, "-f", "null", "-"]);
+    expect(probe.status).toBe(0);
+    const dur = spawnSync("ffprobe", ["-v", "error", "-allowed_extensions", "ALL", "-show_entries", "format=duration", "-of", "csv=p=0", list]);
+    expect(Number(dur.stdout.toString())).toBeGreaterThan(65);
+  }, 60_000);
+});
+
 describe.skipIf(!hasFfmpeg)("Video API", () => {
   it("serves a LIVE's video to people of the space: info, playlist, pieces and one MP4", async () => {
     const request = (await import("supertest")).default;
