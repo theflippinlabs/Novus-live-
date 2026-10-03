@@ -75,7 +75,7 @@ export function Segmented<T extends string | number>({
   label: string;
 }) {
   return (
-    <div className="seg" role="radiogroup" aria-label={label}>
+    <div className={`seg${options.length > 4 ? " many" : ""}`} role="radiogroup" aria-label={label}>
       {options.map((o) => (
         <button key={String(o.value)} role="radio" aria-checked={o.value === value} className={`${o.value === value ? "on" : ""} ${gold ? "gold-on" : ""}`} onClick={() => onChange(o.value)}>
           {o.label}

@@ -780,6 +780,22 @@ main.view {
   white-space: nowrap;
 }
 
+/* Five tabs or more: slightly smaller, and they scroll sideways rather than overflow on a phone. */
+.seg.many {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.seg.many::-webkit-scrollbar {
+  display: none;
+}
+
+.seg.many button {
+  flex: 1 0 auto;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
 .seg button.on {
   background: var(--surface-3);
   color: var(--text);
@@ -3653,4 +3669,18 @@ main.view {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
+}
+
+/* Video download: indeterminate bar while the server prepares the file. */
+.usage-bar > span.indeterminate {
+  animation: bar-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes bar-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-bar > span.indeterminate { animation: none; }
 }

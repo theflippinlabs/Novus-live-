@@ -904,6 +904,15 @@ export interface VideoRecord {
   bytes: number;
   /** Deleted automatically after this (the pack's retention). */
   expiresAt: number;
+  /** Kept in the app's Videos: no automatic deletion. */
+  kept?: boolean;
+}
+
+/** One downloadable part of a video (long LIVEs are saved in parts a phone can hold). */
+export interface VideoPart {
+  index: number;
+  seconds: number;
+  bytes: number;
 }
 
 /** What the app shows about a LIVE's video. */
@@ -915,6 +924,21 @@ export interface VideoInfo {
   startedAt: number;
   endedAt?: number;
   expiresAt: number;
+  kept: boolean;
+  parts: VideoPart[];
+}
+
+/** Stats › Videos: every LIVE video of the space. */
+export interface VideoLibraryItem extends VideoInfo {
+  account: string;
+  title: string;
+}
+
+export interface VideoLibrary {
+  videos: VideoLibraryItem[];
+  /** Kept videos (no automatic deletion) count against the option's storage. */
+  keptGb: number;
+  keepLimitGb: number;
 }
 
 // ---------------------------------------------------------------- leaderboard (Stats › Ranking)

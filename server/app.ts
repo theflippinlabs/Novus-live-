@@ -62,7 +62,7 @@ import { can, canSeeAccount, TeamError, TeamStore, type MemberInput, type Princi
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { buildPlaylist, videoInfo } from "./video/playlist";
+import { buildPlaylist, videoInfo, videoParts } from "./video/playlist";
 import { openLocal, segmentPath, type VideoStore } from "./video/VideoStore";
 
 export interface AppDeps {
@@ -1288,7 +1288,12 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       res.send(buildPlaylist(rec, urls));
     }),
   );
-  /** The whole LIVE as one MP4 (pieces joined by ffmpeg without re-encoding, streamed as it goes). */
+  /**
+   * The LIVE as MP4, joined by ffmpeg without re-encoding.
+   * `?part=N`: one part of about 20 minutes, written whole first (a regular MP4 with its index
+   * up front, which iPhone saves to Photos) and sent with its exact size, so the app shows real progress.
+   * Without `part`: the whole LIVE, streamed as it is written.
+   */
   api.get(
     "/history/:id/video.mp4",
     rateLimit("pdf", 10),
@@ -1296,16 +1301,48 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const { rec, detail } = await videoFor(req);
       if (!video?.ready) throw new HttpError(503, "video_unavailable");
       useExport(req);
-      const inputs = video.store.kind === "local" ? rec.segments.map((x) => video.store.localFile?.(x.path) ?? "") : await video.store.urls(rec.segments.map((x) => x.path), 3600);
+      const parts = videoParts(rec);
+      const partParam = req.query.part;
+      const part = partParam === undefined ? null : parts[Number(partParam)];
+      if (partParam !== undefined && (!part || !/^\d+$/.test(String(partParam)))) throw new HttpError(404, "video_part_not_found");
+      const segs = part ? rec.segments.slice(part.from, part.to) : rec.segments;
+      const inputs = video.store.kind === "local" ? segs.map((x) => video.store.localFile?.(x.path) ?? "") : await video.store.urls(segs.map((x) => x.path), 3600);
       const dir = await mkdtemp(join(tmpdir(), "novus-mp4-"));
-      const list = join(dir, "in.m3u8");
-      await writeFile(list, buildPlaylist({ ...rec, status: "done" }, inputs));
-      billing.meterAdd(sp(req).id, "video_mb_served", Math.ceil(rec.bytes / 1_048_576));
-      const ff = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file,http,https,tcp,tls,crypto", "-allowed_extensions", "ALL", "-i", list, "-c", "copy", "-bsf:a", "aac_adtstoasc", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"], { stdio: ["ignore", "pipe", "ignore"] });
-      res.setHeader("Content-Type", "video/mp4");
-      res.setHeader("Content-Disposition", `attachment; filename="${fileName(`${detail.entry.title}-video`, detail.entry.startedAt, "mp4")}"`);
-      res.setHeader("Cache-Control", "no-store");
       const cleanup = () => void rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      const list = join(dir, "in.m3u8");
+      await writeFile(list, buildPlaylist({ ...rec, segments: segs, status: "done" }, inputs));
+      billing.meterAdd(sp(req).id, "video_mb_served", Math.ceil(segs.reduce((a, x) => a + x.bytes, 0) / 1_048_576));
+      const input = ["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file,http,https,tcp,tls,crypto", "-allowed_extensions", "ALL", "-i", list, "-c", "copy", "-bsf:a", "aac_adtstoasc"];
+      const suffix = part && parts.length > 1 ? `-partie-${part.index + 1}-sur-${parts.length}` : "";
+      const name = fileName(`${detail.entry.title}-video${suffix}`, detail.entry.startedAt, "mp4");
+      res.setHeader("Cache-Control", "no-store");
+      if (part) {
+        const out = join(dir, "out.mp4");
+        const ok = await new Promise<boolean>((resolve) => {
+          const ff = spawn("ffmpeg", [...input, "-movflags", "+faststart", "-y", out], { stdio: ["ignore", "ignore", "ignore"] });
+          req.on("close", () => ff.kill("SIGKILL"));
+          ff.on("exit", (code) => resolve(code === 0));
+        });
+        const size = ok ? (await stat(out).catch(() => null))?.size : 0;
+        if (!size) {
+          cleanup();
+          throw new HttpError(502, "video_mp4_failed");
+        }
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Length", String(size));
+        res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+        await new Promise<void>((resolve) => {
+          res.on("close", () => {
+            cleanup();
+            resolve();
+          });
+          openLocal(out).pipe(res);
+        });
+        return;
+      }
+      const ff = spawn("ffmpeg", [...input, "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"], { stdio: ["ignore", "pipe", "ignore"] });
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
       ff.on("exit", cleanup);
       // Streamed as ffmpeg writes it; the handler returns once the download ends (or is cancelled).
       await new Promise<void>((resolve) => {
@@ -1315,6 +1352,48 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
         });
         ff.stdout.pipe(res);
       });
+    }),
+  );
+  /** Stats › Videos: every LIVE video of the space this person may see. */
+  api.get(
+    "/videos",
+    h(async (req) => {
+      need(req, "history");
+      if (!video) return { videos: [], keptGb: 0, keepLimitGb: 0 };
+      const p = principal(req);
+      const now = Date.now();
+      const recs = (await video.store.listAll(sp(req).id)).filter((r) => r.segments.length && r.expiresAt > now && canSeeAccount(p, r.account));
+      const titles = new Map((await sp(req).history.list(500)).map((e) => [e.sessionId, e.title]));
+      const all = await video.store.listAll(sp(req).id);
+      const keptGb = all.filter((r) => r.kept).reduce((a, r) => a + r.bytes, 0) / 1024 ** 3;
+      return {
+        videos: recs.map((r) => ({ ...videoInfo(r), account: r.account, title: titles.get(r.sessionId) ?? `@${r.account}` })),
+        keptGb: Math.round(keptGb * 100) / 100,
+        keepLimitGb: effective(req).entitlements.video_storage_gb,
+      };
+    }),
+  );
+  /** Keep a video in the app (no automatic deletion), within the option's storage; or let it expire again. */
+  api.post(
+    "/history/:id/video/keep",
+    h(async (req) => {
+      const { rec } = await videoFor(req);
+      // The recorder still writes this record: wait for the LIVE to end.
+      if (rec.status === "recording") throw new HttpError(409, "video_recording");
+      const keep = Boolean((req.body as { keep?: unknown })?.keep);
+      const ent = effective(req).entitlements;
+      if (keep && !rec.kept) {
+        const kept = (await video!.store.listAll(sp(req).id)).filter((r) => r.kept).reduce((a, r) => a + r.bytes, 0);
+        if ((kept + rec.bytes) / 1024 ** 3 > ent.video_storage_gb) throw planLimit("video_keep_limit");
+        rec.kept = true;
+        rec.expiresAt = Date.now() + 10 * 365 * 86_400_000;
+      } else if (!keep && rec.kept) {
+        rec.kept = false;
+        // Back to the option's retention, counted from the LIVE (at least a day to save it elsewhere).
+        rec.expiresAt = Math.max(Date.now() + 86_400_000, rec.startedAt + (ent.video_retention_days || 30) * 86_400_000);
+      }
+      await video!.store.saveRecord(sp(req).id, rec);
+      return videoInfo(rec);
     }),
   );
   /** Local storage only (no Supabase): the pieces, for signed-in people of the same space. */

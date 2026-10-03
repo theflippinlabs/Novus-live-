@@ -3,7 +3,7 @@ import { mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildPlaylist } from "../server/video/playlist";
+import { buildPlaylist, videoParts } from "../server/video/playlist";
 import { RoomVideo } from "../server/video/RoomVideo";
 import { isTikTokStreamUrl, pickStreamUrl } from "../server/video/streamUrl";
 import { LocalVideoStore } from "../server/video/VideoStore";
@@ -32,6 +32,20 @@ describe("Video playlist", () => {
     expect(m3u8).toContain("#EXT-X-DISCONTINUITY\n#EXTINF:59.500,\nu2");
     expect(m3u8.trim().endsWith("#EXT-X-ENDLIST")).toBe(true);
     expect(buildPlaylist({ ...rec, status: "recording" }, ["u1", "u2"])).not.toContain("ENDLIST");
+  });
+});
+
+describe("Video parts", () => {
+  it("groups a long LIVE into parts of about 20 minutes, a short tail joining the last part", () => {
+    const seg = (i: number) => ({ path: `t/s/r1-${i}.ts`, seconds: 60, bytes: 7_000_000 });
+    const rec = { sessionId: "s", account: "a", startedAt: 0, status: "done" as const, seconds: 0, bytes: 0, expiresAt: 1, segments: Array.from({ length: 62 }, (_, i) => seg(i)) };
+    const parts = videoParts(rec);
+    // 62 min: 20 + 20 + 22 (the 2-minute tail joins the third part).
+    expect(parts.map((p) => p.seconds)).toEqual([1200, 1200, 1320]);
+    expect(parts.map((p) => [p.from, p.to])).toEqual([[0, 20], [20, 40], [40, 62]]);
+    expect(parts.reduce((a, p) => a + p.bytes, 0)).toBe(62 * 7_000_000);
+    expect(videoParts({ ...rec, segments: rec.segments.slice(0, 5) })).toHaveLength(1);
+    expect(videoParts({ ...rec, segments: [] })).toHaveLength(0);
   });
 });
 
@@ -163,6 +177,30 @@ describe.skipIf(!hasFfmpeg)("Video API", () => {
     (await import("node:fs")).writeFileSync(file, mp4.body as Buffer);
     const probe = spawnSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]);
     expect(Number(probe.stdout.toString())).toBeGreaterThan(65);
+
+    // One part (short LIVE): a regular MP4 with its exact size, for the progress bar.
+    expect(info.parts).toHaveLength(1);
+    const part = await request(app).get(`/api/history/${session.id}/video.mp4?part=0`).buffer(true).parse((res, cb) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => cb(null, Buffer.concat(chunks)));
+    }).expect(200);
+    expect(Number(part.headers["content-length"])).toBe((part.body as Buffer).length);
+    const partFile = join(root, "part.mp4");
+    (await import("node:fs")).writeFileSync(partFile, part.body as Buffer);
+    const partProbe = spawnSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", partFile]);
+    expect(Number(partProbe.stdout.toString())).toBeGreaterThan(65);
+    await request(app).get(`/api/history/${session.id}/video.mp4?part=7`).expect(404);
+
+    // Stats › Videos lists it; keeping it removes the automatic deletion, within the option's storage.
+    const lib = (await request(app).get("/api/videos").expect(200)).body;
+    expect(lib.videos.map((v: { sessionId: string }) => v.sessionId)).toContain(session.id);
+    const kept = (await request(app).post(`/api/history/${session.id}/video/keep`).send({ keep: true }).expect(200)).body;
+    expect(kept.kept).toBe(true);
+    expect(kept.expiresAt).toBeGreaterThan(Date.now() + 5 * 365 * 86_400_000);
+    const back = (await request(app).post(`/api/history/${session.id}/video/keep`).send({ keep: false }).expect(200)).body;
+    expect(back.kept).toBe(false);
+    expect(back.expiresAt).toBeLessThan(Date.now() + 400 * 86_400_000);
 
     await request(app).get(`/api/history/unknown/video`).expect(404);
   }, 60_000);

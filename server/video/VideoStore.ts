@@ -26,6 +26,8 @@ export interface VideoStore {
   saveRecord(tenant: string, rec: VideoRecord): Promise<void>;
   getRecord(tenant: string, sessionId: string): Promise<VideoRecord | null>;
   listRecords(tenant: string, sessionIds: string[]): Promise<VideoRecord[]>;
+  /** Every video of a space (newest first). */
+  listAll(tenant: string): Promise<VideoRecord[]>;
   /** Every space's videos past their retention. */
   expired(now: number): Promise<{ tenant: string; record: VideoRecord }[]>;
   deleteRecord(tenant: string, sessionId: string): Promise<void>;
@@ -82,6 +84,12 @@ export class SupabaseVideoStore implements VideoStore {
     return (data ?? []).map((r) => r.data as VideoRecord);
   }
 
+  async listAll(tenant: string): Promise<VideoRecord[]> {
+    const { data, error } = await this.db.from("live_videos").select("data").eq("tenant", tenant).order("updated_at", { ascending: false }).limit(500);
+    if (error) throw new Error(`video records: ${error.message}`);
+    return (data ?? []).map((r) => r.data as VideoRecord);
+  }
+
   async expired(now: number): Promise<{ tenant: string; record: VideoRecord }[]> {
     const { data, error } = await this.db.from("live_videos").select("tenant, data").lt("expires_at", new Date(now).toISOString()).limit(200);
     if (error) throw new Error(`video expired: ${error.message}`);
@@ -131,6 +139,9 @@ export class LocalVideoStore implements VideoStore {
   }
   async listRecords(tenant: string, sessionIds: string[]): Promise<VideoRecord[]> {
     return sessionIds.map((id) => this.records.get(`${tenant}|${id}`)).filter((r): r is VideoRecord => Boolean(r));
+  }
+  async listAll(tenant: string): Promise<VideoRecord[]> {
+    return [...this.records.entries()].filter(([k]) => k.startsWith(`${tenant}|`)).map(([, r]) => structuredClone(r)).sort((a, b) => b.startedAt - a.startedAt);
   }
   async expired(now: number): Promise<{ tenant: string; record: VideoRecord }[]> {
     return [...this.records.entries()].filter(([, r]) => r.expiresAt < now).map(([k, record]) => ({ tenant: k.split("|")[0], record }));
