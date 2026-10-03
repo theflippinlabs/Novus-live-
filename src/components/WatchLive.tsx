@@ -14,6 +14,9 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
   const [src, setSrc] = useState<{ url: string; delayed: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // The box takes the video's shape (TikTok LIVEs are vertical); zoom cuts the black bands TikTok adds.
+  const [ratio, setRatio] = useState(9 / 16);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     let alive = true;
@@ -33,6 +36,9 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
     // The signed TikTok link expires: on a playback error, ask for a fresh one (a few times).
     const retry = () => setTimeout(() => setAttempt((a) => (a < 5 ? a + 1 : a)), 1500);
     el.addEventListener("error", retry);
+    const shape = () => el.videoWidth && el.videoHeight && setRatio(el.videoWidth / el.videoHeight);
+    el.addEventListener("loadedmetadata", shape);
+    el.addEventListener("resize", shape);
     let destroy = () => undefined as void;
     if (el.canPlayType("application/vnd.apple.mpegurl")) {
       el.src = src.url;
@@ -52,6 +58,8 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
     }
     return () => {
       el.removeEventListener("error", retry);
+      el.removeEventListener("loadedmetadata", shape);
+      el.removeEventListener("resize", shape);
       destroy();
       el.removeAttribute("src");
       el.load();
@@ -77,10 +85,30 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       ) : (
-        <video ref={ref} className="live-video" controls playsInline autoPlay muted />
+        <>
+          <div className="watch-frame" style={{ aspectRatio: String(ratio) }}>
+            <video ref={ref} controls={zoom === 1} playsInline autoPlay muted style={{ transform: `scale(${zoom})` }} onClick={() => zoom !== 1 && ref.current && (ref.current.muted = !ref.current.muted)} />
+          </div>
+          <div className="row" style={{ gap: 8, justifyContent: "center", marginTop: 8 }}>
+            <button className="btn sm" onClick={() => setZoom((z) => (z === 1 ? 1.5 : z === 1.5 ? 2 : 1))}>
+              🔍 Zoom ×{zoom}
+            </button>
+            <button
+              className="btn sm"
+              onClick={() => {
+                const el = ref.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+                if (!el) return;
+                if (el.requestFullscreen) void el.requestFullscreen().catch(() => el.webkitEnterFullscreen?.());
+                else el.webkitEnterFullscreen?.();
+              }}
+            >
+              ⛶ {fr ? "Plein écran" : "Full screen"}
+            </button>
+          </div>
+        </>
       )}
       <div className="small muted" style={{ marginTop: 6 }}>
-        {fr ? "Son coupé au départ : touche le haut-parleur du lecteur pour l'entendre." : "Muted at first: tap the player's speaker to hear it."}
+        {fr ? "Son coupé au départ : touche le haut-parleur du lecteur pour l'entendre (en zoom, touche l'image). Zoom : agrandit l'image et coupe les bandes noires." : "Muted at first: tap the player's speaker to hear it (when zoomed, tap the picture). Zoom enlarges the picture and cuts the black bands."}
       </div>
     </div>
   );
