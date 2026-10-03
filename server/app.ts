@@ -1489,6 +1489,15 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       res.send(text.replace(/^(p-\d+\.ts)$/gm, (_m, name: string) => `/api/rooms/watch/live/${name}?${q}`));
     }),
   );
+  /** Where the picture sits inside TikTok's black bands (the app cuts them off). */
+  api.get(
+    "/rooms/watch/crop",
+    rateLimit("watch-crop", 30),
+    h(async (req) => {
+      const room = liveRoom(req);
+      return { crop: (await relay?.crop(relayKey(req, room)).catch(() => null)) ?? null };
+    }),
+  );
   api.get(
     "/rooms/watch/live/:name",
     rateLimit("watch-piece", 600),

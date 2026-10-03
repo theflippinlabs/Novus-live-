@@ -138,6 +138,7 @@ export const api = {
   video: (sessionId: string) => request<VideoInfo>("GET", `/history/${encodeURIComponent(sessionId)}/video`),
   videos: () => request<VideoLibrary>("GET", "/videos"),
   watch: () => request<{ url: string; delayed: boolean }>("GET", "/rooms/watch"),
+  watchCrop: () => request<{ crop: { x: number; y: number; w: number; h: number } | null }>("GET", "/rooms/watch/crop"),
   subtitles: (sessionId: string, lang?: "fr" | "en") => request<SubtitleStatus & { minutesNeeded: number; cues?: SubtitleCue[] }>("GET", `/history/${encodeURIComponent(sessionId)}/subtitles${lang ? `?lang=${lang}` : ""}`),
   makeSubtitles: (sessionId: string, lang: "fr" | "en") => request<SubtitleStatus>("POST", `/history/${encodeURIComponent(sessionId)}/subtitles`, { lang }),
   translate: (texts: string[], target: "en" | "fr") => request<{ translations: string[]; available: boolean }>("POST", "/translate", { texts, target }),

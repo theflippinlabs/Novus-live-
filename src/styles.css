@@ -3724,7 +3724,6 @@ main.view {
 /* The box takes the video's own shape (vertical for most LIVEs), as tall as the screen allows. */
 .watch-frame {
   position: relative;
-  height: min(62vh, 820px);
   max-width: 100%;
   margin: 0 auto;
   overflow: hidden;
@@ -3732,13 +3731,13 @@ main.view {
   background: #000;
 }
 
+/* The video is larger than the box when TikTok's black bands are cut: the box shows only the picture. */
 .watch-frame video {
+  position: absolute;
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  object-fit: fill;
   transform-origin: center;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease;
 }
 
 .live-dot {

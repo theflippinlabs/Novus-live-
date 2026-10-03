@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn } from "node:child_process";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ChildLike, SpawnLike } from "./RoomVideo";
 
@@ -21,10 +21,30 @@ export interface LiveRelayDeps {
   tmpRoot: string;
   ffmpeg?: string;
   spawn?: SpawnLike;
+  /** Read the input at its own pace (tests: a file stands in for the LIVE). */
+  realtime?: boolean;
   log?: (m: string) => void;
 }
 
+/** The picture inside TikTok's black bands, in pixels of the video frame. */
+export interface Crop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Last `crop=w:h:x:y` that ffmpeg's cropdetect printed, or null. */
+export function parseCrop(stderr: string): Crop | null {
+  const all = [...stderr.matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+  const m = all[all.length - 1];
+  if (!m) return null;
+  const [w, h, x, y] = m.slice(1, 5).map(Number);
+  return w > 0 && h > 0 ? { x, y, w, h } : null;
+}
+
 interface Relay {
+  crop?: { at: number; value: Crop | null };
   dir: string;
   proc: ChildLike | null;
   lastUse: number;
@@ -79,6 +99,30 @@ export class LiveRelay {
     return (await stat(file).catch(() => null)) ? file : null;
   }
 
+  /**
+   * Where the picture is inside TikTok's black bands (co-host LIVEs add some), so the app can
+   * cut them off. Measured on a recent piece at most every 20 seconds.
+   */
+  async crop(key: string): Promise<Crop | null> {
+    const relay = this.relays.get(key);
+    if (!relay) return null;
+    if (relay.crop && Date.now() - relay.crop.at < (relay.crop.value ? 20_000 : 4_000)) return relay.crop.value;
+    // The newest piece is still being written: take the one before.
+    const pieces = (await readdir(relay.dir).catch(() => [] as string[])).filter((f) => /^p-\d+\.ts$/.test(f)).sort((a, b) => Number(a.slice(2, -3)) - Number(b.slice(2, -3)));
+    const file = pieces.length >= 2 ? join(relay.dir, pieces[pieces.length - 2]) : null;
+    if (!file) return relay.crop?.value ?? null;
+    relay.crop = { at: Date.now(), value: relay.crop?.value ?? null };
+    const value = await new Promise<Crop | null>((resolve) => {
+      const spawn = this.deps.spawn ?? ((cmd, a, o) => nodeSpawn(cmd, a, { cwd: o.cwd, stdio: ["ignore", "ignore", "pipe"] }));
+      const p = spawn(this.deps.ffmpeg ?? "ffmpeg", ["-hide_banner", "-nostdin", "-i", file, "-an", "-vf", "cropdetect=limit=24:round=2:reset=0", "-frames:v", "12", "-f", "null", "-"], { cwd: relay.dir });
+      let err = "";
+      p.stderr?.on("data", (c: Buffer) => (err = (err + c.toString()).slice(-4000)));
+      p.on("exit", () => resolve(parseCrop(err)));
+    });
+    if (value) relay.crop = { at: Date.now(), value };
+    return relay.crop.value;
+  }
+
   async stopAll(): Promise<void> {
     for (const key of [...this.relays.keys()]) await this.stop(key);
   }
@@ -90,6 +134,7 @@ export class LiveRelay {
       "-loglevel", "error",
       "-nostdin",
       ...net,
+      ...(this.deps.realtime ? ["-re"] : []),
       "-i", url,
       "-map", "0:v:0?",
       "-map", "0:a:0?",

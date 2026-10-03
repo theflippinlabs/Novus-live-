@@ -223,6 +223,23 @@ describe.skipIf(!hasFfmpeg)("Watch the LIVE (relay)", () => {
     expect(await relay.piece("t|room", "../../etc/passwd")).toBeNull();
     expect(await relay.piece("t|other", name)).toBeNull();
     await relay.stopAll();
+
+    // Co-host LIVE: TikTok's black bands above and below the picture are measured, to be cut off.
+    const live = new LiveRelay({ tmpRoot: join(root, "tmp2"), realtime: true });
+    const banded = join(root, "banded.flv");
+    spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10", "-t", "12", "-vf", "pad=160:240:0:60:black", "-c:v", "libx264", "-preset", "ultrafast", "-g", "10", "-f", "flv", banded]);
+    expect(await live.ensure("t|banded", async () => banded)).toBe(true);
+    expect(await live.playlist("t|banded")).toContain("#EXTINF");
+    let crop = null;
+    for (let i = 0; i < 20 && !crop; i++) {
+      crop = await live.crop("t|banded");
+      if (!crop) await new Promise((r) => setTimeout(r, 21_000 / 20));
+    }
+    expect(crop).toMatchObject({ w: 160, x: 0 });
+    expect(crop!.h).toBeGreaterThanOrEqual(116);
+    expect(crop!.h).toBeLessThanOrEqual(124);
+    expect(Math.abs(crop!.y - 60)).toBeLessThanOrEqual(4);
+    await live.stopAll();
     expect(await relay.playlist("t|room")).toBeNull();
-  }, 30_000);
+  }, 60_000);
 });

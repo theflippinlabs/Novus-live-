@@ -14,9 +14,11 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
   const [src, setSrc] = useState<{ url: string; delayed: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  // The box takes the video's shape (TikTok LIVEs are vertical); zoom cuts the black bands TikTok adds.
-  const [ratio, setRatio] = useState(9 / 16);
+  // The frame size, and where the picture sits inside TikTok's black bands (measured by the server).
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [crop, setCrop] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [muted, setMuted] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -36,7 +38,7 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
     // The signed TikTok link expires: on a playback error, ask for a fresh one (a few times).
     const retry = () => setTimeout(() => setAttempt((a) => (a < 5 ? a + 1 : a)), 1500);
     el.addEventListener("error", retry);
-    const shape = () => el.videoWidth && el.videoHeight && setRatio(el.videoWidth / el.videoHeight);
+    const shape = () => el.videoWidth && el.videoHeight && setSize({ w: el.videoWidth, h: el.videoHeight });
     el.addEventListener("loadedmetadata", shape);
     el.addEventListener("resize", shape);
     let destroy = () => undefined as void;
@@ -66,6 +68,32 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
     };
   }, [src]);
 
+  // The black bands can change (a guest joins or leaves): measured again now and then.
+  useEffect(() => {
+    if (!src || src.delayed) return;
+    let alive = true;
+    const load = () =>
+      void api
+        .watchCrop()
+        .then((r) => alive && setCrop(r.crop))
+        .catch(() => undefined);
+    const first = setTimeout(load, 3000);
+    const id = setInterval(load, 15_000);
+    return () => {
+      alive = false;
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [src]);
+
+  // Cut the bands only when they are worth it (more than 4 % of the picture).
+  const box = (() => {
+    const W = size?.w ?? 9;
+    const H = size?.h ?? 16;
+    const c = crop && size && crop.w <= W && crop.h <= H && (crop.w < W * 0.96 || crop.h < H * 0.96) ? crop : { x: 0, y: 0, w: W, h: H };
+    return { ratio: c.w / c.h, style: { width: `${(W / c.w) * 100}%`, height: `${(H / c.h) * 100}%`, left: `${(-c.x / c.w) * 100}%`, top: `${(-c.y / c.h) * 100}%` } };
+  })();
+
   return (
     <div className="card watch-live">
       <div className="row" style={{ gap: 8, marginBottom: 6 }}>
@@ -86,11 +114,21 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
         </div>
       ) : (
         <>
-          <div className="watch-frame" style={{ aspectRatio: String(ratio) }}>
-            <video ref={ref} controls={zoom === 1} playsInline autoPlay muted style={{ transform: `scale(${zoom})` }} onClick={() => zoom !== 1 && ref.current && (ref.current.muted = !ref.current.muted)} />
+          <div className="watch-frame" style={{ aspectRatio: String(box.ratio), width: `min(100%, calc(52vh * ${box.ratio}))` }}>
+            <video
+              ref={ref}
+              playsInline
+              autoPlay
+              muted={muted}
+              style={{ ...box.style, transform: `scale(${zoom})` }}
+              onClick={() => setMuted((m) => !m)}
+            />
           </div>
           <div className="row" style={{ gap: 8, justifyContent: "center", marginTop: 8 }}>
-            <button className="btn sm" onClick={() => setZoom((z) => (z === 1 ? 1.5 : z === 1.5 ? 2 : 1))}>
+            <button className="btn sm" onClick={() => setMuted((m) => !m)}>
+              {muted ? `🔇 ${fr ? "Activer le son" : "Sound on"}` : `🔊 ${fr ? "Couper le son" : "Sound off"}`}
+            </button>
+            <button className="btn sm" onClick={() => setZoom((z) => (z === 1 ? 1.25 : z === 1.25 ? 1.5 : 1))}>
               🔍 Zoom ×{zoom}
             </button>
             <button
@@ -108,7 +146,7 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
         </>
       )}
       <div className="small muted" style={{ marginTop: 6 }}>
-        {fr ? "Son coupé au départ : touche le haut-parleur du lecteur pour l'entendre (en zoom, touche l'image). Zoom : agrandit l'image et coupe les bandes noires." : "Muted at first: tap the player's speaker to hear it (when zoomed, tap the picture). Zoom enlarges the picture and cuts the black bands."}
+        {fr ? "Les bandes noires de TikTok sont coupées automatiquement. Son coupé au départ : touche l'image ou « Activer le son »." : "TikTok's black bands are cut automatically. Muted at first: tap the picture or “Sound on”."}
       </div>
     </div>
   );
