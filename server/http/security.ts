@@ -1,15 +1,19 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 
-export function securityHeaders(_req: Request, res: Response, next: NextFunction): void {
-  res.setHeader(
-    "Content-Security-Policy",
-    [
+/**
+ * Security headers. `mediaOrigins`: where LIVE videos are read from (the Supabase storage host):
+ * the player loads the pieces straight from there (native HLS on iPhone, hls.js elsewhere).
+ */
+export function securityHeaders(mediaOrigins: string[] = []): (req: Request, res: Response, next: NextFunction) => void {
+  const media = mediaOrigins.length ? ` ${mediaOrigins.join(" ")}` : "";
+  const policy = [
       "default-src 'self'",
       "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
-      "connect-src 'self'",
+      `connect-src 'self'${media}`,
+      `media-src 'self' blob:${media}`,
       "font-src 'self'",
       "manifest-src 'self'",
       "worker-src 'self'",
@@ -17,14 +21,16 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
       "base-uri 'self'",
       "frame-ancestors 'none'",
       "form-action 'self'",
-    ].join("; "),
-  );
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(self), geolocation=()");
-  next();
+    ].join("; ");
+  return (_req, res, next) => {
+    res.setHeader("Content-Security-Policy", policy);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(self), geolocation=()");
+    next();
+  };
 }
 
 /** Fixed-window rate limiter keyed by client IP (+ bucket name). */

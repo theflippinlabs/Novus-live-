@@ -16,6 +16,7 @@ const TX = {
     stopped: "Recording stopped: the Video option's monthly limit was reached.",
     partial: "The stream dropped: the video is partial.",
     failed: "Download failed.",
+    started: (gb: string) => `Download started (≈ ${gb} GB, it can take several minutes). On iPhone, keep Novus open until it ends: the file goes to Files › Downloads.`,
   },
   fr: {
     title: "Vidéo du LIVE",
@@ -28,6 +29,7 @@ const TX = {
     stopped: "Enregistrement arrêté : la limite mensuelle de l'option Vidéo est atteinte.",
     partial: "Le flux a coupé : la vidéo est partielle.",
     failed: "Téléchargement impossible.",
+    started: (gb: string) => `Téléchargement lancé (≈ ${gb} Go, ça peut prendre plusieurs minutes). Sur iPhone, garde Novus ouvert jusqu'à la fin : le fichier arrive dans l'app Fichiers › Téléchargements.`,
   },
 };
 
@@ -40,6 +42,7 @@ export function VideoCard({ sessionId }: { sessionId: string }) {
   const [info, setInfo] = useState<VideoInfo | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [started, setStarted] = useState(false);
   const ref = useRef<HTMLVideoElement>(null);
   const src = `/api/history/${encodeURIComponent(sessionId)}/video.m3u8`;
 
@@ -86,6 +89,7 @@ export function VideoCard({ sessionId }: { sessionId: string }) {
       document.body.appendChild(a);
       a.click();
       a.remove();
+      setStarted(true);
     } catch (e) {
       toast(e instanceof ApiError ? tx.failed : tx.failed, "warn");
     } finally {
@@ -110,6 +114,7 @@ export function VideoCard({ sessionId }: { sessionId: string }) {
           {busy ? tx.preparing : `⤓ ${tx.download}`}
         </button>
       </div>
+      {started ? <div className="small" style={{ marginTop: 8, color: "var(--gold)" }}>{tx.started((info.bytes / 1024 ** 3).toFixed(1))}</div> : null}
       <div className="small muted" style={{ marginTop: 8 }}>{tx.expires(date)}</div>
     </div>
   );

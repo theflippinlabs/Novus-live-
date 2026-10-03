@@ -67,7 +67,7 @@ import { openLocal, segmentPath, type VideoStore } from "./video/VideoStore";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
-    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens" | "sessionSecret" | "supportEmail">>;
+    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens" | "sessionSecret" | "supportEmail" | "supabaseUrl">>;
   /** Single-space mode (tests, open access): every key opens these rooms. */
   rooms?: RoomRegistry;
   /** "Send in chat" through Euler Stream OAuth (optional). */
@@ -343,7 +343,15 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   const app = express();
   app.disable("x-powered-by");
   if (config.trustProxy) app.set("trust proxy", 1);
-  app.use(securityHeaders);
+  // LIVE videos are played straight from Supabase storage (signed links).
+  const storageOrigin = (() => {
+    try {
+      return config.supabaseUrl ? [new URL(config.supabaseUrl).origin] : [];
+    } catch {
+      return [];
+    }
+  })();
+  app.use(securityHeaders(storageOrigin));
 
   // Stripe webhooks need the raw body for signature verification (before any JSON parser).
   app.post("/api/billing/webhook", express.raw({ type: "*/*", limit: "1mb" }), (req, res) => {
