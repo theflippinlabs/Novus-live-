@@ -38,7 +38,7 @@ async function main() {
   const config = loadConfig();
 
   const ai: AIProvider = config.anthropicApiKey
-    ? new AnthropicProvider({ apiKey: config.anthropicApiKey, model: config.anthropicModel, effort: config.anthropicEffort })
+    ? new AnthropicProvider({ apiKey: config.anthropicApiKey, model: config.anthropicModel, effort: config.anthropicEffort, translateModel: config.anthropicTranslateModel })
     : new NullAIProvider();
 
   let repo: Repository = new MemoryRepository(config.dataDir);

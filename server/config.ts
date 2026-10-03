@@ -26,6 +26,8 @@ export interface Config {
   ingestToken?: string;
   anthropicApiKey?: string;
   anthropicModel: string;
+  /** Model for translation (chat, exports, subtitles): ANTHROPIC_TRANSLATE_MODEL, Claude Haiku 4.5 by default. */
+  anthropicTranslateModel: string;
   anthropicEffort: "low" | "medium" | "high";
   aiMaxCallsPerMinute: number;
   aiBatchSize: number;
@@ -93,6 +95,7 @@ export function loadConfig(): Config {
     ingestToken,
     anthropicApiKey: str("ANTHROPIC_API_KEY"),
     anthropicModel: str("ANTHROPIC_MODEL") ?? "claude-opus-5-5",
+    anthropicTranslateModel: str("ANTHROPIC_TRANSLATE_MODEL") ?? "claude-haiku-4-5",
     anthropicEffort: effort as Config["anthropicEffort"],
     aiMaxCallsPerMinute: int("AI_MAX_CALLS_PER_MINUTE", 20, 1, 600),
     aiBatchSize: int("AI_BATCH_SIZE", 8, 1, 25),

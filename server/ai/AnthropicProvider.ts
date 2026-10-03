@@ -74,17 +74,30 @@ export interface AnthropicProviderOptions {
   apiKey: string;
   model: string;
   effort?: "low" | "medium" | "high";
+  /** Model for chat / subtitle translation (a smaller, cheaper model is enough). Defaults to `model`. */
+  translateModel?: string;
   timeoutMs?: number;
 }
+
+/** $ per million tokens (input, output): to count a smaller model's tokens at their real weight. */
+const PRICES: Record<string, [number, number]> = {
+  "claude-haiku-4-5": [1, 5],
+  "claude-sonnet-5-5": [2, 10],
+  "claude-sonnet-5": [2, 10],
+  "claude-opus-5-5": [4, 20],
+  "claude-opus-5": [5, 25],
+};
 
 export class AnthropicProvider implements AIProvider {
   readonly name = "anthropic";
   readonly model: string;
   private client: Anthropic;
   private effort?: "low" | "medium" | "high";
+  private translateModel: string;
 
   constructor(opts: AnthropicProviderOptions) {
     this.model = opts.model;
+    this.translateModel = opts.translateModel ?? opts.model;
     // Haiku 4.5 does not accept the effort parameter.
     this.effort = opts.model.startsWith("claude-haiku") ? undefined : opts.effort;
     this.client = new Anthropic({ apiKey: opts.apiKey, timeout: opts.timeoutMs ?? 30_000, maxRetries: 1 });
@@ -202,8 +215,18 @@ export class AnthropicProvider implements AIProvider {
 
   async translate(texts: string[], target: "en" | "fr", meter?: UsageCallback): Promise<string[]> {
     if (!texts.length) return [];
+    try {
+      return await this.translateWith(this.translateModel, texts, target, meter);
+    } catch (e) {
+      // The smaller model unavailable (or refusing): the main model takes over.
+      if (this.translateModel === this.model) throw e;
+      return this.translateWith(this.model, texts, target, meter);
+    }
+  }
+
+  private async translateWith(model: string, texts: string[], target: "en" | "fr", meter?: UsageCallback): Promise<string[]> {
     const response = await this.client.messages.parse({
-      model: this.model,
+      model,
       max_tokens: 8000,
       system: TRANSLATE_SYSTEM,
       messages: [
@@ -212,9 +235,15 @@ export class AnthropicProvider implements AIProvider {
           content: `Target language: ${target === "fr" ? "French" : "English"}.\n<items>\n${JSON.stringify(texts.map((text, i) => ({ i, text: text.slice(0, 500) })))}\n</items>`,
         },
       ],
-      output_config: { format: zodOutputFormat(translationSchema), effort: "low" },
+      // Haiku 4.5 does not accept the effort parameter.
+      output_config: { format: zodOutputFormat(translationSchema), ...(model.startsWith("claude-haiku") ? {} : { effort: "low" as const }) },
     });
-    meter?.({ inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens });
+    // Counted in the AI allowance at the main model's weight (the allowance is sized for it):
+    // a smaller model's tokens count for what they really cost.
+    const used = PRICES[model];
+    const main = PRICES[this.model];
+    const w = used && main ? [used[0] / main[0], used[1] / main[1]] : [1, 1];
+    meter?.({ inputTokens: Math.ceil(response.usage.input_tokens * w[0]), outputTokens: Math.ceil(response.usage.output_tokens * w[1]) });
     if (response.stop_reason === "refusal" || !response.parsed_output) throw new Error(`AI translation unavailable (stop_reason=${response.stop_reason})`);
     const out = [...texts];
     for (const t of response.parsed_output.translations) if (t.i >= 0 && t.i < texts.length && t.text.trim()) out[t.i] = t.text;
