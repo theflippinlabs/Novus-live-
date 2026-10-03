@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createHmac, randomUUID } from "node:crypto";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import {
   actionRequestSchema,
   catchUpRequestSchema,
@@ -37,7 +37,7 @@ import {
   settingsPatchSchema,
   tiktokConnectSchema,
 } from "../shared/schemas";
-import { PERMISSIONS, type ActionType, type DemoSpeed, type Leaderboard, type LiveEvent, type Me, type Permission, type Settings, type ViewerFlag } from "../shared/types";
+import { PERMISSIONS, type ActionType, type ChatLine, type DemoSpeed, type Leaderboard, type LiveEvent, type Me, type Permission, type Settings, type ViewerFlag } from "../shared/types";
 import type { Config } from "./config";
 import { RecordingError } from "./core/LiveRecorder";
 import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
@@ -62,12 +62,15 @@ import { can, canSeeAccount, TeamError, TeamStore, type MemberInput, type Princi
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import type { Translator } from "./ai/Translator";
 import { buildPlaylist, videoInfo, videoParts } from "./video/playlist";
 import { openLocal, segmentPath, type VideoStore } from "./video/VideoStore";
+import { SubtitleService, toSrt } from "./video/Subtitles";
+import { monthKey } from "./billing/Entitlements";
 
 export interface AppDeps {
   config: Pick<Config, "accessToken" | "ingestToken" | "production" | "webDir" | "trustProxy" | "apiRateLimitPerMinute" | "ingestRateLimitPerMinute"> &
-    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens" | "sessionSecret" | "supportEmail" | "supabaseUrl">>;
+    Partial<Pick<Config, "reportTimeZone" | "publicUrl" | "accessTokens" | "sessionSecret" | "supportEmail" | "supabaseUrl" | "elevenLabsApiKey">>;
   /** Single-space mode (tests, open access): every key opens these rooms. */
   rooms?: RoomRegistry;
   /** "Send in chat" through Euler Stream OAuth (optional). */
@@ -86,6 +89,8 @@ export interface AppDeps {
   push?: PushService;
   /** LIVE video (option): ffmpeg available, and where videos are stored. */
   video?: { ready: boolean; store: VideoStore };
+  /** Tests: stands in for the speech-to-text HTTP call. */
+  subtitlesHttp?: typeof fetch;
 }
 
 /** One person's Novus: their own followed accounts, settings, history and "Send in chat" account. */
@@ -95,6 +100,8 @@ export interface Space {
   chat: EulerChatSender;
   /** Agency team (members with their own access codes and permissions). */
   team?: TeamStore;
+  /** French / English translation of chat and subtitles (the space's metered AI). */
+  translator?: Translator;
 }
 
 class HttpError extends Error {
@@ -142,7 +149,7 @@ const mainOnly = (room: Room): Room => {
   return room;
 };
 
-export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace, mailer = new ResendMailer({}), aiCost = new AnthropicCostReport({}), push, video }: AppDeps) {
+export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces: spaceList, billing: billingDep, provisionSpace, mailer = new ResendMailer({}), aiCost = new AnthropicCostReport({}), push, video, subtitlesHttp }: AppDeps) {
   // The hashed app bundle currently served (e.g. "index-0YX36Sc8.js"): lets installed apps notice a new version.
   const build = (() => {
     try {
@@ -335,6 +342,19 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   };
   /** Language of an export: `?lang=` from the app, else the saved setting. */
   const langOf = (req: Request): "en" | "fr" => (req.query.lang === "fr" || req.query.lang === "en" ? req.query.lang : sp(req).rooms.settings.language);
+  /**
+   * Exports with `?translate=1`: each message also in the export's language (`?lang=`), for the
+   * first EXPORT_TRANSLATE_MAX messages (the plan's AI allowance applies).
+   */
+  const EXPORT_TRANSLATE_MAX = 3000;
+  const withTranslation = async (req: Request, lines: ChatLine[]): Promise<ChatLine[]> => {
+    const tr = sp(req).translator;
+    if (req.query.translate !== "1" || !tr?.available()) return lines;
+    const head = lines.slice(0, EXPORT_TRANSLATE_MAX);
+    const out = await tr.translate(head.map((l) => l.text), langOf(req)).catch(() => head.map((l) => l.text));
+    const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    return lines.map((l, i) => (i < head.length && out[i] && !same(out[i], l.text) ? { ...l, translation: out[i] } : l));
+  };
   /** ASCII file name from a LIVE title and its start date. */
   const fileName = (title: string, startedAt: number, ext: string) => {
     const slug = title.normalize("NFKD").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "live";
@@ -1058,6 +1078,22 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       throw new HttpError(502, "ai_failed");
     }
   };
+  // French / English translation of chat messages (counted in the plan's AI allowance; cached).
+  const translateSchema = z.object({ texts: z.array(z.string().max(500)).max(60), target: z.enum(["en", "fr"]) });
+  api.post(
+    "/translate",
+    rateLimit("translate", 60),
+    h(async (req) => {
+      const { texts, target } = parse(translateSchema, req.body);
+      const tr = sp(req).translator;
+      if (!tr?.available()) return { translations: texts, available: false };
+      try {
+        return { translations: await tr.translate(texts, target), available: true };
+      } catch {
+        return { translations: texts, available: false };
+      }
+    }),
+  );
   api.post(
     "/assistant/ask",
     rateLimit("copilot", 20),
@@ -1354,6 +1390,65 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       });
     }),
   );
+  // ---------------------------------------------------------------- subtitles (speech-to-text + translation)
+  /** Subtitle minutes per month: a fifth of the Video option's recorded hours (speech-to-text costs about a dollar per 3 hours). */
+  const subtitleMinutes = (tenant: string) => {
+    const limit = (billing.effective(tenant).entitlements.recording_hours * 60) / 5;
+    return { limit, left: limit - billing.meter.get(tenant, monthKey(Date.now()), "transcribe_minutes") };
+  };
+  const subtitles = video
+    ? new SubtitleService({
+        store: video.store,
+        apiKey: config.elevenLabsApiKey,
+        minutes: subtitleMinutes,
+        meter: (tenant, minutes) => billing.meterAdd(tenant, "transcribe_minutes", minutes),
+        http: subtitlesHttp,
+        log: (m) => console.warn(m),
+      })
+    : null;
+  /** Where ffmpeg reads a video's pieces: files (local store) or short-lived signed links. */
+  const pieceInputs = (paths: string[]) => (video!.store.kind === "local" ? Promise.resolve(paths.map((p) => video!.store.localFile?.(p) ?? "")) : video!.store.urls(paths, 3 * 3600));
+  const subLang = (req: Request) => (req.query.lang === "fr" || req.query.lang === "en" ? req.query.lang : null);
+  api.get(
+    "/history/:id/subtitles",
+    h(async (req) => {
+      const { rec } = await videoFor(req);
+      const status = await subtitles!.status(sp(req).id, rec.sessionId);
+      const lang = subLang(req);
+      const subs = lang && status.ready.includes(lang) ? await video!.store.getSubtitles(sp(req).id, rec.sessionId, lang) : null;
+      return { ...status, minutesNeeded: await subtitles!.minutesNeeded(sp(req).id, rec), ...(subs ? { cues: subs.cues } : {}) };
+    }),
+  );
+  api.post(
+    "/history/:id/subtitles",
+    rateLimit("subtitles", 10),
+    h(async (req) => {
+      const { rec } = await videoFor(req);
+      if (rec.status === "recording") throw new HttpError(409, "video_recording");
+      const lang = (req.body as { lang?: unknown })?.lang;
+      if (lang !== "fr" && lang !== "en") throw new HttpError(400, "invalid_input");
+      try {
+        await subtitles!.start(sp(req).id, rec, lang, sp(req).translator, pieceInputs);
+      } catch (e) {
+        const code = e instanceof Error ? e.message : "subtitles_failed";
+        throw code === "subtitles_limit" ? planLimit(code) : new HttpError(code === "subtitles_not_configured" ? 503 : 409, code);
+      }
+      return subtitles!.status(sp(req).id, rec.sessionId);
+    }),
+  );
+  api.get(
+    "/history/:id/subtitles.srt",
+    h(async (req, res) => {
+      const { rec, detail } = await videoFor(req);
+      const lang = subLang(req);
+      const subs = lang ? await video!.store.getSubtitles(sp(req).id, rec.sessionId, lang) : null;
+      if (!subs) throw new HttpError(404, "subtitles_not_found");
+      res.setHeader("Content-Type", "application/x-subrip; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName(`${detail.entry.title}-sous-titres-${lang}`, detail.entry.startedAt, "srt")}"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send("\uFEFF" + toSrt(subs.cues));
+    }),
+  );
   /** Stats › Videos: every LIVE video of the space this person may see. */
   api.get(
     "/videos",
@@ -1444,7 +1539,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
       useExport(req);
-      const csv = chatCsv(await sp(req).history.chat(id), timeZone, langOf(req));
+      const csv = chatCsv(await withTranslation(req, await sp(req).history.chat(id)), timeZone, langOf(req));
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName(detail.entry.title, detail.entry.startedAt, "csv")}"`);
       res.setHeader("Cache-Control", "no-store");
@@ -1460,7 +1555,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const detail = await historyDetail(req, id);
       if (!detail) throw new HttpError(404, "session_not_found");
       useExport(req);
-      const txt = chatTxt(detail.entry, await sp(req).history.chat(id), timeZone, langOf(req));
+      const txt = chatTxt(detail.entry, await withTranslation(req, await sp(req).history.chat(id)), timeZone, langOf(req));
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName(`${detail.entry.title}-chat`, detail.entry.startedAt, "txt")}"`);
       res.setHeader("Cache-Control", "no-store");
@@ -1479,7 +1574,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       const pdf = await buildReportPdf({
         entry: detail.entry,
         analytics: detail.analytics,
-        chat: await sp(req).history.chat(id),
+        chat: await withTranslation(req, await sp(req).history.chat(id)),
         lang: langOf(req),
         timeZone,
         logo: reportLogo(),

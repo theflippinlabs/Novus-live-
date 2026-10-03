@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join, normalize } from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { VideoRecord } from "../../shared/types";
+import type { VideoRecord, VideoSubtitles } from "../../shared/types";
 
 /*
  * Where LIVE videos live. Production: a private Supabase Storage bucket (only the server's
@@ -31,6 +31,11 @@ export interface VideoStore {
   /** Every space's videos past their retention. */
   expired(now: number): Promise<{ tenant: string; record: VideoRecord }[]>;
   deleteRecord(tenant: string, sessionId: string): Promise<void>;
+  saveSubtitles(tenant: string, sessionId: string, subs: VideoSubtitles): Promise<void>;
+  getSubtitles(tenant: string, sessionId: string, lang: string): Promise<VideoSubtitles | null>;
+  /** Languages with subtitles for a video. */
+  subtitleLangs(tenant: string, sessionId: string): Promise<string[]>;
+  deleteSubtitles(tenant: string, sessionId: string): Promise<void>;
 }
 
 /** "<tenant>/<session>/<file>": only safe characters, never "..". */
@@ -99,6 +104,29 @@ export class SupabaseVideoStore implements VideoStore {
   async deleteRecord(tenant: string, sessionId: string): Promise<void> {
     const { error } = await this.db.from("live_videos").delete().eq("tenant", tenant).eq("session_id", sessionId);
     if (error) throw new Error(`video delete: ${error.message}`);
+    await this.deleteSubtitles(tenant, sessionId);
+  }
+
+  async saveSubtitles(tenant: string, sessionId: string, subs: VideoSubtitles): Promise<void> {
+    const { error } = await this.db.from("live_video_subtitles").upsert({ tenant, session_id: sessionId, lang: subs.lang, data: subs, updated_at: new Date().toISOString() });
+    if (error) throw new Error(`subtitles: ${error.message}`);
+  }
+
+  async getSubtitles(tenant: string, sessionId: string, lang: string): Promise<VideoSubtitles | null> {
+    const { data, error } = await this.db.from("live_video_subtitles").select("data").eq("tenant", tenant).eq("session_id", sessionId).eq("lang", lang).limit(1);
+    if (error) throw new Error(`subtitles: ${error.message}`);
+    return (data?.[0]?.data as VideoSubtitles | undefined) ?? null;
+  }
+
+  async subtitleLangs(tenant: string, sessionId: string): Promise<string[]> {
+    const { data, error } = await this.db.from("live_video_subtitles").select("lang").eq("tenant", tenant).eq("session_id", sessionId);
+    if (error) throw new Error(`subtitles: ${error.message}`);
+    return (data ?? []).map((r) => r.lang as string);
+  }
+
+  async deleteSubtitles(tenant: string, sessionId: string): Promise<void> {
+    const { error } = await this.db.from("live_video_subtitles").delete().eq("tenant", tenant).eq("session_id", sessionId);
+    if (error) throw new Error(`subtitles delete: ${error.message}`);
   }
 }
 
@@ -148,6 +176,20 @@ export class LocalVideoStore implements VideoStore {
   }
   async deleteRecord(tenant: string, sessionId: string): Promise<void> {
     this.records.delete(`${tenant}|${sessionId}`);
+    await this.deleteSubtitles(tenant, sessionId);
+  }
+  private subs = new Map<string, VideoSubtitles>();
+  async saveSubtitles(tenant: string, sessionId: string, subs: VideoSubtitles): Promise<void> {
+    this.subs.set(`${tenant}|${sessionId}|${subs.lang}`, structuredClone(subs));
+  }
+  async getSubtitles(tenant: string, sessionId: string, lang: string): Promise<VideoSubtitles | null> {
+    return structuredClone(this.subs.get(`${tenant}|${sessionId}|${lang}`) ?? null);
+  }
+  async subtitleLangs(tenant: string, sessionId: string): Promise<string[]> {
+    return [...this.subs.keys()].filter((k) => k.startsWith(`${tenant}|${sessionId}|`)).map((k) => k.split("|")[2]);
+  }
+  async deleteSubtitles(tenant: string, sessionId: string): Promise<void> {
+    for (const k of [...this.subs.keys()]) if (k.startsWith(`${tenant}|${sessionId}|`)) this.subs.delete(k);
   }
 }
 

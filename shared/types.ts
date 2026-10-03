@@ -716,6 +716,8 @@ export interface ChatLine {
   text: string;
   severity: Severity;
   riskScore: number;
+  /** Exports with translation: the message in the chosen language (absent when unchanged). */
+  translation?: string;
 }
 
 export interface StreamReport {
@@ -906,6 +908,35 @@ export interface VideoRecord {
   expiresAt: number;
   /** Kept in the app's Videos: no automatic deletion. */
   kept?: boolean;
+}
+
+/** One subtitle line: seconds from the start of the video. */
+export interface SubtitleCue {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** A video's subtitles in one language. */
+export interface VideoSubtitles {
+  lang: string;
+  /** Language spoken in the LIVE (ISO code from speech-to-text), when this is the transcript itself. */
+  source?: string;
+  cues: SubtitleCue[];
+}
+
+/** Where a video's subtitles stand, per language (Stats › Videos). */
+export interface SubtitleStatus {
+  /** Speech-to-text is configured on the server. */
+  configured: boolean;
+  /** Languages ready to show. */
+  ready: string[];
+  /** A job in progress: language and share done (0-1). */
+  job?: { lang: string; progress: number; phase: "transcribing" | "translating" };
+  error?: string;
+  /** Subtitle minutes left this month, and the month's allowance. */
+  minutesLeft: number;
+  minutesLimit: number;
 }
 
 /** One downloadable part of a video (long LIVEs are saved in parts a phone can hold). */

@@ -42,6 +42,8 @@ export interface AIProvider {
   summarize?(facts: string, language: "en" | "fr", meter?: UsageCallback): Promise<string>;
   /** Optional LIVE copilot: answers questions or drafts chat messages from the room's live data. */
   copilot?(req: CopilotRequest, meter?: UsageCallback): Promise<string>;
+  /** Optional: translate short texts (chat messages, subtitles) into one language, same order. */
+  translate?(texts: string[], target: "en" | "fr", meter?: UsageCallback): Promise<string[]>;
 }
 
 export interface CopilotRequest {
@@ -89,6 +91,11 @@ export class MeteredAIProvider implements AIProvider {
     const inner = this.inner.copilot?.bind(this.inner);
     if (!inner) return undefined;
     return (req) => inner(req, (u) => this.gate.record(1, u.inputTokens, u.outputTokens));
+  }
+  get translate(): AIProvider["translate"] {
+    const inner = this.inner.translate?.bind(this.inner);
+    if (!inner) return undefined;
+    return (texts, target) => inner(texts, target, (u) => this.gate.record(1, u.inputTokens, u.outputTokens));
   }
 }
 

@@ -4,6 +4,7 @@ import type { AnalyzedComment } from "../../shared/types";
 import { tr, useLang, useT } from "../i18n";
 import { clock } from "../format";
 import { openViewer, useStore } from "../store";
+import { useChatTranslator, useTranslated } from "../chatTranslate";
 import { Avatar, SeverityBadge } from "./ui";
 
 // Virtualized chat: only visible rows are in the DOM; rows are memoized on the
@@ -14,6 +15,7 @@ const ChatRow = memo(function ChatRow({ c, host }: { c: AnalyzedComment; host: b
   const a = c.analysis;
   const flagged = a.severity !== "normal";
   const ai = lang === "fr" ? "IA" : "AI";
+  const translated = useTranslated(c);
   return (
     <div className={`msg ${a.severity}`} onClick={() => openViewer(c.viewer.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && openViewer(c.viewer.id)}>
       <Avatar viewer={c.viewer} />
@@ -25,6 +27,11 @@ const ChatRow = memo(function ChatRow({ c, host }: { c: AnalyzedComment; host: b
           <span className="msg-time">{clock(c.timestamp)}</span>
         </div>
         <div className="msg-text">{c.text}</div>
+        {translated ? (
+          <div className="msg-translation">
+            ⇄ {translated}
+          </div>
+        ) : null}
         {flagged && a.reasons.length ? (
           <div className="msg-reasons">
             {a.reasons.slice(0, 3).map((r) => (
@@ -44,6 +51,7 @@ export function ChatStream({ flaggedOnly }: { flaggedOnly: boolean }) {
   const all = useStore((s) => s.comments);
   const streamer = useStore((s) => s.settings.streamerName.toLowerCase());
   const comments = useMemo(() => (flaggedOnly ? all.filter((c) => c.analysis.severity !== "normal") : all), [all, flaggedOnly]);
+  useChatTranslator(comments);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const [unread, setUnread] = useState(0);

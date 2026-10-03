@@ -2,6 +2,7 @@ import { createApp, type Space } from "./app";
 import { accessKeys } from "./http/security";
 import { loadConfig } from "./config";
 import Stripe from "stripe";
+import { Translator } from "./ai/Translator";
 import { MeteredAIProvider, NullAIProvider, type AIProvider } from "./ai/AIProvider";
 import { BillingService, type StripeLike } from "./billing/Billing";
 import { applyPlanToRooms } from "./billing/wire";
@@ -318,7 +319,7 @@ async function main() {
     await rooms.syncProfiles();
     rooms.start();
 
-    return { id: tenant, rooms, chat: spaceChat };
+    return { id: tenant, rooms, chat: spaceChat, translator: new Translator(spaceAi) };
   };
 
   const connectionFactory = defaultConnectionFactory(config.eulerApiKey, (m) => console.log(m));
@@ -391,7 +392,7 @@ async function main() {
     console.log(`[novus] Send in chat: ${chat.configured ? "Euler OAuth configured" : "off (set EULER_CLIENT_ID / EULER_CLIENT_SECRET)"}`);
     console.log(`[novus] Real AI cost: ${aiCost.configured ? "Anthropic Cost API on" : "estimate only (set ANTHROPIC_ADMIN_KEY)"} · Code recovery e-mail: ${mailer.enabled ? "on" : "off (set RESEND_API_KEY / MAIL_FROM)"}`);
     console.log(`[novus] Billing: ${billing.stripeEnabled ? `Stripe on${config.stripeWebhookSecret ? "" : " (STRIPE_WEBHOOK_SECRET missing)"}` : "Stripe off (set STRIPE_SECRET_KEY)"} · ${billing.all().length} workspace(s)`);
-    console.log(`[novus] LIVE video: ${videoKit.ready ? `on (${videoStore.kind} storage)` : "off (ffmpeg not found or VIDEO_RECORDING=off)"}`);
+    console.log(`[novus] LIVE video: ${videoKit.ready ? `on (${videoStore.kind} storage)` : "off (ffmpeg not found or VIDEO_RECORDING=off)"} · subtitles: ${config.elevenLabsApiKey ? "on (ElevenLabs speech-to-text)" : "off (set ELEVENLABS_API_KEY)"}`);
     console.log(`[novus] Connector ingestion: ${config.ingestToken ? "enabled" : "disabled (set INGEST_TOKEN)"}`);
   });
 

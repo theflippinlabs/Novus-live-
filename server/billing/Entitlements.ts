@@ -78,6 +78,8 @@ export const METRICS = [
   "video_mb_served",
   "screenshots",
   "chat_messages_sent",
+  /** Video audio sent to speech-to-text for subtitles (minutes). */
+  "transcribe_minutes",
 ] as const;
 export type Metric = (typeof METRICS)[number];
 

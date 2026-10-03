@@ -47,6 +47,8 @@ export interface Config {
   stripeWebhookSecret?: string;
   /** Customer Portal configuration id (bpc_…), for a Stripe account shared with other apps. */
   stripePortalConfiguration?: string;
+  /** ElevenLabs API key: speech-to-text for video subtitles (optional; server only). */
+  elevenLabsApiKey?: string;
   /** Anthropic Admin API key (sk-ant-admin…): reads the real monthly cost for the admin dashboard. */
   anthropicAdminKey?: string;
   /** Only count this Anthropic workspace's costs ("default" for the default workspace). */
@@ -111,6 +113,7 @@ export function loadConfig(): Config {
     stripeWebhookSecret: str("STRIPE_WEBHOOK_SECRET"),
     stripePortalConfiguration: str("STRIPE_PORTAL_CONFIGURATION"),
     anthropicAdminKey: str("ANTHROPIC_ADMIN_KEY"),
+    elevenLabsApiKey: str("ELEVENLABS_API_KEY"),
     anthropicCostWorkspace: str("ANTHROPIC_COST_WORKSPACE_ID"),
     resendApiKey: str("RESEND_API_KEY"),
     mailFrom: str("MAIL_FROM"),

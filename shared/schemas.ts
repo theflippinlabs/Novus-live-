@@ -368,6 +368,7 @@ export const adminConfigSchema = z
         per_provider_request: z.number().min(0),
         per_live_hour: z.number().min(0),
         per_recording_hour: z.number().min(0),
+        per_transcribed_hour: z.number().min(0),
         per_storage_gb_month: z.number().min(0),
         per_1000_screenshots: z.number().min(0),
         per_workspace_month: z.number().min(0),

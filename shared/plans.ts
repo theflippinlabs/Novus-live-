@@ -263,6 +263,8 @@ export interface CostAssumptions {
   per_live_hour: number;
   /** Server time of one recorded hour (ffmpeg copies the stream: no re-encoding). */
   per_recording_hour: number;
+  /** Speech-to-text for subtitles, per hour of audio (ElevenLabs Scribe, EUR, upper bound). */
+  per_transcribed_hour: number;
   /** Railway egress: every recorded gigabyte is uploaded once to storage ($0.05/GB). */
   per_video_gb_uploaded: number;
   /** Supabase Storage size beyond the Pro quota ($0.0213/GB-month). */
@@ -288,6 +290,7 @@ export const DEFAULT_COSTS: CostAssumptions = {
   per_provider_request: 0,
   per_live_hour: 0.02,
   per_recording_hour: 0.003,
+  per_transcribed_hour: 0.37,
   per_video_gb_uploaded: 0.046,
   per_storage_gb_month: 0.0196,
   per_video_gb_served: 0.083,

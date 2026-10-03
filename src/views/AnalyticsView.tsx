@@ -118,12 +118,16 @@ function ExportCard({ sessionId }: { sessionId: string }) {
   const tx = TX[lang];
   const [busy, setBusy] = useState<Kind | null>(null);
   const [ready, setReady] = useState<File | null>(null);
+  // Language of the files, and the chat translated into it.
+  const [docLang, setDocLang] = useState<"fr" | "en">(lang);
+  const [translate, setTranslate] = useState(false);
+  const fr = lang === "fr";
 
   const run = async (kind: Kind) => {
     setBusy(kind);
     setReady(null);
     try {
-      const path = `/history/${encodeURIComponent(sessionId)}/${EXPORTS[kind]}?lang=${lang}`;
+      const path = `/history/${encodeURIComponent(sessionId)}/${EXPORTS[kind]}?lang=${docLang}${translate && kind !== "pdf" ? "&translate=1" : ""}`;
       const file = await fetchExport(path, `novus-live-${EXPORTS[kind]}`);
       try {
         await saveFile(file);
@@ -142,6 +146,29 @@ function ExportCard({ sessionId }: { sessionId: string }) {
       <div className="card-title">
         <span className="gold">◆</span> {tx.export}
       </div>
+      <div className="row wrap" style={{ gap: 10, marginBottom: 10 }}>
+        <Segmented<"fr" | "en">
+          label={fr ? "Langue des fichiers" : "Language of the files"}
+          value={docLang}
+          options={[
+            { value: "fr", label: "Français" },
+            { value: "en", label: "English" },
+          ]}
+          onChange={setDocLang}
+          gold
+        />
+        <label className="row small" style={{ gap: 6 }}>
+          <input type="checkbox" checked={translate} onChange={(e) => setTranslate(e.target.checked)} />
+          {fr ? `Traduire les messages du chat en ${docLang === "fr" ? "français" : "anglais"}` : `Translate chat messages into ${docLang === "fr" ? "French" : "English"}`}
+        </label>
+      </div>
+      {translate ? (
+        <div className="small muted" style={{ marginBottom: 8 }}>
+          {fr
+            ? "Chaque message est suivi de sa traduction (traduction automatique, l'original reste). Compte dans le quota IA du mois ; un long LIVE peut prendre une minute."
+            : "Each message is followed by its translation (machine translation, the original stays). Counts in this month's AI allowance; a long LIVE can take a minute."}
+        </div>
+      ) : null}
       <div className="grid-2">
         <button className="btn gold" onClick={() => run("pdf")} disabled={busy !== null}>
           {busy === "pdf" ? tx.preparing : `⤓ ${tx.pdf}`}

@@ -99,11 +99,13 @@ export function chatCsv(lines: ChatLine[], timeZone: string, lang: "en" | "fr" =
   const fmt = new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : "en-GB", { timeZone, dateStyle: "short", timeStyle: "medium" });
   // Neutralize spreadsheet formulas (CSV injection): a cell must not start with = + - @.
   const q = (v: string) => `"${(/^[=+\-@\t\r]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"`;
+  const translated = lines.some((l) => l.translation);
   const header = lang === "fr" ? ["heure", "pseudo", "message", "gravité", "risque"] : ["time", "username", "message", "severity", "risk"];
+  if (translated) header.push(lang === "fr" ? "traduction" : "translation");
   // French spreadsheets expect ";" as the separator.
   const sep = lang === "fr" ? ";" : ",";
   const rows = [header.join(sep)];
-  for (const l of lines) rows.push([q(fmt.format(l.t)), q(l.username), q(l.text), word(l.severity, lang), String(l.riskScore)].join(sep));
+  for (const l of lines) rows.push([q(fmt.format(l.t)), q(l.username), q(l.text), word(l.severity, lang), String(l.riskScore), ...(translated ? [q(l.translation ?? "")] : [])].join(sep));
   return "\uFEFF" + rows.join("\r\n") + "\r\n";
 }
 
@@ -126,7 +128,8 @@ export function chatTxt(entry: HistoryEntry, lines: ChatLine[], timeZone: string
   ];
   const body = lines.map((l) => {
     const mark = l.severity === "critical" ? "[!!] " : l.severity === "warning" ? "[!] " : "";
-    return `${clock.format(l.t)}  ${mark}@${l.username}: ${l.text.replace(/[\r\n]+/g, " ")}`;
+    const line = `${clock.format(l.t)}  ${mark}@${l.username}: ${l.text.replace(/[\r\n]+/g, " ")}`;
+    return l.translation ? `${line}\r\n          > ${l.translation.replace(/[\r\n]+/g, " ")}` : line;
   });
   return "\uFEFF" + head.concat(body).join("\r\n") + "\r\n";
 }

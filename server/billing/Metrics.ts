@@ -63,7 +63,7 @@ export function workspaceEconomics(
       provider: g("provider_calls") * c.per_provider_request,
       live: liveHours * c.per_live_hour,
       // Video: server time, upload to storage, and viewers' downloads (from measured bytes).
-      recording: (g("recording_minutes") / 60) * c.per_recording_hour + (g("video_mb_uploaded") / 1024) * c.per_video_gb_uploaded + (g("video_mb_served") / 1024) * c.per_video_gb_served,
+      recording: (g("recording_minutes") / 60) * c.per_recording_hour + (g("video_mb_uploaded") / 1024) * c.per_video_gb_uploaded + (g("video_mb_served") / 1024) * c.per_video_gb_served + (g("transcribe_minutes") / 60) * (c.per_transcribed_hour ?? 0),
       // Kept for the retention period (one month of uploads ≈ what is stored at any time).
       storage: (g("video_mb_uploaded") / 1024) * c.per_storage_gb_month,
       screenshots: (g("screenshots") / 1000) * c.per_1000_screenshots,

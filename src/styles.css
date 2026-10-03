@@ -3684,3 +3684,33 @@ main.view {
 @media (prefers-reduced-motion: reduce) {
   .usage-bar > span.indeterminate { animation: none; }
 }
+
+/* Live translation under a chat message. */
+.msg-translation {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--gold);
+  opacity: 0.9;
+}
+
+/* Video subtitles, over the player. */
+.video-wrap {
+  position: relative;
+}
+
+.subtitle-line {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 52px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 1px 2px #000;
+}

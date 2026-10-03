@@ -4,6 +4,7 @@ import { api, ApiError } from "../api";
 import { directModeration, runAlertAction } from "../actions";
 import { AlertCard } from "../components/AlertCard";
 import { ChatStream } from "../components/ChatStream";
+import { setChatTranslation, useChatTranslation, type ChatLang } from "../chatTranslate";
 import { WeeklyGoalsCard } from "../components/WeeklyGoals";
 import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
 import { actionLabel, errorText, tr, useLang, useT } from "../i18n";
@@ -320,6 +321,7 @@ export function LiveView() {
           ]}
           onChange={(v) => setFlaggedOnly(v === "flagged")}
         />
+        <TranslateSwitch />
         <span className="spacer" />
         {direct && canModerate && session.source === "tiktok" ? <CommentsSwitch /> : null}
         <button className="end-btn" onClick={end} aria-label={endLabel} title={endLabel} style={{ display: (followedRoom ? canManage : canModerate) ? undefined : "none" }}>
@@ -335,5 +337,27 @@ export function LiveView() {
         <SideQueue />
       </div>
     </div>
+  );
+}
+
+/** Live translation of the chat: off, into French, or into English. */
+function TranslateSwitch() {
+  const lang = useLang();
+  const { target, unavailable } = useChatTranslation();
+  const label = lang === "fr" ? "Traduire le chat" : "Translate the chat";
+  return (
+    <span className="row" style={{ gap: 6 }} title={unavailable ? (lang === "fr" ? "Traduction indisponible : IA non configurée ou quota IA du mois atteint." : "Translation unavailable: AI not configured or this month's AI allowance used up.") : label}>
+      <Segmented<ChatLang>
+        label={label}
+        value={target}
+        options={[
+          { value: "off", label: "⇄" },
+          { value: "fr", label: "FR" },
+          { value: "en", label: "EN" },
+        ]}
+        onChange={setChatTranslation}
+      />
+      {unavailable && target !== "off" ? <span className="small muted">{lang === "fr" ? "indispo." : "n/a"}</span> : null}
+    </span>
   );
 }

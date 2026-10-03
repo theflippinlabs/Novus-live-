@@ -3,6 +3,8 @@ import type { VideoInfo, VideoPart } from "../../shared/types";
 import { api, ApiError } from "../api";
 import { errorText, useLang } from "../i18n";
 import { toast } from "../store";
+import { SubtitleControls, SubtitleOverlay } from "./Subtitles";
+import type { SubtitleCue } from "../../shared/types";
 
 const TX = {
   en: {
@@ -64,6 +66,7 @@ export function VideoCard({ sessionId, initial, heading }: { sessionId: string; 
   const [open, setOpen] = useState(false);
   const [dl, setDl] = useState<Download | null>(null);
   const [keeping, setKeeping] = useState(false);
+  const [cues, setCues] = useState<SubtitleCue[] | null>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const src = `/api/history/${encodeURIComponent(sessionId)}/video.m3u8`;
 
@@ -188,7 +191,15 @@ export function VideoCard({ sessionId, initial, heading }: { sessionId: string; 
       {info.status === "recording" ? <div className="small" style={{ color: "var(--gold)" }}>{tx.recording}</div> : null}
       {info.status === "stopped_quota" ? <div className="small muted">{tx.stopped}</div> : null}
       {info.status === "failed" ? <div className="small muted">{tx.partial}</div> : null}
-      {open ? <video ref={ref} className="live-video" controls playsInline preload="metadata" /> : null}
+      {open ? (
+        <>
+          <div className="video-wrap">
+            <video ref={ref} className="live-video" controls playsInline preload="metadata" />
+            <SubtitleOverlay video={ref} cues={cues} />
+          </div>
+          {info.status !== "recording" ? <SubtitleControls sessionId={sessionId} onCues={setCues} /> : null}
+        </>
+      ) : null}
       <div className="grid-2" style={{ marginTop: 10 }}>
         <button className="btn gold" onClick={() => setOpen((o) => !o)}>
           {open ? tx.hide : `▶ ${tx.watch}`}
