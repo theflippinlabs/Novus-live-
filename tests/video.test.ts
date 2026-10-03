@@ -216,3 +216,22 @@ describe("Watch the LIVE in the app", () => {
     expect(pickWatchUrl({ data: { status: 4 } })).toBeNull();
   });
 });
+
+describe("Watch relay", () => {
+  it("points every address of TikTok's playlist at the app, and drops anything off TikTok", async () => {
+    const { rewritePlaylist, decodeUrl, encodeUrl } = await import("../server/video/watchProxy");
+    const base = "https://pull-hls-f16.tiktokcdn.com/game/stream-1/index.m3u8?sig=a";
+    const master = ["#EXTM3U", "#EXT-X-STREAM-INF:BANDWIDTH=900000", "sd/index.m3u8?sig=b"].join("\n");
+    const pl = (u: string) => `/pl?u=${encodeUrl(u)}`;
+    const pc = (u: string) => `/pc?u=${encodeUrl(u)}`;
+    expect(rewritePlaylist(master, base, pl, pc)).toBe(["#EXTM3U", "#EXT-X-STREAM-INF:BANDWIDTH=900000", pl("https://pull-hls-f16.tiktokcdn.com/game/stream-1/sd/index.m3u8?sig=b")].join("\n"));
+    const media = ["#EXTM3U", '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"', "#EXTINF:2.0,", "seg-1.ts", "#EXTINF:2.0,", "https://evil.example.com/x.ts", "#EXTINF:2.0,", "https://pull-hls-f16.tiktokcdn.com/game/seg-3.ts"].join("\n");
+    const out = rewritePlaylist(media, base, pl, pc).split("\n");
+    expect(out).toEqual(["#EXTM3U", `#EXT-X-KEY:METHOD=AES-128,URI="${pc("https://pull-hls-f16.tiktokcdn.com/game/stream-1/key.bin")}"`, "#EXTINF:2.0,", pc("https://pull-hls-f16.tiktokcdn.com/game/stream-1/seg-1.ts"), "#EXTINF:2.0,", pc("https://pull-hls-f16.tiktokcdn.com/game/seg-3.ts")]);
+    // The relay only ever fetches TikTok's CDNs.
+    expect(decodeUrl(encodeUrl("https://pull-hls-f16.tiktokcdn.com/a.ts"))).toBe("https://pull-hls-f16.tiktokcdn.com/a.ts");
+    expect(decodeUrl(encodeUrl("http://169.254.169.254/latest"))).toBeNull();
+    expect(decodeUrl(encodeUrl("https://tiktokcdn.com.evil.io/a.ts"))).toBeNull();
+    expect(decodeUrl(undefined)).toBeNull();
+  });
+});

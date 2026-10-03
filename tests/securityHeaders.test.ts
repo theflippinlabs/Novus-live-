@@ -17,11 +17,9 @@ describe("Content-Security-Policy", () => {
     expect(csp).toContain("script-src 'self';");
   });
 
-  it("lets the app play a LIVE straight from TikTok's CDN, and nothing else", () => {
+  it("stays same-origin without storage (the LIVE itself is relayed by the app)", () => {
     const { csp } = run([]);
-    expect(csp).toMatch(/media-src 'self' blob: https:\/\/\*\.tiktokcdn\.com/);
-    expect(csp).toContain("connect-src 'self' https://*.tiktokcdn.com");
-    expect(csp).not.toContain("supabase");
-    expect(csp).toContain("script-src 'self';");
+    expect(csp).toContain("media-src 'self' blob:;");
+    expect(csp).toContain("connect-src 'self';");
   });
 });

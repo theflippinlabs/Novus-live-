@@ -5,11 +5,8 @@ import type { NextFunction, Request, Response } from "express";
  * Security headers. `mediaOrigins`: where LIVE videos are read from (the Supabase storage host):
  * the player loads the pieces straight from there (native HLS on iPhone, hls.js elsewhere).
  */
-/** TikTok's video CDNs: the app plays a LIVE straight from there (Live › Watch). */
-const TIKTOK_MEDIA = ["https://*.tiktokcdn.com", "https://*.tiktokcdn-us.com", "https://*.tiktokcdn-eu.com", "https://*.ttlivecdn.com", "https://*.byteoversea.com", "https://*.ibytedtos.com"];
-
 export function securityHeaders(mediaOrigins: string[] = []): (req: Request, res: Response, next: NextFunction) => void {
-  const media = ` ${[...mediaOrigins, ...TIKTOK_MEDIA].join(" ")}`;
+  const media = mediaOrigins.length ? ` ${mediaOrigins.join(" ")}` : "";
   const policy = [
       "default-src 'self'",
       "script-src 'self'",
