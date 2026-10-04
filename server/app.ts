@@ -1076,6 +1076,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
       if (code === "ai_unavailable") throw new HttpError(503, "ai_unavailable");
       if (code === "question_not_found" || code === "viewer_not_found") throw new HttpError(404, code);
       console.warn(`[copilot] ${code}`);
+      // The Anthropic account behind the server has no credit left: say so instead of "try again".
+      if (/credit balance is too low/i.test(code)) throw new HttpError(503, "ai_no_credit");
       throw new HttpError(502, "ai_failed");
     }
   };

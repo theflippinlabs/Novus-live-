@@ -468,6 +468,7 @@ const ERRORS: Record<string, { en: string; fr: string }> = {
   video_not_found: { en: "No video for this LIVE (not recorded, or deleted after the retention period).", fr: "Pas de vidéo pour ce LIVE (non enregistrée, ou supprimée après la durée de conservation)." },
   plan_limit_seats: { en: "Your plan's team seats are all used.", fr: "Toutes les places d'équipe de votre offre sont utilisées." },
   ai_unavailable: { en: "The AI isn't available right now (not configured or paused).", fr: "L'IA n'est pas disponible pour le moment (non configurée ou en pause)." },
+  ai_no_credit: { en: "The AI is paused: the server's Anthropic credit is used up. The administrator needs to top it up (console.anthropic.com › Billing).", fr: "L'IA est en pause : le crédit Anthropic du serveur est épuisé. L'administrateur doit le recharger (console.anthropic.com › Billing)." },
   ai_failed: { en: "The AI didn't answer — try again.", fr: "L'IA n'a pas répondu — réessaie." },
   plan_limit_ai: { en: "This month's AI allowance is used.", fr: "Le quota IA du mois est atteint." },
   push_unavailable: { en: "Notifications aren't available on the server yet.", fr: "Les notifications ne sont pas encore disponibles sur le serveur." },
