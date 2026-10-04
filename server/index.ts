@@ -3,6 +3,7 @@ import { accessKeys } from "./http/security";
 import { loadConfig } from "./config";
 import Stripe from "stripe";
 import { Translator } from "./ai/Translator";
+import { FallbackAIProvider, OpenAIProvider } from "./ai/OpenAIProvider";
 import { MeteredAIProvider, NullAIProvider, type AIProvider } from "./ai/AIProvider";
 import { BillingService, type StripeLike } from "./billing/Billing";
 import { applyPlanToRooms } from "./billing/wire";
@@ -37,9 +38,11 @@ import { LocalVideoStore, SupabaseVideoStore, type VideoStore } from "./video/Vi
 async function main() {
   const config = loadConfig();
 
-  const ai: AIProvider = config.anthropicApiKey
-    ? new AnthropicProvider({ apiKey: config.anthropicApiKey, model: config.anthropicModel, effort: config.anthropicEffort, translateModel: config.anthropicTranslateModel })
-    : new NullAIProvider();
+  // Claude first; OpenAI (when its key is set) answers whenever Claude cannot (no credit left, outage…).
+  const claude = config.anthropicApiKey ? new AnthropicProvider({ apiKey: config.anthropicApiKey, model: config.anthropicModel, effort: config.anthropicEffort, translateModel: config.anthropicTranslateModel }) : null;
+  const openai = config.openaiApiKey ? new OpenAIProvider({ apiKey: config.openaiApiKey, model: config.openaiModel }) : null;
+  const ai: AIProvider = claude && openai ? new FallbackAIProvider(claude, openai, (m) => console.warn(m)) : (claude ?? openai ?? new NullAIProvider());
+  console.log(`[novus] Back-up AI: ${openai ? `on (OpenAI ${config.openaiModel})` : "off (set OPENAI_API_KEY)"}`);
 
   let repo: Repository = new MemoryRepository(config.dataDir);
   if (config.supabaseUrl && config.supabaseServiceRoleKey) {
