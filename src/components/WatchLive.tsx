@@ -114,7 +114,7 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
         </div>
       ) : (
         <>
-          <div className="watch-frame" style={{ aspectRatio: String(box.ratio), width: `min(100%, calc(52vh * ${box.ratio}))` }}>
+          <div className="watch-frame" style={{ aspectRatio: String(box.ratio), width: `min(100%, calc(var(--watch-h) * ${box.ratio}))` }}>
             <video
               ref={ref}
               playsInline
@@ -145,7 +145,7 @@ export function WatchLive({ onClose }: { onClose: () => void }) {
           </div>
         </>
       )}
-      <div className="small muted" style={{ marginTop: 6 }}>
+      <div className="small muted watch-note" style={{ marginTop: 6 }}>
         {fr ? "Les bandes noires de TikTok sont coupées automatiquement. Son coupé au départ : touche l'image ou « Activer le son »." : "TikTok's black bands are cut automatically. Muted at first: tap the picture or “Sound on”."}
       </div>
     </div>
