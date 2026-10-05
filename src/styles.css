@@ -3966,3 +3966,158 @@ main.view {
 .status-tag.bad {
   color: #ff8b98;
 }
+
+/* ------------------------------------------------------------------ account sheet */
+
+.acct-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  background: none;
+  color: var(--text);
+}
+.acct-group .acct-row:first-of-type,
+.menu-group > .acct-row:first-child {
+  border-top: 0;
+}
+.acct-group .acct-group-head + .acct-row {
+  border-top: 1px solid var(--border);
+}
+.acct-row.on {
+  background: var(--gold-soft);
+}
+.acct-avatar {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.acct-row.is-live .acct-avatar {
+  border-color: rgba(229, 38, 62, 0.7);
+  box-shadow: 0 0 0 2px rgba(229, 38, 62, 0.18);
+  color: var(--text);
+}
+.acct-avatar .dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--text-3);
+}
+.acct-avatar .dot.on {
+  background: var(--r-critical);
+  animation: pulse 1.6s infinite;
+}
+.acct-avatar .dot.detected {
+  background: var(--r-warning);
+}
+.acct-avatar .dot.bad {
+  background: #7a2a33;
+}
+.acct-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.acct-name {
+  font-size: 15px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acct-status {
+  font-size: 12px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acct-status.live {
+  color: #ff8b98;
+}
+.acct-status.bad {
+  color: var(--r-warning);
+}
+.acct-check {
+  flex: none;
+  color: var(--gold);
+  font-weight: 900;
+  font-size: 16px;
+}
+.acct-title-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ff8b98;
+}
+.dot-live {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--r-critical);
+  animation: pulse 1.6s infinite;
+}
+.acct-live-group {
+  border-color: rgba(229, 38, 62, 0.35);
+}
+.acct-group + .acct-group {
+  margin-top: 8px;
+}
+.acct-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 14px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+.acct-group-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acct-group-meta {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.acct-group-meta b {
+  color: #ff8b98;
+  font-weight: 700;
+}
+.acct-chevron {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.18s ease;
+}
+.acct-chevron.open {
+  transform: rotate(90deg);
+  color: var(--gold);
+}
