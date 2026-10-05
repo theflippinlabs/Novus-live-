@@ -4,19 +4,19 @@ import { navigate, useStore, type View } from "../store";
 import { IconChart, IconGear, IconLive, IconShield } from "./Icons";
 
 /*
- * Five tabs, like the best iPhone apps: the LIVE, moderation (alerts + viewers), the
- * copilot in the middle (the flagship, one thumb away), stats and settings.
+ * Five tabs, like the best iPhone apps: the LIVE, moderation (dashboard, alerts, viewers), the
+ * copilot in the middle (the flagship, one thumb away), stats, and More (videos, accounts, settings).
  */
 
 type Tab = { key: string; views: View[]; go: View; Icon: ComponentType<SVGProps<SVGSVGElement>>; label: { en: string; fr: string } };
 
 const LEFT: Tab[] = [
   { key: "live", views: ["live"], go: "live", Icon: IconLive, label: { en: "Live", fr: "Live" } },
-  { key: "moderation", views: ["alerts", "viewers"], go: "alerts", Icon: IconShield, label: { en: "Moderation", fr: "Modération" } },
+  { key: "moderation", views: ["moderation", "alerts", "viewers"], go: "moderation", Icon: IconShield, label: { en: "Moderation", fr: "Modération" } },
 ];
 const RIGHT: Tab[] = [
   { key: "analytics", views: ["analytics"], go: "analytics", Icon: IconChart, label: { en: "Stats", fr: "Stats" } },
-  { key: "settings", views: ["settings", "admin"], go: "settings", Icon: IconGear, label: { en: "Settings", fr: "Réglages" } },
+  { key: "settings", views: ["settings", "admin", "videos"], go: "settings", Icon: IconGear, label: { en: "More", fr: "Plus" } },
 ];
 
 export function BottomNav() {
@@ -26,7 +26,7 @@ export function BottomNav() {
   const open = useStore((s) => s.stats.openAlerts);
   const critical = useStore((s) => s.stats.criticalAlerts);
   const live = useStore((s) => s.session?.status === "live");
-  // Back to the moderation screen used last (alerts or viewers).
+  // Back to the moderation screen used last (dashboard, alerts or viewers).
   const lastModeration = useStore((s) => s.lastModeration);
 
   const button = (tab: Tab) => {

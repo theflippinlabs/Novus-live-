@@ -3762,3 +3762,207 @@ main.view {
   background: var(--r-critical);
   vertical-align: 1px;
 }
+
+/* ------------------------------------------------------------------ account picker (top bar) */
+
+.room-picker {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  max-width: 62vw;
+  padding: 0 12px;
+  border-radius: 99px;
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.room-picker .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.room-picker .caret {
+  color: var(--gold);
+  font-size: 11px;
+}
+.room-picker .live-count {
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--r-critical-bg);
+  color: #ff8b98;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.room-picker .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  flex: none;
+}
+.room-picker .dot.on {
+  background: var(--r-critical);
+  animation: pulse 1.6s infinite;
+}
+.room-picker .dot.detected {
+  background: transparent;
+  border: 2px solid var(--r-critical);
+}
+.room-picker .dot.bad {
+  background: var(--text-3);
+}
+
+/* Thinner metrics: one line of numbers, small labels. */
+.topbar .metrics {
+  gap: 4px;
+  margin-top: 6px;
+}
+.topbar .metric {
+  padding: 3px 6px;
+}
+.topbar .metric .v {
+  font-size: 13.5px;
+}
+.topbar .metric .l {
+  font-size: 9px;
+}
+
+/* ------------------------------------------------------------------ live toolbar */
+
+.live-toolbar {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.live-toolbar button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-toolbar button .ico {
+  font-size: 17px;
+  line-height: 1;
+}
+.live-toolbar button.on {
+  color: var(--text);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
+.live-title {
+  flex: none;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-section {
+  margin-top: 16px;
+}
+.sheet-section > .small {
+  margin-bottom: 6px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ moderation hub */
+
+.mod-tabs.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.mod-tabs.three button {
+  font-size: 13px;
+  gap: 5px;
+  padding: 0 4px;
+}
+.hub-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.hub-kpi {
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: center;
+}
+.hub-kpi .v {
+  font-family: var(--mono);
+  font-size: 19px;
+  font-weight: 800;
+}
+.hub-kpi .l {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.hub-kpi.hot {
+  border-color: rgba(229, 38, 62, 0.55);
+  background: var(--r-critical-bg);
+}
+.hub-kpi.hot .v {
+  color: #ff8b98;
+}
+.hub-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.hub-row:last-child {
+  border-bottom: 0;
+}
+.hub-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+.hub-row .ell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+.status-tag.ok {
+  color: var(--ok);
+}
+.status-tag.warn {
+  color: var(--r-warning);
+}
+.status-tag.bad {
+  color: #ff8b98;
+}

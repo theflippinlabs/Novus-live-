@@ -11,7 +11,6 @@ import { categoryLabel, severityLabel, tr, useLang, useT } from "../i18n";
 import { duration, hm } from "../format";
 import { openViewer, toast, useStore } from "../store";
 import { VideoCard } from "../components/VideoCard";
-import { VideosView } from "./VideosView";
 
 const TX = {
   en: {
@@ -546,7 +545,8 @@ export function AnalyticsView() {
   const t = useT();
   const lang = useLang();
   const tx = TX[lang];
-  const [tab, setTab] = useState<"current" | "history" | "videos" | "donors" | "ranking">("current");
+  const [tab, setTab] = useState<"current" | "history" | "ranking">("current");
+  const [board, setBoard] = useState<"streamers" | "donors">("streamers");
   const [openId, setOpenId] = useState<string | null>(null);
   const canHistory = useCan("history");
 
@@ -572,13 +572,24 @@ export function AnalyticsView() {
           options={[
             { value: "current", label: tx.thisLive },
             { value: "history", label: tx.history },
-            { value: "videos", label: lang === "fr" ? "Vidéos" : "Videos" },
-            { value: "donors", label: lang === "fr" ? "Donateurs" : "Donors" },
-            { value: "ranking", label: lang === "fr" ? "Classement" : "Ranking" },
+            { value: "ranking", label: lang === "fr" ? "Classements" : "Rankings" },
           ]}
           gold
         />
-        {tab === "current" ? <CurrentLive /> : tab === "videos" ? <VideosView /> : tab === "donors" ? <DonorsView /> : tab === "ranking" ? <LeaderboardView /> : openId ? <HistoryDetail id={openId} onBack={() => setOpenId(null)} /> : <HistoryList onOpen={setOpenId} />}
+        {tab === "current" ? <CurrentLive /> : tab === "ranking" ? (
+          <>
+            <Segmented
+              label={lang === "fr" ? "Classement" : "Ranking"}
+              value={board}
+              onChange={setBoard}
+              options={[
+                { value: "streamers", label: lang === "fr" ? "Liveurs" : "Streamers" },
+                { value: "donors", label: lang === "fr" ? "Donateurs" : "Donors" },
+              ]}
+            />
+            {board === "donors" ? <DonorsView /> : <LeaderboardView />}
+          </>
+        ) : openId ? <HistoryDetail id={openId} onBack={() => setOpenId(null)} /> : <HistoryList onOpen={setOpenId} />}
       </div>
     </div>
   );

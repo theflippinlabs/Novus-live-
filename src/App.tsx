@@ -5,7 +5,7 @@ import { TopBar } from "./components/TopBar";
 import { BrandLogo } from "./components/ui";
 import { LangToggle } from "./components/LangToggle";
 import { ViewerSheet } from "./components/ViewerSheet";
-import { useT } from "./i18n";
+import { useLang, useT } from "./i18n";
 import { handleChatSenderReturn, refreshChatSender } from "./chatSender";
 import { loadMe } from "./permissions";
 import { connectRealtime, navigate, openSettings, switchRoom, useStore, type View } from "./store";
@@ -17,6 +17,8 @@ import { AlertsView } from "./views/AlertsView";
 import { AnalyticsView } from "./views/AnalyticsView";
 import { AssistantView } from "./views/AssistantView";
 import { LiveView } from "./views/LiveView";
+import { ModerationView } from "./views/ModerationView";
+import { VideosView } from "./views/VideosView";
 import { SettingsView } from "./views/SettingsView";
 import { ViewersView } from "./views/ViewersView";
 import { PricingPage } from "./views/PricingPage";
@@ -64,7 +66,7 @@ function Login({ onDone }: { onDone: () => void }) {
   );
 }
 
-const VIEWS: View[] = ["live", "alerts", "viewers", "assistant", "analytics", "settings"];
+const VIEWS: View[] = ["live", "moderation", "alerts", "viewers", "assistant", "analytics", "videos", "settings"];
 
 /** Open the screen (and TikTok room) a link or notification points to: /?view=alerts&room=tt:x */
 function openFromUrl(href: string): void {
@@ -78,6 +80,7 @@ function openFromUrl(href: string): void {
 }
 
 function Shell() {
+  const lang = useLang();
   const view = useStore((s) => s.view);
   const toast = useStore((s) => s.toast);
   return (
@@ -86,10 +89,21 @@ function Shell() {
       <TopBar />
       <main className="view">
         {view === "live" ? <LiveView /> : null}
+        {view === "moderation" ? <ModerationView /> : null}
         {view === "alerts" ? <AlertsView /> : null}
         {view === "viewers" ? <ViewersView /> : null}
         {view === "assistant" ? <AssistantView /> : null}
         {view === "analytics" ? <AnalyticsView /> : null}
+        {view === "videos" ? (
+          <div className="scroll">
+            <div className="narrow stack">
+              <button className="subpage-back" onClick={() => openSettings(null)}>
+                ‹ {lang === "fr" ? "Plus" : "More"}
+              </button>
+              <VideosView />
+            </div>
+          </div>
+        ) : null}
         {view === "settings" ? <SettingsView /> : null}
         {view === "admin" ? <AdminView /> : null}
       </main>

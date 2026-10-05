@@ -174,6 +174,11 @@ function SettingsMenu() {
         <IconChevron className="menu-chevron" width={18} height={18} />
       </button>
 
+      <div className="menu-group-title">{fr ? "Contenus" : "Content"}</div>
+      <div className="menu-group">
+        <MenuRow icon={<IconLive {...icon} />} label={fr ? "Vidéos des LIVE" : "LIVE videos"} detail={fr ? "Revoir, télécharger, sous-titres" : "Watch again, download, subtitles"} onClick={() => navigate("videos")} />
+      </div>
+
       <div className="menu-group-title">{fr ? "Compte" : "Account"}</div>
       <div className="menu-group">
         <MenuRow icon={<IconUser {...icon} />} label={PAGE_TITLE.profile[lang]} detail={fr ? "Nom, e-mail, code d'accès" : "Name, e-mail, access code"} onClick={() => openSettings("profile")} />

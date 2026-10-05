@@ -22,7 +22,7 @@ import type {
 // reference, so components subscribed to `stats` do not rerender when chat
 // messages arrive, and the chat list only receives a new array per batch.
 
-export type View = "live" | "alerts" | "viewers" | "assistant" | "analytics" | "settings" | "admin";
+export type View = "live" | "moderation" | "alerts" | "viewers" | "assistant" | "analytics" | "videos" | "settings" | "admin";
 /** A sub-page of Settings (null = the menu). */
 export type SettingsPage = "profile" | "notifications" | "billing" | "team" | "moderation" | "lists" | "ai" | "tiktok" | "app";
 export type Connection = "connecting" | "live" | "reconnecting" | "unauthorized";
@@ -37,7 +37,7 @@ export interface AppState {
   view: View;
   settingsPage: SettingsPage | null;
   /** The moderation screen used last (the Moderation tab reopens it). */
-  lastModeration: "alerts" | "viewers";
+  lastModeration: "moderation" | "alerts" | "viewers";
   session: LiveSessionInfo | null;
   stats: LiveStats;
   comments: AnalyzedComment[];
@@ -79,7 +79,7 @@ let state: AppState = {
   rooms: [],
   view: (sessionStorageGet("novus:view") as View) ?? "live",
   settingsPage: (sessionStorageGet("novus:settings-page") as SettingsPage | null) ?? null,
-  lastModeration: sessionStorageGet("novus:view") === "viewers" ? "viewers" : "alerts",
+  lastModeration: ((v) => (v === "viewers" || v === "alerts" ? v : "moderation"))(sessionStorageGet("novus:view")),
   session: null,
   stats: emptyStats,
   comments: [],
@@ -149,7 +149,7 @@ export function navigate(view: View): void {
   }
   // Tapping Settings again goes back to its menu.
   if (view === "settings" && state.view === "settings") return openSettings(null);
-  setState(view === "alerts" || view === "viewers" ? { view, lastModeration: view } : { view });
+  setState(view === "moderation" || view === "alerts" || view === "viewers" ? { view, lastModeration: view } : { view });
 }
 
 /** Open Settings on one of its sub-pages (or its menu). */

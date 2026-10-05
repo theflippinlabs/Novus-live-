@@ -7,7 +7,8 @@ import { ChatStream } from "../components/ChatStream";
 import { WatchLive } from "../components/WatchLive";
 import { setChatTranslation, useChatTranslation, type ChatLang } from "../chatTranslate";
 import { WeeklyGoalsCard } from "../components/WeeklyGoals";
-import { Avatar, BrandLogo, Segmented, SeverityBadge } from "../components/ui";
+import { Avatar, BrandLogo, Segmented, SeverityBadge, Sheet } from "../components/ui";
+import { CommentsSwitch } from "../components/CommentsSwitch";
 import { actionLabel, errorText, tr, useLang, useT } from "../i18n";
 import { navigate, openSettings, openViewer, switchRoom, toast, useStore } from "../store";
 import { useCan } from "../permissions";
@@ -246,34 +247,6 @@ function SideQueue() {
   );
 }
 
-/** Turn the LIVE's comments off during a raid, and back on (as the connected moderator account). */
-function CommentsSwitch() {
-  const lang = useLang();
-  const [off, setOff] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const fr = lang === "fr";
-  const toggle = async () => {
-    const next = !off;
-    if (next && !window.confirm(fr ? "Couper les commentaires du LIVE pour tout le monde ?" : "Turn the LIVE's comments off for everyone?")) return;
-    setBusy(true);
-    try {
-      await api.setComments(!next);
-      setOff(next);
-      toast(next ? (fr ? "Commentaires coupés dans TikTok" : "Comments turned off in TikTok") : fr ? "Commentaires rouverts" : "Comments back on", "ok");
-    } catch (e) {
-      toast(errorText(e instanceof ApiError ? e.code : "internal_error", lang), "warn");
-    } finally {
-      setBusy(false);
-    }
-  };
-  const label = off ? (fr ? "Rouvrir le chat" : "Reopen chat") : fr ? "Couper le chat" : "Turn chat off";
-  return (
-    <button className={`btn sm ${off ? "gold" : "ghost"}`} onClick={() => void toggle()} disabled={busy} title={label} aria-pressed={off}>
-      {busy ? "…" : `${off ? "▶" : "⏸"} ${label}`}
-    </button>
-  );
-}
-
 export function LiveView() {
   const t = useT();
   const lang = useLang();
@@ -284,6 +257,8 @@ export function LiveView() {
   const canModerate = useCan("moderate");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [watching, setWatching] = useState(false);
+  const [more, setMore] = useState(false);
+  const { target: translation, unavailable: translateDown } = useChatTranslation();
   const direct = useStore((s) => directModeration(s.chatSender, s.room));
 
   if (!session || session.status !== "live") return <StartPanel />;
@@ -298,43 +273,11 @@ export function LiveView() {
     navigate("analytics");
   };
 
+  const fr = lang === "fr";
+  const canEnd = followedRoom ? canManage : canModerate;
   return (
     <div className="live-layout">
-      <div className="live-controls">
-        {session.source === "demo" ? (
-          <Segmented
-            label={t("speed")}
-            value={demo.speed}
-            options={SPEEDS}
-            gold
-            onChange={(s) => {
-              void api.setDemoSpeed(s);
-            }}
-          />
-        ) : (
-          <span className="small muted">{tr(session.title, lang)}</span>
-        )}
-        <Segmented
-          label={t("filterLabel")}
-          value={flaggedOnly ? "flagged" : "all"}
-          options={[
-            { value: "all", label: t("allMessages") },
-            { value: "flagged", label: `⚑ ${t("flaggedOnly")}` },
-          ]}
-          onChange={(v) => setFlaggedOnly(v === "flagged")}
-        />
-        <TranslateSwitch />
-        {session.source === "tiktok" ? (
-          <button className={`btn sm ${watching ? "gold" : "ghost"}`} onClick={() => setWatching((w) => !w)} aria-pressed={watching}>
-            📺 {lang === "fr" ? (watching ? "Masquer le LIVE" : "Regarder le LIVE") : watching ? "Hide the LIVE" : "Watch the LIVE"}
-          </button>
-        ) : null}
-        <span className="spacer" />
-        {direct && canModerate && session.source === "tiktok" ? <CommentsSwitch /> : null}
-        <button className="end-btn" onClick={end} aria-label={endLabel} title={endLabel} style={{ display: (followedRoom ? canManage : canModerate) ? undefined : "none" }}>
-          ■ {t("endShort")}
-        </button>
-      </div>
+      {session.source === "tiktok" ? <div className="live-title small muted">{tr(session.title, lang)}</div> : null}
       <div className="live-split">
         <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
           {watching && session.source === "tiktok" ? <WatchLive onClose={() => setWatching(false)} /> : null}
@@ -344,9 +287,96 @@ export function LiveView() {
         </div>
         <SideQueue />
       </div>
+      <nav className="live-toolbar" aria-label={fr ? "Outils du LIVE" : "LIVE tools"}>
+        {session.source === "tiktok" ? (
+          <button className={watching ? "on" : ""} onClick={() => setWatching((w) => !w)} aria-pressed={watching}>
+            <span className="ico">📺</span>
+            {fr ? (watching ? "Masquer" : "Vidéo") : watching ? "Hide" : "Video"}
+          </button>
+        ) : (
+          <button onClick={() => setMore(true)}>
+            <span className="ico">⏩</span>
+            {fr ? "Vitesse" : "Speed"} {demo.speed}x
+          </button>
+        )}
+        <button className={translation !== "off" ? "on" : ""} onClick={() => setChatTranslation(NEXT_LANG[translation])} aria-label={fr ? "Traduire le chat" : "Translate the chat"}>
+          <span className="ico">⇄</span>
+          {translation === "off" ? (fr ? "Traduire" : "Translate") : `→ ${translation.toUpperCase()}${translateDown ? " ⚠" : ""}`}
+        </button>
+        <button className={flaggedOnly ? "on" : ""} onClick={() => setFlaggedOnly((f) => !f)} aria-pressed={flaggedOnly}>
+          <span className="ico">⚑</span>
+          {fr ? "Signalés" : "Flagged"}
+        </button>
+        <button onClick={() => setMore(true)} aria-haspopup="dialog">
+          <span className="ico">⋯</span>
+          {fr ? "Plus" : "More"}
+        </button>
+      </nav>
+      {more ? (
+        <Sheet onClose={() => setMore(false)} label={fr ? "Outils du LIVE" : "LIVE tools"}>
+          <div className="card-title">{fr ? "Outils du LIVE" : "LIVE tools"}</div>
+          <div className="small muted">{tr(session.title, lang)}</div>
+          <div className="sheet-section">
+            <div className="small muted">{fr ? "Traduction du chat" : "Chat translation"}</div>
+            <TranslateSwitch />
+          </div>
+          <div className="sheet-section">
+            <div className="small muted">{fr ? "Messages affichés" : "Messages shown"}</div>
+            <Segmented
+              label={t("filterLabel")}
+              value={flaggedOnly ? "flagged" : "all"}
+              options={[
+                { value: "all", label: t("allMessages") },
+                { value: "flagged", label: `⚑ ${t("flaggedOnly")}` },
+              ]}
+              onChange={(v) => setFlaggedOnly(v === "flagged")}
+            />
+          </div>
+          {session.source === "demo" ? (
+            <div className="sheet-section">
+              <div className="small muted">{t("speed")}</div>
+              <Segmented
+                label={t("speed")}
+                value={demo.speed}
+                options={SPEEDS}
+                gold
+                onChange={(s) => {
+                  void api.setDemoSpeed(s);
+                }}
+              />
+            </div>
+          ) : null}
+          {direct && canModerate && session.source === "tiktok" ? (
+            <div className="sheet-section">
+              <div className="small muted">{fr ? "Raid" : "Raid"}</div>
+              <CommentsSwitch block />
+            </div>
+          ) : null}
+          <div className="sheet-section">
+            <div className="small muted">{fr ? "Objectifs et rapport" : "Goals and report"}</div>
+            <div className="grid-2">
+              <button className="btn" onClick={() => { setMore(false); navigate("analytics"); }}>
+                📊 {fr ? "Stats du LIVE" : "LIVE stats"}
+              </button>
+              <button className="btn" onClick={() => { setMore(false); navigate("moderation"); }}>
+                🛡 {fr ? "Modération" : "Moderation"}
+              </button>
+            </div>
+          </div>
+          {canEnd ? (
+            <div className="sheet-section">
+              <button className="end-btn" style={{ width: "100%", minHeight: 46 }} onClick={() => { setMore(false); void end(); }} aria-label={endLabel}>
+                ■ {endLabel}
+              </button>
+            </div>
+          ) : null}
+        </Sheet>
+      ) : null}
     </div>
   );
 }
+
+const NEXT_LANG: Record<ChatLang, ChatLang> = { off: "fr", fr: "en", en: "off" };
 
 /** Live translation of the chat: off, into French, or into English. */
 function TranslateSwitch() {

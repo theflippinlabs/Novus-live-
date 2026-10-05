@@ -21,7 +21,7 @@ const TX = {
   },
 };
 
-/** Stats › Videos: the space's LIVE videos in one place. */
+/** More › LIVE videos: the space's LIVE videos in one place. */
 export function VideosView() {
   const lang = useLang();
   const tx = TX[lang];
