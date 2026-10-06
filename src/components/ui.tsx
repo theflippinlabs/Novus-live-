@@ -94,3 +94,17 @@ export function Logo({ size = 28 }: { size?: number }) {
 export function BrandLogo({ maxWidth = 480 }: { maxWidth?: number }) {
   return <img className="brand-logo" src="/icons/logo-banner.webp" width={960} height={508} alt="NOVUS LIVE" style={{ maxWidth }} />;
 }
+
+/** A row of filters that always stays on one line (equal columns, optional count under each). */
+export function FilterBar<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string; count?: number; tone?: "hot" | "warn" | "ok" }[]; onChange: (v: T) => void; label: string }) {
+  return (
+    <div className="filter-bar" role="tablist" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map((o) => (
+        <button key={o.value} role="tab" aria-selected={value === o.value} className={`${value === o.value ? "on" : ""} ${o.tone ?? ""}`} onClick={() => onChange(o.value)}>
+          <span className="fl">{o.label}</span>
+          {o.count !== undefined ? <span className="fc">{o.count}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}

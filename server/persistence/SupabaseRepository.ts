@@ -8,6 +8,10 @@ import { OWNER_TENANT, type GiftLedgerRow, type PersistBatch, type Repository, t
 
 const iso = (t?: number) => (t ? new Date(t).toISOString() : null);
 
+/** Rows per call (the API caps answers at 1,000) and a safety cap on the whole ledger. */
+const LEDGER_PAGE = 1000;
+const LEDGER_MAX_ROWS = 500_000;
+
 export class SupabaseRepository implements Repository {
   readonly kind = "supabase" as const;
   private db: SupabaseClient;
@@ -38,10 +42,19 @@ export class SupabaseRepository implements Repository {
     await this.check(this.db.from("settings").select("id").limit(1), "init");
   }
 
-  async giftLedger(sinceMs?: number): Promise<GiftLedgerRow[]> {
+  async giftLedger(sinceMs?: number, account?: string): Promise<GiftLedgerRow[]> {
     type Row = { viewer_id: string; username: string | null; display_name: string | null; avatar_url: string | null; account: string | null; session_id: string; gift_name: string; gifts: number; diamonds: number; first_at: string; last_at: string };
-    const rows = await this.check<Row[]>(this.db.rpc("gift_ledger", { p_tenant: this.tenant, p_since: sinceMs ? new Date(sinceMs).toISOString() : null }).limit(50_000), "giftLedger");
-    return (rows ?? []).map((r) => ({
+    // The API answers at most 1,000 rows per call: read the whole ledger page by page,
+    // in a fixed order so no row is skipped or read twice.
+    const rows: Row[] = [];
+    for (let from = 0; from < LEDGER_MAX_ROWS; from += LEDGER_PAGE) {
+      let q = this.db.rpc("gift_ledger", { p_tenant: this.tenant, p_since: sinceMs ? new Date(sinceMs).toISOString() : null });
+      if (account) q = q.eq("account", account);
+      const page = (await this.check<Row[]>(q.order("viewer_id").order("account").order("session_id").order("gift_name").range(from, from + LEDGER_PAGE - 1), "giftLedger")) ?? [];
+      rows.push(...page);
+      if (page.length < LEDGER_PAGE) break;
+    }
+    return rows.map((r) => ({
       viewerId: r.viewer_id,
       username: r.username ?? r.viewer_id,
       displayName: r.display_name ?? undefined,

@@ -1240,8 +1240,8 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     const account = typeof req.query.account === "string" && /^[\w.]{1,64}$/.test(req.query.account) ? req.query.account.toLowerCase() : null;
     const p = principal(req);
     // Members only see the rooms of their own streamers.
-    const rows = (await sp(req).rooms.main.runtime.repository.giftLedger(since || undefined)).filter((r) => canSeeAccount(p, r.account ?? undefined) && (!account || r.account === account));
-    return buildDonors(rows);
+    const rows = (await sp(req).rooms.main.runtime.repository.giftLedger(since || undefined, account ?? undefined)).filter((r) => canSeeAccount(p, r.account ?? undefined) && (!account || r.account === account));
+    return buildDonors(rows, Date.now());
   };
   api.get("/donors", h(async (req) => donorsFor(req)));
 

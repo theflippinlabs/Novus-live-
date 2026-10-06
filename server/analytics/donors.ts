@@ -1,12 +1,50 @@
-import type { DonorDirectory, DonorSummary } from "../../shared/types";
+import type { DonorDirectory, DonorRetention, DonorStatus, DonorSummary } from "../../shared/types";
 import type { GiftLedgerRow } from "../persistence/Repository";
 
 /*
  * Donor directory: every viewer who sent gifts, across the space's LIVEs — total diamonds,
  * the rooms (followed accounts) they give in, how many LIVEs, the average per LIVE and
- * their favourite gift.
+ * their favourite gift — and, to keep them giving, where each one stands (active, giving later
+ * than usual, lost, new), their LIVE-by-LIVE history and trend.
  */
-export function buildDonors(rows: GiftLedgerRow[]): DonorDirectory {
+
+const DAY = 24 * 3600 * 1000;
+
+/** Retention figures of one donor from their ledger rows (no guess: only what they sent). */
+export function donorRetention(list: GiftLedgerRow[], now: number): { retention: DonorRetention; history: DonorSummary["history"] } {
+  const bySession = new Map<string, { sessionId: string; account: string | null; at: number; diamonds: number; gifts: number }>();
+  let topGift: DonorRetention["topGift"] = null;
+  let last30 = 0;
+  let prev30 = 0;
+  for (const r of list) {
+    const s = bySession.get(r.sessionId) ?? { sessionId: r.sessionId, account: r.account, at: r.firstAt, diamonds: 0, gifts: 0 };
+    s.at = Math.min(s.at, r.firstAt);
+    s.diamonds += r.diamonds;
+    s.gifts += r.gifts;
+    bySession.set(r.sessionId, s);
+    const unit = r.gifts ? Math.round(r.diamonds / r.gifts) : 0;
+    if (unit > 0 && (!topGift || unit > topGift.value)) topGift = { name: r.giftName, value: unit };
+    const age = now - r.lastAt;
+    if (age <= 30 * DAY) last30 += r.diamonds;
+    else if (age <= 60 * DAY) prev30 += r.diamonds;
+  }
+  const lives = [...bySession.values()].sort((a, b) => a.at - b.at);
+  const first = lives[0]?.at ?? now;
+  const last = Math.max(...list.map((r) => r.lastAt));
+  // Usual gap: the median of the days between two LIVEs where they gave (same day counts as 0).
+  const gaps = lives.slice(1).map((l, i) => (l.at - lives[i].at) / DAY).sort((a, b) => a - b);
+  const gapDays = gaps.length ? Math.round(gaps[Math.floor(gaps.length / 2)] * 10) / 10 : null;
+  const daysSinceLast = Math.max(0, Math.floor((now - last) / DAY));
+  const usual = gapDays ?? 7;
+  const status: DonorStatus =
+    daysSinceLast > Math.max(30, usual * 3) ? "lost" : daysSinceLast > Math.max(7, usual * 1.5) ? "cooling" : now - first <= 14 * DAY ? "new" : "active";
+  return {
+    retention: { status, daysSinceLast, gapDays, last30, prev30, bestLive: Math.max(0, ...lives.map((l) => l.diamonds)), topGift },
+    history: lives.slice(-20),
+  };
+}
+
+export function buildDonors(rows: GiftLedgerRow[], now = Date.now()): DonorDirectory {
   const byViewer = new Map<string, GiftLedgerRow[]>();
   for (const r of rows) {
     const list = byViewer.get(r.viewerId) ?? [];
@@ -49,11 +87,14 @@ export function buildDonors(rows: GiftLedgerRow[]): DonorDirectory {
       favoriteGift: fav ? { name: fav.name, count: fav.count } : null,
       firstAt: Math.min(...list.map((r) => r.firstAt)),
       lastAt: Math.max(...list.map((r) => r.lastAt)),
+      ...donorRetention(list, now),
     };
   });
   donors.sort((a, b) => b.diamonds - a.diamonds || b.gifts - a.gifts);
+  const status: Record<DonorStatus, number> = { new: 0, active: 0, cooling: 0, lost: 0 };
+  for (const d of donors) status[d.retention.status] += 1;
   return {
-    totals: { donors: donors.length, diamonds: totalDiamonds, gifts: rows.reduce((s, r) => s + r.gifts, 0), lives: new Set(rows.map((r) => r.sessionId)).size },
+    totals: { donors: donors.length, diamonds: totalDiamonds, gifts: rows.reduce((s, r) => s + r.gifts, 0), lives: new Set(rows.map((r) => r.sessionId)).size, status },
     donors,
     accounts: [...new Set(rows.map((r) => r.account).filter((a): a is string => Boolean(a)))].sort(),
   };
@@ -66,8 +107,9 @@ export function donorsCsv(dir: DonorDirectory, lang: "en" | "fr", timeZone: stri
   const date = new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : "en-GB", { timeZone, dateStyle: "short" });
   const header =
     lang === "fr"
-      ? ["rang", "pseudo", "nom", "diamants", "cadeaux", "live", "moyenne par live", "part (%)", "cadeau préféré", "rooms", "premier don", "dernier don"]
-      : ["rank", "username", "name", "diamonds", "gifts", "lives", "average per live", "share (%)", "favourite gift", "rooms", "first gift", "last gift"];
+      ? ["rang", "pseudo", "nom", "diamants", "cadeaux", "live", "moyenne par live", "part (%)", "cadeau préféré", "tous les cadeaux", "rooms", "premier don", "dernier don", "statut", "jours depuis le dernier don", "diamants 30 j", "diamants 30 j précédents"]
+      : ["rank", "username", "name", "diamonds", "gifts", "lives", "average per live", "share (%)", "favourite gift", "all gifts", "rooms", "first gift", "last gift", "status", "days since last gift", "diamonds last 30 d", "diamonds previous 30 d"];
+  const STATUS = lang === "fr" ? { new: "nouveau", active: "actif", cooling: "à relancer", lost: "perdu" } : { new: "new", active: "active", cooling: "to win back", lost: "lost" };
   const rows = dir.donors.map((d, i) =>
     [
       String(i + 1),
@@ -79,9 +121,14 @@ export function donorsCsv(dir: DonorDirectory, lang: "en" | "fr", timeZone: stri
       String(d.avgDiamondsPerLive),
       String(d.share).replace(".", lang === "fr" ? "," : "."),
       d.favoriteGift ? `${d.favoriteGift.name} (x${d.favoriteGift.count})` : "",
+      d.byGift.map((g) => `${g.name} x${g.count} (${g.diamonds})`).join(" | "),
       d.rooms.map((r) => `${r.account ?? "?"}: ${r.diamonds}`).join(" | "),
       date.format(d.firstAt),
       date.format(d.lastAt),
+      STATUS[d.retention.status],
+      String(d.retention.daysSinceLast),
+      String(d.retention.last30),
+      String(d.retention.prev30),
     ]
       .map(q)
       .join(sep),

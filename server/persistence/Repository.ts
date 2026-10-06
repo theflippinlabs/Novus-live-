@@ -70,7 +70,7 @@ export interface Repository {
   /** Saved chat of a session, oldest first. */
   getChat(sessionId: string, limit: number): Promise<ChatLine[]>;
   /** Gifts per donor, LIVE, followed account and gift type (donor directory; demos excluded). */
-  giftLedger(sinceMs?: number): Promise<GiftLedgerRow[]>;
+  giftLedger(sinceMs?: number, account?: string): Promise<GiftLedgerRow[]>;
   /** Server-only secrets (e.g. the chat sender's OAuth tokens). Never sent to the browser. */
   loadSecret(id: string): Promise<unknown | null>;
   saveSecret(id: string, value: unknown | null): Promise<void>;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ViewerListItem } from "../../shared/types";
 import { api } from "../api";
-import { Avatar, Segmented, SeverityBadge } from "../components/ui";
+import { Avatar, FilterBar, Segmented, SeverityBadge } from "../components/ui";
 import { nicknameOf } from "../viewerName";
 import { categoryLabel, useLang, useT } from "../i18n";
 import { ago } from "../format";
@@ -10,6 +10,12 @@ import { openViewer, serverNow, useStore } from "../store";
 
 type Sort = "risk" | "messages" | "recent";
 type Filter = "all" | "flagged" | "trusted" | "watchlist" | "ignored";
+
+/** Short labels so the five filters always fit on one line. */
+const FILTER_LABEL: Record<"en" | "fr", Record<Filter, string>> = {
+  en: { all: "All", flagged: "Flagged", trusted: "Trusted", watchlist: "Watched", ignored: "Ignored" },
+  fr: { all: "Tous", flagged: "Signalés", trusted: "Confiance", watchlist: "Surveillés", ignored: "Ignorés" },
+};
 
 export function ViewersView() {
   const t = useT();
@@ -55,12 +61,13 @@ export function ViewersView() {
             ]}
           />
         </div>
-        <div className="chips" style={{ marginTop: 8 }}>
-          {(["all", "flagged", "trusted", "watchlist", "ignored"] as Filter[]).map((f) => (
-            <button key={f} className={`chip ${filter === f ? "on" : ""}`} onClick={() => setFilter(f)} style={{ minHeight: 36 }}>
-              {f === "all" ? t("all") : f === "flagged" ? t("flagged") : t(f)}
-            </button>
-          ))}
+        <div style={{ marginTop: 8 }}>
+          <FilterBar<Filter>
+            label={t("filterLabel")}
+            value={filter}
+            onChange={setFilter}
+            options={(["all", "flagged", "trusted", "watchlist", "ignored"] as Filter[]).map((f) => ({ value: f, label: FILTER_LABEL[lang][f] }))}
+          />
         </div>
 
         <div className="card" style={{ marginTop: 12, padding: "2px 12px" }}>

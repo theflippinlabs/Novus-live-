@@ -700,10 +700,34 @@ export interface DonorSummary {
   favoriteGift: { name: string; count: number } | null;
   firstAt: number;
   lastAt: number;
+  /** Where the donor stands, to keep them giving (computed from their real gifts only). */
+  retention: DonorRetention;
+  /** Their gifts LIVE by LIVE (the last 20, oldest first). */
+  history: { sessionId: string; account: string | null; at: number; diamonds: number; gifts: number }[];
+}
+
+/**
+ * active: gave recently, at their usual pace · cooling: later than usual, worth a thank-you
+ * or a mention · lost: nothing for a long time · new: first gifts in the last 14 days.
+ */
+export type DonorStatus = "new" | "active" | "cooling" | "lost";
+
+export interface DonorRetention {
+  status: DonorStatus;
+  daysSinceLast: number;
+  /** Usual number of days between two LIVEs where they give (null with a single LIVE). */
+  gapDays: number | null;
+  /** Diamonds in the last 30 days, and in the 30 days before. */
+  last30: number;
+  prev30: number;
+  /** Most diamonds in a single LIVE. */
+  bestLive: number;
+  /** Most expensive gift they sent (diamonds for one). */
+  topGift: { name: string; value: number } | null;
 }
 
 export interface DonorDirectory {
-  totals: { donors: number; diamonds: number; gifts: number; lives: number };
+  totals: { donors: number; diamonds: number; gifts: number; lives: number; status: Record<DonorStatus, number> };
   donors: DonorSummary[];
   /** Followed accounts present in the period, for the room filter. */
   accounts: string[];

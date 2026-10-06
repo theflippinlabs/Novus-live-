@@ -151,8 +151,8 @@ export class MemoryRepository implements Repository {
     }
   }
 
-  async giftLedger(sinceMs?: number): Promise<GiftLedgerRow[]> {
-    return (this.state.gifts ?? []).filter((r) => !sinceMs || r.lastAt >= sinceMs).map((r) => ({ ...r }));
+  async giftLedger(sinceMs?: number, account?: string): Promise<GiftLedgerRow[]> {
+    return (this.state.gifts ?? []).filter((r) => (!sinceMs || r.lastAt >= sinceMs) && (!account || r.account === account)).map((r) => ({ ...r }));
   }
 
   async saveReport(report: StreamReport): Promise<void> {

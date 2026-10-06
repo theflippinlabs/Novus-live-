@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { DonorDirectory, DonorSummary } from "../../shared/types";
+import type { DonorDirectory, DonorStatus, DonorSummary } from "../../shared/types";
 import { api, fetchExport, saveFile } from "../api";
-import { Avatar, Sheet } from "../components/ui";
+import { Avatar, FilterBar, Sheet } from "../components/ui";
 import { useLang } from "../i18n";
 import { toast } from "../store";
 import { nicknameOf } from "../viewerName";
@@ -37,6 +37,25 @@ const TX = {
     awards: "Awards",
     award: { loyal: "Most loyal", basket: "Biggest per LIVE", rooms: "Most rooms" },
     awardVal: { loyal: (n: number) => `${n} LIVEs`, basket: (v: string) => `${v} per LIVE`, rooms: (n: number) => `${n} rooms` },
+    all: "All",
+    status: { new: "New", active: "Active", cooling: "Fading", lost: "Lost" } as Record<DonorStatus, string>,
+    statusLong: { new: "New donor", active: "Active donor", cooling: "To win back", lost: "Lost donor" } as Record<DonorStatus, string>,
+    keep: "Keep this donor",
+    since: (d: number) => (d === 0 ? "Last gift today" : `Last gift ${d} day${d > 1 ? "s" : ""} ago`),
+    pace: (g: number) => (g < 1 ? "usually gives several times a day" : `usually gives every ${Math.round(g)} day${Math.round(g) > 1 ? "s" : ""}`),
+    last30: "Last 30 days",
+    prev30: "30 days before",
+    bestLive: "Best LIVE",
+    topGift: "Most expensive gift",
+    perLiveHist: "Gifts LIVE by LIVE",
+    allGifts: "Everything they sent",
+    paid: "Diamonds = coins the viewer paid for their gifts.",
+    advice: {
+      new: "New donor: thank them by name on the next LIVE and follow them back — the second gift is the one that makes a regular.",
+      active: "Regular donor: keep thanking them during the LIVE; a shout-out when they arrive keeps them coming.",
+      cooling: "Giving later than usual: welcome them by name when they come back, or send a message to say they are missed.",
+      lost: "No gift for a long time: a personal message from the streamer or an invitation to a special LIVE can bring them back.",
+    } as Record<DonorStatus, string>,
   },
   fr: {
     periods: { 7: "7 jours", 30: "30 jours", 0: "Tout" } as Record<number, string>,
@@ -65,8 +84,29 @@ const TX = {
     awards: "Distinctions",
     award: { loyal: "Le plus fidèle", basket: "Plus gros par LIVE", rooms: "Le plus de rooms" },
     awardVal: { loyal: (n: number) => `${n} LIVE`, basket: (v: string) => `${v} par LIVE`, rooms: (n: number) => `${n} rooms` },
+    all: "Tous",
+    status: { new: "Nouveaux", active: "Actifs", cooling: "Relancer", lost: "Perdus" } as Record<DonorStatus, string>,
+    statusLong: { new: "Nouveau donateur", active: "Donateur actif", cooling: "À relancer", lost: "Donateur perdu" } as Record<DonorStatus, string>,
+    keep: "Fidéliser ce donateur",
+    since: (d: number) => (d === 0 ? "Dernier don aujourd'hui" : `Dernier don il y a ${d} jour${d > 1 ? "s" : ""}`),
+    pace: (g: number) => (g < 1 ? "donne d'habitude plusieurs fois par jour" : `donne d'habitude tous les ${Math.round(g)} jour${Math.round(g) > 1 ? "s" : ""}`),
+    last30: "30 derniers jours",
+    prev30: "30 jours d'avant",
+    bestLive: "Meilleur LIVE",
+    topGift: "Cadeau le plus cher",
+    perLiveHist: "Ses dons LIVE par LIVE",
+    allGifts: "Tout ce qu'il a envoyé",
+    paid: "Diamants = pièces que le spectateur a payées pour ses cadeaux.",
+    advice: {
+      new: "Nouveau donateur : remercie-le par son nom au prochain LIVE et suis-le en retour — c'est le 2e cadeau qui en fait un habitué.",
+      active: "Donateur régulier : continue de le remercier en LIVE ; un mot quand il arrive le fait revenir.",
+      cooling: "Il donne plus tard que d'habitude : accueille-le par son nom quand il revient, ou envoie-lui un message pour dire qu'il manque.",
+      lost: "Plus de don depuis longtemps : un message perso du liver ou une invitation à un LIVE spécial peut le faire revenir.",
+    } as Record<DonorStatus, string>,
   },
 };
+
+const TONE: Record<DonorStatus, "ok" | "warn" | "hot" | undefined> = { active: "ok", new: undefined, cooling: "warn", lost: "hot" };
 
 const Diamond = () => <span className="gold">◆</span>;
 const PLACE = ["first", "second", "third"] as const;
@@ -151,6 +191,8 @@ function DonorSheet({ d, onClose, lang }: { d: DonorSummary; onClose: () => void
   const nick = nicknameOf(d.viewer);
   const maxRoom = Math.max(1, ...d.rooms.map((r) => r.diamonds));
   const maxGift = Math.max(1, ...d.byGift.map((g) => g.diamonds));
+  const maxLive = Math.max(1, ...d.history.map((h) => h.diamonds));
+  const trend = d.retention.prev30 > 0 ? Math.round(((d.retention.last30 - d.retention.prev30) / d.retention.prev30) * 100) : null;
   return (
     <Sheet onClose={onClose} label={`@${d.viewer.username}`}>
       <div className="row" style={{ gap: 12, paddingRight: 44 }}>
@@ -193,6 +235,65 @@ function DonorSheet({ d, onClose, lang }: { d: DonorSummary; onClose: () => void
       </div>
 
       <div className="card-title" style={{ marginTop: 16 }}>
+        {tx.keep}
+      </div>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        <span className={`donor-status ${d.retention.status}`}>{tx.statusLong[d.retention.status]}</span>
+        <span className="small muted">
+          {tx.since(d.retention.daysSinceLast)}
+          {d.retention.gapDays !== null ? ` · ${tx.pace(d.retention.gapDays)}` : ""}
+        </span>
+      </div>
+      <div className="ratio-grid" style={{ marginTop: 10 }}>
+        <div className="ratio">
+          <b>
+            {n(d.retention.last30)} <Diamond />
+          </b>
+          <span>
+            {tx.last30}
+            {trend !== null ? <em className={trend >= 0 ? "delta-up" : "delta-down"}> {trend >= 0 ? "▲" : "▼"} {Math.abs(trend)} %</em> : null}
+          </span>
+        </div>
+        <div className="ratio">
+          <b>
+            {n(d.retention.prev30)} <Diamond />
+          </b>
+          <span>{tx.prev30}</span>
+        </div>
+        <div className="ratio">
+          <b>
+            {n(d.retention.bestLive)} <Diamond />
+          </b>
+          <span>{tx.bestLive}</span>
+        </div>
+        <div className="ratio">
+          <b className="ellipsis">{d.retention.topGift?.name ?? "—"}</b>
+          <span>
+            {tx.topGift}
+            {d.retention.topGift ? ` · ${n(d.retention.topGift.value)} ◆` : ""}
+          </span>
+        </div>
+      </div>
+      <div className="donor-advice">💡 {tx.advice[d.retention.status]}</div>
+
+      {d.history.length > 1 ? (
+        <>
+          <div className="card-title" style={{ marginTop: 16 }}>
+            {tx.perLiveHist}
+          </div>
+          <div className="donor-bars" aria-hidden="true">
+            {d.history.map((h) => (
+              <span key={h.sessionId} style={{ height: `${Math.max(4, (h.diamonds / maxLive) * 100)}%` }} title={`${date(h.at)} · ${n(h.diamonds)}`} />
+            ))}
+          </div>
+          <div className="row small muted" style={{ justifyContent: "space-between", marginTop: 4 }}>
+            <span>{date(d.history[0].at)}</span>
+            <span>{date(d.history[d.history.length - 1].at)}</span>
+          </div>
+        </>
+      ) : null}
+
+      <div className="card-title" style={{ marginTop: 16 }}>
         {tx.rooms}
       </div>
       {d.rooms.map((r) => (
@@ -210,9 +311,9 @@ function DonorSheet({ d, onClose, lang }: { d: DonorSummary; onClose: () => void
       ))}
 
       <div className="card-title" style={{ marginTop: 16 }}>
-        {tx.byGift}
+        {tx.allGifts} · {d.byGift.length}
       </div>
-      {d.byGift.slice(0, 12).map((g) => (
+      {d.byGift.map((g) => (
         <div key={g.name} className="usage-row">
           <div className="usage-head">
             <span>
@@ -228,7 +329,8 @@ function DonorSheet({ d, onClose, lang }: { d: DonorSummary; onClose: () => void
         </div>
       ))}
 
-      <div className="small muted" style={{ marginTop: 12 }}>
+      <div className="small muted" style={{ marginTop: 12 }}>{tx.paid}</div>
+      <div className="small muted" style={{ marginTop: 4 }}>
         {tx.first} {date(d.firstAt)} · {tx.last} {date(d.lastAt)}
       </div>
     </Sheet>
@@ -243,6 +345,7 @@ export function DonorsView() {
   const [days, setDays] = useState(0);
   const [account, setAccount] = useState("");
   const [q, setQ] = useState("");
+  const [status, setStatus] = useState<DonorStatus | "all">("all");
   const [data, setData] = useState<DonorDirectory | null>(null);
   const [open, setOpen] = useState<DonorSummary | null>(null);
   const [limit, setLimit] = useState(50);
@@ -259,14 +362,14 @@ export function DonorsView() {
         // Keep the room list of the whole period, even when one room is selected.
         if (!account) setRooms(d.accounts);
       })
-      .catch(() => setData({ totals: { donors: 0, diamonds: 0, gifts: 0, lives: 0 }, donors: [], accounts: [] }));
+      .catch(() => setData({ totals: { donors: 0, diamonds: 0, gifts: 0, lives: 0, status: { new: 0, active: 0, cooling: 0, lost: 0 } }, donors: [], accounts: [] }));
   }, [days, account]);
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase().replace(/^@/, "");
     if (!data) return [];
-    return s ? data.donors.filter((d) => d.viewer.username.toLowerCase().includes(s) || (d.viewer.displayName ?? "").toLowerCase().includes(s)) : data.donors;
-  }, [data, q]);
+    return data.donors.filter((d) => (status === "all" || d.retention.status === status) && (!s || d.viewer.username.toLowerCase().includes(s) || (d.viewer.displayName ?? "").toLowerCase().includes(s)));
+  }, [data, q, status]);
 
   const exportCsv = async () => {
     setBusy(true);
@@ -323,7 +426,24 @@ export function DonorsView() {
         </div>
       ) : null}
 
-      {data && data.donors.length && !q ? <DonorPodium donors={data.donors} lang={lang} onOpen={setOpen} /> : null}
+      {data && data.donors.length && !q && status === "all" ? <DonorPodium donors={data.donors} lang={lang} onOpen={setOpen} /> : null}
+
+      {data && data.donors.length ? (
+        <div style={{ marginTop: 12 }}>
+          <FilterBar<DonorStatus | "all">
+            label={tx.keep}
+            value={status}
+            onChange={(v) => {
+              setStatus(v);
+              setLimit(50);
+            }}
+            options={[
+              { value: "all", label: tx.all, count: data.totals.donors },
+              ...(["active", "new", "cooling", "lost"] as DonorStatus[]).map((k) => ({ value: k, label: tx.status[k], count: data.totals.status[k], tone: TONE[k] })),
+            ]}
+          />
+        </div>
+      ) : null}
 
       <input className="input" type="search" style={{ marginTop: 12 }} placeholder={tx.search} value={q} onChange={(e) => setQ(e.target.value)} aria-label={tx.search} autoCapitalize="off" autoCorrect="off" />
 
@@ -352,7 +472,7 @@ export function DonorsView() {
                   {n(d.diamonds)} <Diamond />
                 </b>
                 <div className="small muted">
-                  {n(d.gifts)} · {tx.livesN(d.lives)}
+                  <span className={`donor-status ${d.retention.status}`}>{tx.status[d.retention.status]}</span> {tx.livesN(d.lives)}
                 </div>
               </div>
             </button>
