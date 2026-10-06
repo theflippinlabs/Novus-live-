@@ -146,7 +146,7 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
                 : prompts !== undefined
                   ? `TikTok: ${JSON.stringify(prompts).slice(0, 160)}`
                   : "";
-            failures.push(`${name}: no stream URL (${note || (hosts.length ? `hosts ${hosts.join(",")}` : `keys ${Object.keys(data ?? {}).slice(0, 12).join(",")}`)})`);
+            failures.push(`${name}: no stream URL (${[note, hosts.length ? `hosts ${hosts.join(",")}` : `no video URL; keys ${Object.keys(data ?? {}).slice(0, 12).join(",")}`].filter(Boolean).join("; ")})`);
           } catch (e) {
             failures.push(`${name}: ${describeError(e).slice(0, 140)}`);
           }
