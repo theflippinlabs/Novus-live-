@@ -1,7 +1,7 @@
 import type { LiveEvent } from "../../shared/types";
 import { mapChat, mapFollow, mapGift, mapJoin, mapViewerCount } from "./tiktokMapping";
 import { tiktokSafetyAdapter } from "./safetyEvents";
-import { findStreamUrl } from "../video/streamUrl";
+import { findStreamUrl, streamHosts } from "../video/streamUrl";
 
 /*
  * Follows one TikTok account and streams its LIVE chat into Novus.
@@ -121,9 +121,12 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
         const failures: string[] = [];
         for (const [name, fetch] of sources) {
           try {
-            const url = findStreamUrl(await fetch());
+            const answer = await fetch();
+            const url = findStreamUrl(answer);
             if (url) return url;
-            failures.push(`${name}: no stream URL`);
+            const hosts = streamHosts(answer);
+            const data = (answer as { data?: Record<string, unknown> } | null)?.data ?? (answer as Record<string, unknown> | null);
+            failures.push(`${name}: no stream URL (${hosts.length ? `hosts ${hosts.join(",")}` : `keys ${Object.keys(data ?? {}).slice(0, 12).join(",")}`})`);
           } catch (e) {
             failures.push(`${name}: ${describeError(e).slice(0, 140)}`);
           }

@@ -92,3 +92,33 @@ export function findStreamUrl(answer: unknown): string | null {
   walk(answer, 0);
   return [...sdFirst, ...others].find((u) => isTikTokStreamUrl(u)) ?? null;
 }
+
+/** For diagnostics: hosts of the video URLs in an answer (never the signed URLs themselves). */
+export function streamHosts(answer: unknown): string[] {
+  const hosts = new Set<string>();
+  const seen = new Set<unknown>();
+  const walk = (v: unknown, depth: number) => {
+    if (depth > 8) return;
+    if (typeof v === "string") {
+      if (/^https?:\/\//.test(v) && /\.(flv|m3u8)(\?|$)/.test(v)) {
+        try {
+          hosts.add(new URL(v).hostname);
+        } catch {
+          /* ignore */
+        }
+      } else if (v.startsWith("{") && v.includes("flv")) {
+        try {
+          walk(JSON.parse(v), depth + 1);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
+    if (!v || typeof v !== "object" || seen.has(v)) return;
+    seen.add(v);
+    for (const val of Object.values(v as Json)) walk(val, depth + 1);
+  };
+  walk(answer, 0);
+  return [...hosts].slice(0, 6);
+}
