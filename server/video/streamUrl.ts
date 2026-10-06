@@ -47,3 +47,48 @@ export function pickStreamUrl(roomInfo: unknown): string | null {
   candidates.push(str(stream.hls_pull_url), str(stream.rtmp_pull_url));
   return candidates.find((u): u is string => Boolean(u) && isTikTokStreamUrl(u!)) ?? null;
 }
+
+/** Quality map `{ data: { sd: { main: { flv, hls } }, … } }` (a JSON string in TikTok's answers). */
+function fromStreamData(raw: unknown): string[] {
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  const qualities = obj(obj(parsed)?.data);
+  const out: string[] = [];
+  for (const q of ["sd", "ld", "hd", "origin", "uhd"]) {
+    const main = obj(obj(qualities?.[q])?.main);
+    for (const u of [str(main?.flv), str(main?.hls)]) if (u) out.push(u);
+  }
+  return out;
+}
+
+/**
+ * Stream URL from any of the room-info answers the connector can get: TikTok's room/info,
+ * the TikTok "api-live" and LIVE page answers (`liveRoom.streamData`), or Euler Stream's room
+ * info. Same rules: TikTok CDNs only, 480p first.
+ */
+export function findStreamUrl(answer: unknown): string | null {
+  const direct = pickStreamUrl(answer);
+  if (direct) return direct;
+  const sdFirst: string[] = [];
+  const others: string[] = [];
+  const seen = new Set<unknown>();
+  const walk = (v: unknown, depth: number) => {
+    if (depth > 8 || !v || typeof v !== "object" || seen.has(v)) return;
+    seen.add(v);
+    const o = v as Json;
+    if (o.stream_url && pickStreamUrl({ stream_url: o.stream_url })) sdFirst.push(pickStreamUrl({ stream_url: o.stream_url })!);
+    if (o.stream_data !== undefined) sdFirst.push(...fromStreamData(o.stream_data));
+    for (const [k, val] of Object.entries(o)) {
+      if (typeof val === "string" && /^https?:\/\//.test(val) && /\.(flv|m3u8)(\?|$)/.test(val) && !/^(avatar|cover)/i.test(k)) others.push(val);
+      else if (val && typeof val === "object") walk(val, depth + 1);
+    }
+  };
+  walk(answer, 0);
+  return [...sdFirst, ...others].find((u) => isTikTokStreamUrl(u)) ?? null;
+}

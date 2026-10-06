@@ -1,7 +1,7 @@
 import type { LiveEvent } from "../../shared/types";
 import { mapChat, mapFollow, mapGift, mapJoin, mapViewerCount } from "./tiktokMapping";
 import { tiktokSafetyAdapter } from "./safetyEvents";
-import { pickStreamUrl } from "../video/streamUrl";
+import { findStreamUrl } from "../video/streamUrl";
 
 /*
  * Follows one TikTok account and streams its LIVE chat into Novus.
@@ -108,8 +108,28 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
       get roomId() {
         return conn.roomId || undefined;
       },
-      // Pull URLs are signed and expire: a reconnecting recorder asks for fresh ones.
-      streamUrl: async (fresh) => pickStreamUrl(fresh ? await conn.fetchRoomInfo() : (conn.roomInfo ?? (await conn.fetchRoomInfo()))),
+      // Pull URLs are signed and expire: a reconnecting recorder asks for fresh ones. TikTok's
+      // room/info answer sometimes comes back without them: then the other room-info sources
+      // (Euler Stream's, TikTok's api-live, the LIVE page) are tried in turn.
+      streamUrl: async (fresh) => {
+        const sources: [string, () => Promise<unknown>][] = [
+          ["room-info", async () => (fresh || !conn.roomInfo ? await conn.fetchRoomInfo() : conn.roomInfo)],
+          ["euler", () => mod.fetchRoomInfoFromEulerRoute({ apiClient: conn.apiClient, webClient: conn.webClient, uniqueId: username } as never)],
+          ["api-live", () => mod.fetchRoomInfoFromApiLiveRoute({ webClient: conn.webClient, uniqueId: username } as never)],
+          ["live-page", () => mod.fetchRoomInfoFromHtmlRoute({ webClient: conn.webClient, uniqueId: username } as never)],
+        ];
+        const failures: string[] = [];
+        for (const [name, fetch] of sources) {
+          try {
+            const url = findStreamUrl(await fetch());
+            if (url) return url;
+            failures.push(`${name}: no stream URL`);
+          } catch (e) {
+            failures.push(`${name}: ${describeError(e).slice(0, 140)}`);
+          }
+        }
+        throw new Error(failures.join(" | "));
+      },
     };
   };
 }
@@ -191,13 +211,19 @@ export class TikTokLiveWatcher {
   }
 
   /** Video stream URL of the confirmed LIVE (null when not live or not offered). */
+  private lastStreamUrlLog = 0;
+
   async streamUrl(fresh = false): Promise<string | null> {
     const conn = this.live ? this.conn : null;
     if (!conn?.streamUrl) return null;
     try {
       return await conn.streamUrl(fresh);
     } catch (e) {
-      this.opts.log?.(`[video] @${this.username}: no stream URL (${describeError(e)})`);
+      // Asked again every few seconds while it fails: say why at most every 5 minutes.
+      if (Date.now() - this.lastStreamUrlLog > 5 * 60_000) {
+        this.lastStreamUrlLog = Date.now();
+        this.opts.log?.(`[video] @${this.username}: no stream URL (${describeError(e)})`);
+      }
       return null;
     }
   }

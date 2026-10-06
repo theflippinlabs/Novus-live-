@@ -243,3 +243,15 @@ describe.skipIf(!hasFfmpeg)("Watch the LIVE (relay)", () => {
     expect(await relay.playlist("t|room")).toBeNull();
   }, 60_000);
 });
+
+describe("findStreamUrl", () => {
+  it("reads the other room-info shapes (api-live / LIVE page / Euler), TikTok CDNs only", async () => {
+    const { findStreamUrl } = await import("../server/video/streamUrl");
+    const streamData = JSON.stringify({ data: { hd: { main: { flv: "https://pull-hd.tiktokcdn.com/hd.flv" } }, sd: { main: { flv: "https://pull-sd.tiktokcdn.com/sd.flv" } } } });
+    expect(findStreamUrl({ data: { liveRoom: { streamData: { pull_data: { stream_data: streamData } } } } })).toBe("https://pull-sd.tiktokcdn.com/sd.flv");
+    expect(findStreamUrl({ liveRoom: { streamData: { pull_data: { stream_data: streamData } } } })).toBe("https://pull-sd.tiktokcdn.com/sd.flv");
+    expect(findStreamUrl({ room: { data: { stream_url: { flv_pull_url: { SD1: "https://pull-x.tiktokcdn.com/a.flv" } } } } })).toBe("https://pull-x.tiktokcdn.com/a.flv");
+    expect(findStreamUrl({ anything: { url: "https://evil.example.com/a.flv" } })).toBeNull();
+    expect(findStreamUrl(null)).toBeNull();
+  });
+});
