@@ -114,6 +114,8 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
       streamUrl: async (fresh) => {
         const sources: [string, () => Promise<unknown>][] = [
           ["room-info", async () => (fresh || !conn.roomInfo ? await conn.fetchRoomInfo() : conn.roomInfo)],
+          // Euler Stream's room video endpoint (it reads the stream with its own TikTok access).
+          ["euler-video", async () => (await (conn.apiClient as unknown as { anchors: { retrieveRoomVideo(u: string, t?: string, r?: boolean): Promise<{ data: unknown }> } }).anchors.retrieveRoomVideo(username, "flv_sd", false)).data],
           ["euler", () => mod.fetchRoomInfoFromEulerRoute({ apiClient: conn.apiClient, webClient: conn.webClient, uniqueId: username } as never)],
           ["api-live", () => mod.fetchRoomInfoFromApiLiveRoute({ webClient: conn.webClient, uniqueId: username } as never)],
           ["live-page", () => mod.fetchRoomInfoFromHtmlRoute({ webClient: conn.webClient, uniqueId: username } as never)],

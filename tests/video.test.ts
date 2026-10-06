@@ -255,3 +255,11 @@ describe("findStreamUrl", () => {
     expect(findStreamUrl(null)).toBeNull();
   });
 });
+
+describe("findStreamUrl (Euler room video)", () => {
+  it("takes the 480p FLV of Euler's pull map", async () => {
+    const { findStreamUrl } = await import("../server/video/streamUrl");
+    expect(findStreamUrl({ code: 200, pullMap: { hls_sd: "https://pull-hls.tiktokcdn.com/a/index.m3u8", flv_sd: "https://pull-flv.tiktokcdn.com/a.flv" } })).toBe("https://pull-flv.tiktokcdn.com/a.flv");
+    expect(findStreamUrl({ code: 200, pullMap: { flv_sd: "https://not-tiktok.example/a.flv" } })).toBeNull();
+  });
+});

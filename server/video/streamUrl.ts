@@ -75,6 +75,12 @@ function fromStreamData(raw: unknown): string[] {
 export function findStreamUrl(answer: unknown): string | null {
   const direct = pickStreamUrl(answer);
   if (direct) return direct;
+  // Euler Stream's room video: { pullMap: { flv_sd, hls_sd, flv_ld, hls_ld } }.
+  const pull = obj(obj(answer)?.pullMap) ?? obj(obj(obj(answer)?.data)?.pullMap);
+  if (pull) {
+    const url = ["flv_sd", "hls_sd", "flv_ld", "hls_ld"].map((k) => str(pull[k])).find((u): u is string => Boolean(u) && isTikTokStreamUrl(u!));
+    if (url) return url;
+  }
   const sdFirst: string[] = [];
   const others: string[] = [];
   const seen = new Set<unknown>();
