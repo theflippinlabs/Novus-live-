@@ -93,7 +93,7 @@ export async function connectWithFallback(
   }
 }
 
-export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) => void): ConnectionFactory {
+export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) => void, session?: { sessionId: string; ttTargetIdc: string }): ConnectionFactory {
   return async (username) => {
     const mod = await import("tiktok-live-connector");
     const conn = new mod.TikTokLiveConnection(username, {
@@ -113,6 +113,18 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
       // (Euler Stream's, TikTok's api-live, the LIVE page) are tried in turn.
       streamUrl: async (fresh) => {
         const sources: [string, () => Promise<unknown>][] = [
+          // A logged-in TikTok session (if configured): TikTok gives the stream to it.
+          ...(session
+            ? ([
+                [
+                  "session",
+                  async () => {
+                    const authed = new mod.TikTokLiveConnection(username, { ...(signApiKey ? { signApiKey } : {}), session: { cookie: { type: "cookie", value: session } } } as never);
+                    return authed.fetchRoomInfo(conn.roomId || undefined);
+                  },
+                ],
+              ] as [string, () => Promise<unknown>][])
+            : []),
           ["room-info", async () => (fresh || !conn.roomInfo ? await conn.fetchRoomInfo() : conn.roomInfo)],
           // Euler Stream's room video endpoint (it reads the stream with its own TikTok access).
           ["euler-video", async () => (await (conn.apiClient as unknown as { anchors: { retrieveRoomVideo(u: string, t?: string, r?: boolean): Promise<{ data: unknown }> } }).anchors.retrieveRoomVideo(username, "flv_sd", false)).data],
@@ -128,8 +140,14 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
             if (url) return url;
             const hosts = streamHosts(answer);
             const data = (answer as { data?: Record<string, unknown> } | null)?.data ?? (answer as Record<string, unknown> | null);
-            const said = (answer as { code?: unknown; message?: unknown } | null) ?? {};
-            const note = typeof said.message === "string" ? `${String(said.code ?? "")} ${said.message}`.trim().slice(0, 160) : "";
+            const said = (answer as { code?: unknown; message?: unknown; data?: { prompts?: unknown } } | null) ?? {};
+            const prompts = said.data?.prompts;
+            const note =
+              typeof said.message === "string"
+                ? `${String(said.code ?? "")} ${said.message}`.trim().slice(0, 160)
+                : prompts !== undefined
+                  ? `TikTok: ${JSON.stringify(prompts).slice(0, 160)}`
+                  : "";
             failures.push(`${name}: no stream URL (${note || (hosts.length ? `hosts ${hosts.join(",")}` : `keys ${Object.keys(data ?? {}).slice(0, 12).join(",")}`)})`);
           } catch (e) {
             failures.push(`${name}: ${describeError(e).slice(0, 140)}`);

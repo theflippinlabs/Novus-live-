@@ -38,6 +38,13 @@ export interface Config {
   ingestRateLimitPerMinute: number;
   tiktokLiveConnector: boolean;
   eulerApiKey?: string;
+  /**
+   * Optional TikTok web session (cookies `sessionid` and `tt-target-idc` of a TikTok account),
+   * used server-side only to read a LIVE's video stream address when TikTok withholds it from
+   * logged-out requests. Never sent to the browser.
+   */
+  tiktokSessionId?: string;
+  tiktokTargetIdc?: string;
   /** Euler Stream OAuth client for "Send in chat" (optional). */
   eulerClientId?: string;
   eulerClientSecret?: string;
@@ -111,6 +118,8 @@ export function loadConfig(): Config {
     // Unofficial read-only TikTok LIVE connector (see docs/TIKTOK_INTEGRATION.md). On unless set to "off".
     tiktokLiveConnector: (process.env.TIKTOK_LIVE_CONNECTOR ?? "on").toLowerCase() !== "off",
     eulerApiKey: str("EULER_API_KEY"),
+    tiktokSessionId: str("TIKTOK_SESSION_ID"),
+    tiktokTargetIdc: str("TIKTOK_TT_TARGET_IDC"),
     eulerClientId: str("EULER_CLIENT_ID"),
     eulerClientSecret: str("EULER_CLIENT_SECRET"),
     eulerOAuthAuthorizeUrl: str("EULER_OAUTH_AUTHORIZE_URL"),

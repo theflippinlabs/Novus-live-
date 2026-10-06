@@ -327,7 +327,8 @@ async function main() {
     return { id: tenant, rooms, chat: spaceChat, translator: new Translator(spaceAi) };
   };
 
-  const connectionFactory = defaultConnectionFactory(config.eulerApiKey, (m) => console.log(m));
+  const connectionFactory = defaultConnectionFactory(config.eulerApiKey, (m) => console.log(m), config.tiktokSessionId ? { sessionId: config.tiktokSessionId, ttTargetIdc: config.tiktokTargetIdc ?? "useast2a" } : undefined);
+  if (config.tiktokSessionId) console.log("[novus] LIVE video stream: read with the configured TikTok session (TIKTOK_SESSION_ID)");
   const tenants = [...new Set(accessKeys(config.accessToken, config.accessTokens, OWNER_TENANT).map((k) => k.tenant))];
   if (!tenants.includes(OWNER_TENANT)) tenants.unshift(OWNER_TENANT);
   // Spaces opened by the server's own codes are complimentary: the owner as Enterprise, testers as Agency.
