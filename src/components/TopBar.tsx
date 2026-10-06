@@ -4,6 +4,7 @@ import { LangToggle } from "./LangToggle";
 import { compact, duration } from "../format";
 import { navigate, serverNow, useStore } from "../store";
 import { RoomBar } from "./RoomBar";
+import { SafetyMetric } from "./SafetyPanel";
 
 function Duration() {
   const session = useStore((s) => s.session);
@@ -76,6 +77,7 @@ export function TopBar() {
             <div className="l">{t("alerts")}</div>
           </button>
         </div>
+        <SafetyMetric />
       </div>
       {connection === "reconnecting" ? <div className="conn-banner">{t("reconnecting")}</div> : null}
     </header>

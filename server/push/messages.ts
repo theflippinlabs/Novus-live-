@@ -1,4 +1,4 @@
-import type { LiveSessionInfo, ModerationAlert, StreamReport } from "../../shared/types";
+import type { LiveSessionInfo, ModerationAlert, StreamReport, LiveSafetyEvent } from "../../shared/types";
 import type { PushMessage } from "./Push";
 
 // The text of each notification, in the space's language.
@@ -27,6 +27,18 @@ export function criticalAlertMessage(account: string, alert: ModerationAlert, gr
     body: `@${alert.viewer.username} : « ${clip(alert.text.replace(/\s+/g, " "), 90)} »${more}`,
     url: `/?view=alerts&room=${room(account)}`,
     tag: `alert-${account}`,
+  };
+}
+
+/** A HIGH or CRITICAL safety event TikTok sent during the LIVE. */
+export function safetyEventMessage(account: string, ev: LiveSafetyEvent, lang: Lang): PushMessage {
+  return {
+    kind: "alerts",
+    account,
+    title: lang === "fr" ? `🛡 Événement de sécurité TikTok · @${account}` : `🛡 TikTok safety event · @${account}`,
+    body: clip(`${ev.title}${ev.description ? ` — ${ev.description}` : ""}`.replace(/\s+/g, " "), 140),
+    url: `/?view=live&room=${room(account)}`,
+    tag: `safety-${account}`,
   };
 }
 

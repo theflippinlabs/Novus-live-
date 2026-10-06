@@ -1,5 +1,6 @@
 import { word } from "../../shared/i18n";
-import type { AnalyticsSummary, ChatLine, HistoryEntry, LiveSessionInfo } from "../../shared/types";
+import type { AnalyticsSummary, ChatLine, HistoryEntry, LiveSafetyEvent, LiveSessionInfo, SafetyCounts } from "../../shared/types";
+import { safetyCounts } from "../platform/safetyEvents";
 import type { RoomRegistry } from "../core/Rooms";
 import type { Repository } from "../persistence/Repository";
 
@@ -28,7 +29,7 @@ export class HistoryService {
     return this.rooms.all().find((r) => r.runtime.session?.id === sessionId && r.runtime.session.status === "live");
   }
 
-  private toEntry(session: LiveSessionInfo, analytics: AnalyticsSummary | null, running: boolean, savedAt?: number): HistoryEntry {
+  private toEntry(session: LiveSessionInfo, analytics: AnalyticsSummary | null, running: boolean, savedAt?: number, safety?: SafetyCounts): HistoryEntry {
     const status: HistoryEntry["status"] = running ? "live" : session.status === "live" ? "interrupted" : "ended";
     const end = session.endedAt ?? (running ? Date.now() : savedAt) ?? session.startedAt;
     return {
@@ -51,6 +52,7 @@ export class HistoryService {
       follows: analytics?.audience?.follows ?? analytics?.totals.follows,
       joins: analytics?.audience?.joins,
       donors: analytics?.gifts?.senders,
+      ...(safety ? { safety } : {}),
     };
   }
 
@@ -62,9 +64,9 @@ export class HistoryService {
     return sessions
       .map((s) => {
         const room = this.runningRoom(s.id);
-        if (room) return this.toEntry(room.runtime.session ?? s, room.runtime.analyticsSummary(), true);
+        if (room) return this.toEntry(room.runtime.session ?? s, room.runtime.analyticsSummary(), true, undefined, safetyCounts(room.runtime.safetyEvents()));
         const report = reports.get(s.id);
-        return this.toEntry(s, report?.analytics ?? null, false, report?.generatedAt);
+        return this.toEntry(s, report?.analytics ?? null, false, report?.generatedAt, report?.safety);
       })
       // Hide sessions with no activity at all: a real LIVE always has viewers, messages or gifts
       // (older versions could open one on a TikTok room that was not actually broadcasting).
@@ -75,13 +77,20 @@ export class HistoryService {
     const room = this.runningRoom(sessionId);
     if (room?.runtime.session) {
       const analytics = room.runtime.analyticsSummary();
-      return { entry: this.toEntry(room.runtime.session, analytics, true), analytics };
+      return { entry: this.toEntry(room.runtime.session, analytics, true, undefined, safetyCounts(room.runtime.safetyEvents())), analytics };
     }
     const session = await this.repo.getSession(sessionId);
     if (!session) return null;
     const report = await this.repo.getReport(sessionId);
     if (!report) return null;
-    return { entry: this.toEntry(session, report.analytics, false, report.generatedAt), analytics: report.analytics };
+    return { entry: this.toEntry(session, report.analytics, false, report.generatedAt, report.safety), analytics: report.analytics };
+  }
+
+  /** Safety events of one LIVE: live from the room while it runs, else as stored. */
+  async safety(sessionId: string): Promise<LiveSafetyEvent[]> {
+    const room = this.runningRoom(sessionId);
+    if (room) return room.runtime.safetyEvents();
+    return this.repo.getSafetyEvents([sessionId]);
   }
 
   async chat(sessionId: string): Promise<ChatLine[]> {

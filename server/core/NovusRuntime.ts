@@ -15,6 +15,7 @@ import {
   type DemoSpeed,
   type LiveComment,
   type LiveEvent,
+  type LiveSafetyEvent,
   type LiveSessionInfo,
   type LiveStats,
   type ModerationAlert,
@@ -37,6 +38,8 @@ import { AIQueue, type AIQueueOptions } from "../ai/AIQueue";
 import type { AIProvider, AIReviewItem, AIVerdict } from "../ai/AIProvider";
 import { Analytics } from "../analytics/Analytics";
 import { buildReportMarkdown } from "../analytics/report";
+import { safetyCounts, severityAtLeast } from "../platform/safetyEvents";
+import { analyzeSafetyEvent, buildSafetyContext, SAFETY_WINDOW_MS, type FeedItem } from "./safetyContext";
 import { buildCatchUp } from "../assistant/catchUp";
 import { buildCoach } from "../assistant/coach";
 import { InsightsEngine, sentimentOf } from "../assistant/InsightsEngine";
@@ -117,6 +120,8 @@ export interface RuntimeDeps {
 }
 
 export interface RuntimeEvents {
+  /** A HIGH or CRITICAL safety event sent by the platform during the LIVE. */
+  safetyEvent?(event: LiveSafetyEvent): void;
   liveStarted?(session: LiveSessionInfo): void;
   liveEnded?(session: LiveSessionInfo, report: StreamReport): void;
   criticalAlert?(alert: ModerationAlert): void;
@@ -136,6 +141,12 @@ export class NovusRuntime {
   private actions: ActionRecord[] = [];
   private ignored = new Set<string>();
   private recentTimes: number[] = [];
+  /** Safety events of the LIVE (oldest first) and the ids already seen (providers may resend). */
+  private safety: LiveSafetyEvent[] = [];
+  private safetySeen = new Set<string>();
+  private lastAutoSafetyAnalysis = 0;
+  /** Viewer counts, joins, follows and gifts of the last minutes, for safety snapshots. */
+  private feed: FeedItem[] = [];
   private counters = { messages: 0, gifts: 0, follows: 0, joins: 0, viewerCount: 0 };
   /** Audience samples and gift ledger for the LIVE history / PDF report. */
   private audience = { peak: 0, peakAt: null as number | null, sum: 0, samples: 0 };
@@ -213,6 +224,10 @@ export class NovusRuntime {
     this.coordinatedAlertByFp.clear();
     this.actions = [];
     this.recentTimes = [];
+    this.safety = [];
+    this.safetySeen.clear();
+    this.lastAutoSafetyAnalysis = 0;
+    this.feed = [];
     this.counters = { messages: 0, gifts: 0, follows: 0, joins: 0, viewerCount: 0 };
     this.audience = { peak: 0, peakAt: null, sum: 0, samples: 0 };
     this.giftsBySender.clear();
@@ -300,7 +315,14 @@ export class NovusRuntime {
   ingest(event: LiveEvent): AnalyzedComment | null {
     if (!this.session || this.session.status !== "live") return null;
     const t = event.timestamp;
+    if (event.type === "safety") {
+      this.ingestSafety(event);
+      return null;
+    }
     if (event.type !== "comment") this.pending.events.push(event);
+    if (event.type === "viewer_count") this.noteFeed({ t, kind: "viewers", n: event.count });
+    else if (event.type === "join" || event.type === "follow") this.noteFeed({ t, kind: event.type, n: 1 });
+    else if (event.type === "gift") this.noteFeed({ t, kind: "gift", n: event.count, diamonds: Math.max(0, (event.value ?? 0) * event.count) });
     switch (event.type) {
       case "comment":
         return this.processComment(event);
@@ -342,6 +364,69 @@ export class NovusRuntime {
     }
     this.deps.hub?.markDirty();
     return null;
+  }
+
+  // ---------------------------------------------------------------- safety events
+
+  private noteFeed(item: FeedItem): void {
+    this.feed.push(item);
+    // Keep two windows (the snapshot compares with the minutes before); bounded in any case.
+    const cutoff = item.t - 2 * SAFETY_WINDOW_MS;
+    let drop = 0;
+    while (drop < this.feed.length && this.feed[drop].t < cutoff) drop++;
+    if (drop) this.feed.splice(0, drop);
+    if (this.feed.length > 20_000) this.feed.splice(0, this.feed.length - 20_000);
+  }
+
+  /** A safety event from the platform: deduplicated, given its context, stored and pushed live. */
+  private ingestSafety(event: LiveSafetyEvent): void {
+    if (this.safetySeen.has(event.id)) return;
+    // The same notice resent under a new id within a minute counts once.
+    const dupe = this.safety.find((e) => e.source === event.source && e.title === event.title && e.target?.id === event.target?.id && Math.abs(e.timestamp - event.timestamp) < 60_000);
+    this.safetySeen.add(event.id);
+    if (dupe) return;
+    // Never keep a reporter the provider did not explicitly disclose.
+    const ev: LiveSafetyEvent = {
+      ...event,
+      ...(event.reporterDisclosed && event.reporter?.username ? {} : { reporter: undefined, reporterDisclosed: false }),
+      context: buildSafetyContext(event.timestamp, this.comments, this.actions, this.feed),
+    };
+    this.safety.push(ev);
+    if (this.safety.length > 500) this.safety.shift();
+    this.pending.events.push(ev);
+    this.deps.hub?.pushExtras({ safety: [...this.safety] });
+    if (severityAtLeast(ev.severity, "high")) {
+      this.fire(() => this.deps.events?.safetyEvent?.(ev));
+      // One automatic AI reading for a serious event, at most every 2 minutes.
+      if (this.now() - this.lastAutoSafetyAnalysis >= 120_000 && this.deps.ai.available() && this.deps.ai.copilot) {
+        this.lastAutoSafetyAnalysis = this.now();
+        void this.analyzeSafety(ev.id).catch(() => undefined);
+      }
+    }
+  }
+
+  safetyEvents(): LiveSafetyEvent[] {
+    return this.safety;
+  }
+
+  /** AI reading of one of this LIVE's safety events (kept on the event once made). */
+  async analyzeSafety(id: string, lang: "en" | "fr" = this.settings.language): Promise<LiveSafetyEvent> {
+    const ev = this.safety.find((e) => e.id === id);
+    if (!ev) throw new Error("not_found");
+    const analysis = await analyzeSafetyEvent(this.deps.ai, ev, lang, this.settings.streamerName);
+    const updated = { ...ev, analysis };
+    const i = this.safety.findIndex((e) => e.id === id);
+    if (i >= 0) this.safety[i] = updated;
+    this.pending.events.push(updated);
+    this.deps.hub?.pushExtras({ safety: [...this.safety] });
+    return updated;
+  }
+
+  /** AI reading of a stored safety event of a past LIVE; saved back with the event. */
+  async analyzeStoredSafety(ev: LiveSafetyEvent, lang: "en" | "fr" = this.settings.language): Promise<LiveSafetyEvent> {
+    const updated = { ...ev, analysis: await analyzeSafetyEvent(this.deps.ai, ev, lang, this.settings.streamerName) };
+    await this.deps.repo.writeBatch({ ...emptyBatch(), sessionId: ev.sessionId, events: [updated] });
+    return updated;
   }
 
   private touchViewer(viewer: ViewerRef, t: number): ViewerState {
@@ -913,6 +998,7 @@ export class NovusRuntime {
       demo: this.deps.mock?.status() ?? { running: false, speed: 1, demoSecond: 0 },
       tiktok: this.deps.tiktok.status(),
       serverTime: this.now(),
+      safety: this.safety,
     };
   }
 
@@ -1206,6 +1292,7 @@ export class NovusRuntime {
       generatedAt: this.now(),
       analytics,
       markdown: buildReportMarkdown(analytics, this.sortedAlerts().slice(0, 10), this.actions),
+      safety: safetyCounts(this.safety),
     };
   }
 

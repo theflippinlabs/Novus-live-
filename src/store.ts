@@ -8,6 +8,7 @@ import type {
   ChatSenderStatus,
   Me,
   DemoStatus,
+  LiveSafetyEvent,
   LiveSessionInfo,
   LiveStats,
   ModerationAlert,
@@ -43,6 +44,11 @@ export interface AppState {
   comments: AnalyzedComment[];
   alerts: ModerationAlert[];
   lastActions: ActionRecord[];
+  /** Safety events TikTok sent during the current LIVE (oldest first). */
+  safety: LiveSafetyEvent[];
+  /** A new HIGH/CRITICAL safety event to flag on screen (non-blocking), and the panel state. */
+  safetyBanner: string | null;
+  safetyOpen: string | null | false;
   settings: Settings;
   ai: AIStatus;
   demo: DemoStatus;
@@ -85,6 +91,9 @@ let state: AppState = {
   comments: [],
   alerts: [],
   lastActions: [],
+  safety: [],
+  safetyBanner: null,
+  safetyOpen: false,
   // The device's language applies until the server settings arrive (e.g. on the login screen).
   settings: { ...defaultSettings(), language: localGet("novus:lang") === "fr" ? "fr" : localGet("novus:lang") === "en" ? "en" : defaultSettings().language },
   ai: { state: "local_only", provider: "local", queued: 0, analyzed: 0 },
@@ -230,6 +239,7 @@ function applySnapshot(s: Snapshot): void {
     stats: s.stats,
     comments: s.comments,
     alerts: sortAlerts(s.alerts),
+    safety: s.safety ?? [],
     settings: withDeviceLanguage(s.settings),
     ai: s.ai,
     demo: s.demo,
@@ -272,6 +282,13 @@ function applyBatch(b: RealtimeBatch): void {
     patch.settings = device === "en" || device === "fr" ? { ...b.settings, language: device } : b.settings;
   }
   if (b.rooms) patch.rooms = visible(b.rooms);
+  if (b.reset) patch.safety = [];
+  if (b.safety) {
+    const known = new Set((b.reset ? [] : state.safety).map((e) => e.id));
+    const fresh = b.safety.filter((e) => !known.has(e.id) && (e.severity === "high" || e.severity === "critical"));
+    patch.safety = b.safety;
+    if (fresh.length) patch.safetyBanner = fresh[fresh.length - 1].id;
+  }
   if (Object.keys(patch).length) setState(patch);
 }
 
@@ -286,7 +303,7 @@ export function switchRoom(id: string): void {
   } catch {
     /* ignore */
   }
-  setState({ room: id, session: null, stats: emptyStats, comments: [], alerts: [], lastActions: [], selectedViewerId: null, connection: "connecting" });
+  setState({ room: id, session: null, stats: emptyStats, comments: [], alerts: [], lastActions: [], safety: [], safetyBanner: null, safetyOpen: false, selectedViewerId: null, connection: "connecting" });
   if (source) connectRealtime(unauthorizedHandler);
 }
 

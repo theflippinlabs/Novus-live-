@@ -3,6 +3,7 @@ import type {
   ChatLine,
   AnalyzedComment,
   LiveEvent,
+  LiveSafetyEvent,
   LiveSessionInfo,
   ModerationAlert,
   Settings,
@@ -71,6 +72,8 @@ export interface Repository {
   getChat(sessionId: string, limit: number): Promise<ChatLine[]>;
   /** Gifts per donor, LIVE, followed account and gift type (donor directory; demos excluded). */
   giftLedger(sinceMs?: number, account?: string): Promise<GiftLedgerRow[]>;
+  /** Safety events captured during these LIVEs (stored as LIVE events of type "safety"), oldest first. */
+  getSafetyEvents(sessionIds: string[]): Promise<LiveSafetyEvent[]>;
   /** Server-only secrets (e.g. the chat sender's OAuth tokens). Never sent to the browser. */
   loadSecret(id: string): Promise<unknown | null>;
   saveSecret(id: string, value: unknown | null): Promise<void>;

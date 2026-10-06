@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
+import type { ChatLine, LiveSafetyEvent, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
 import { OWNER_TENANT, type GiftLedgerRow, type PersistBatch, type Repository, type SessionFilter } from "./Repository";
 
 // Supabase/Postgres store. Uses the service-role key, which is only ever read
@@ -40,6 +40,20 @@ export class SupabaseRepository implements Repository {
 
   async init(): Promise<void> {
     await this.check(this.db.from("settings").select("id").limit(1), "init");
+  }
+
+  async getSafetyEvents(sessionIds: string[]): Promise<LiveSafetyEvent[]> {
+    const out: LiveSafetyEvent[] = [];
+    // A few dozen sessions per call keeps the URL short; pages of 1,000 (the API's cap).
+    for (let i = 0; i < sessionIds.length; i += 50) {
+      const chunk = sessionIds.slice(i, i + 50);
+      for (let from = 0; ; from += 1000) {
+        const rows = (await this.check<{ payload: LiveSafetyEvent }[]>(this.db.from("live_events").select("payload").eq("type", "safety").in("session_id", chunk).order("occurred_at").order("id").range(from, from + 999), "getSafetyEvents")) ?? [];
+        out.push(...rows.map((r) => r.payload));
+        if (rows.length < 1000) break;
+      }
+    }
+    return out.sort((a, b) => a.timestamp - b.timestamp);
   }
 
   async giftLedger(sinceMs?: number, account?: string): Promise<GiftLedgerRow[]> {

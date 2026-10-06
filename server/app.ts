@@ -37,7 +37,7 @@ import {
   settingsPatchSchema,
   tiktokConnectSchema,
 } from "../shared/schemas";
-import { PERMISSIONS, type ActionType, type ChatLine, type DemoSpeed, type Leaderboard, type LiveEvent, type Me, type Permission, type Settings, type ViewerFlag } from "../shared/types";
+import { PERMISSIONS, type ActionType, type ChatLine, type DemoSpeed, type Leaderboard, type LiveEvent, type LiveSafetyEvent, type SafetyCounts, type Me, type Permission, type Settings, type ViewerFlag } from "../shared/types";
 import type { Config } from "./config";
 import { RecordingError } from "./core/LiveRecorder";
 import { MAIN_ROOM, tiktokRoomId, type Room, type RoomRegistry } from "./core/Rooms";
@@ -1190,6 +1190,56 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   /** The account's previous LIVEs for comparisons (only for people allowed to see the history). */
   const pastLives = async (req: Request, room: Room) => (can(principal(req), "history") ? (await sp(req).history.list(20, room)).filter((e) => e.startedAt >= historyCutoff(req)) : []);
   /** Summary + insights of the current LIVE of the room, or of one LIVE of the history. */
+  // ---------------------------------------------------------------- LIVE safety events
+  /** Safety events of the room's current LIVE (live), or of a past one the member may see. */
+  const safetyFor = async (req: Request, sessionId?: string): Promise<LiveSafetyEvent[]> => {
+    const room = roomIn(req);
+    if (!sessionId || sessionId === room.runtime.session?.id) return room.runtime.safetyEvents();
+    need(req, "history");
+    if (!(await historyDetail(req, sessionId))) throw new HttpError(404, "session_not_found");
+    return sp(req).history.safety(sessionId);
+  };
+  api.get("/safety", h(async (req) => ({ events: await safetyFor(req) })));
+  api.get("/history/:id/safety", h(async (req) => ({ events: await safetyFor(req, param(req, "id")) })));
+  api.post(
+    "/safety/:eventId/analysis",
+    h(async (req) => {
+      const body = z.object({ sessionId: z.string().max(80).optional(), lang: z.enum(["en", "fr"]).optional() }).parse(req.body ?? {});
+      const room = roomIn(req);
+      const live = !body.sessionId || body.sessionId === room.runtime.session?.id;
+      if (live) need(req, "moderate");
+      const ev = (await safetyFor(req, body.sessionId)).find((e) => e.id === param(req, "eventId"));
+      if (!ev) throw new HttpError(404, "not_found");
+      if (ev.analysis) return { event: ev };
+      let updated: LiveSafetyEvent | null = null;
+      await copilotCall(req, async () => {
+        updated = live ? await room.runtime.analyzeSafety(ev.id, body.lang) : await room.runtime.analyzeStoredSafety(ev, body.lang);
+        return updated.analysis?.text ?? "";
+      });
+      return { event: updated };
+    }),
+  );
+  /** Safety totals over the room's LIVEs (those captured since safety events exist). */
+  api.get(
+    "/safety/summary",
+    h(async (req) => {
+      need(req, "history");
+      const cutoff = historyCutoff(req);
+      const days = Number(req.query.days);
+      const since = Math.max(cutoff, days > 0 && days <= 3650 ? Date.now() - days * 24 * 3600 * 1000 : 0);
+      const entries = (await sp(req).history.list(200, roomIn(req))).filter((e) => e.safety && e.startedAt >= since);
+      const sum = (k: keyof SafetyCounts) => entries.reduce((s, e) => s + (e.safety?.[k] ?? 0), 0);
+      const hours = entries.reduce((s, e) => s + e.durationMs, 0) / 3_600_000;
+      const total = sum("total");
+      return {
+        lives: entries.length,
+        totals: { total, warnings: sum("warnings"), restrictions: sum("restrictions"), critical: sum("critical") },
+        perLive: entries.length ? Math.round((total / entries.length) * 100) / 100 : null,
+        perHour: hours >= 0.1 ? Math.round((total / hours) * 100) / 100 : null,
+      };
+    }),
+  );
+
   const statsFor = async (req: Request, sessionId?: string) => {
     const room = roomIn(req);
     if (!sessionId || sessionId === room.runtime.session?.id) {

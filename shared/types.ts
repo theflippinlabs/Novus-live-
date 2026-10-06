@@ -85,6 +85,70 @@ export interface LiveStreamStatusEvent extends BaseEvent {
   title?: string;
 }
 
+// ---------------------------------------------------------------- LIVE safety events
+
+export type SafetyEventType = "warning" | "restriction" | "moderation" | "interruption" | "content_action" | "visibility_action" | "report" | "unknown";
+export type SafetySeverity = "info" | "warning" | "high" | "critical";
+
+/** What was happening in the minutes before a safety event (compact: counts and a few samples). */
+export interface SafetyContext {
+  /** Window covered, in seconds before the event. */
+  windowSec: number;
+  comments: number;
+  /** Comments in the window of the same length just before (to see a surge). */
+  commentsBefore: number;
+  flaggedComments: number;
+  /** A few of the riskiest comments of the window. */
+  flagged: { username: string; text: string; riskScore: number; t: number }[];
+  /** Moderation actions taken in the window. */
+  actions: { action: string; username: string; status: string; t: number }[];
+  /** Viewer count at the start and end of the window, and its range (null when not received). */
+  viewers: { start: number; end: number; min: number; max: number } | null;
+  joins: number;
+  follows: number;
+  gifts: number;
+  diamonds: number;
+  /** Most active chatters of the window: context only, never a suspected reporter. */
+  activeUsers: string[];
+}
+
+/** NOVUS analysis of a safety event: facts from the snapshot, plus a hedged AI reading. */
+export interface SafetyAnalysis {
+  text: string;
+  provider: string;
+  at: number;
+}
+
+/**
+ * A safety, moderation, restriction or enforcement event the provider actually sent during a
+ * LIVE (never inferred). The reporter is only set when the provider explicitly discloses it.
+ */
+export interface LiveSafetyEvent extends BaseEvent {
+  type: "safety";
+  eventType: SafetyEventType;
+  severity: SafetySeverity;
+  /** Provider message it comes from, e.g. "tiktok:perception". */
+  source: string;
+  title: string;
+  description?: string;
+  target?: { id?: string; username?: string };
+  reporter?: { id?: string; username?: string };
+  reporterDisclosed: boolean;
+  /** "novus": captured live by NOVUS; "imported": supplied afterwards by an external source. */
+  captured: "novus" | "imported";
+  /** Compact provider payload (only the fields that matter), for audit. */
+  raw?: Record<string, unknown>;
+  context?: SafetyContext;
+  analysis?: SafetyAnalysis;
+}
+
+export interface SafetyCounts {
+  total: number;
+  warnings: number;
+  restrictions: number;
+  critical: number;
+}
+
 export type LiveEvent =
   | LiveComment
   | LiveViewer
@@ -92,7 +156,8 @@ export type LiveEvent =
   | LiveFollow
   | LiveJoin
   | LiveModerationEvent
-  | LiveStreamStatusEvent;
+  | LiveStreamStatusEvent
+  | LiveSafetyEvent;
 
 export interface ModerationAnalysis {
   riskScore: number;
@@ -627,6 +692,8 @@ export interface HistoryEntry {
   donors?: number;
   /** Video of this LIVE (video option), when one was recorded and not yet expired. */
   video?: VideoInfo;
+  /** Safety events captured by NOVUS during this LIVE (absent: LIVE recorded before they were). */
+  safety?: SafetyCounts;
 }
 
 /** Derived, easier-to-read figures for one LIVE (Stats page). */
@@ -749,6 +816,8 @@ export interface StreamReport {
   generatedAt: number;
   analytics: AnalyticsSummary;
   markdown: string;
+  /** Safety events captured during the LIVE (absent for LIVEs recorded before this existed). */
+  safety?: SafetyCounts;
 }
 
 /** One moderation space: the demo/connector room, or one followed TikTok account. */
@@ -785,6 +854,8 @@ export interface Snapshot {
   serverTime: number;
   /** Script bundle the server currently ships; an app running an older one reloads itself. */
   build?: string;
+  /** Safety events of the current LIVE, oldest first. */
+  safety?: LiveSafetyEvent[];
 }
 
 /** A batched realtime update pushed to clients (one per flush interval). */
@@ -801,6 +872,8 @@ export interface RealtimeBatch {
   settings?: Settings;
   rooms?: RoomSummary[];
   reset?: boolean;
+  /** The current LIVE's safety events (whole list, sent when it changes). */
+  safety?: LiveSafetyEvent[];
 }
 
 // ---------------------------------------------------------------- agency team

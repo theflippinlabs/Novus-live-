@@ -13,7 +13,7 @@ import { MemoryBillingStore, SupabaseBillingStore, type BillingStore } from "./b
 import { AnthropicProvider } from "./ai/AnthropicProvider";
 import { NovusRuntime, type RuntimeEvents } from "./core/NovusRuntime";
 import { AlertThrottle, PushService } from "./push/Push";
-import { criticalAlertMessage, liveEndedMessage, liveStartedMessage } from "./push/messages";
+import { criticalAlertMessage, safetyEventMessage, liveEndedMessage, liveStartedMessage } from "./push/messages";
 import { MemoryRepository } from "./persistence/MemoryRepository";
 import { OWNER_TENANT, type Repository } from "./persistence/Repository";
 import type { LiveEvent } from "../shared/types";
@@ -166,6 +166,7 @@ async function main() {
         ? {
             liveStarted: () => notify(liveStartedMessage(account, lang())),
             liveEnded: (session, report) => notify(liveEndedMessage(account, session, report, lang())),
+            safetyEvent: (ev) => notify(safetyEventMessage(account, ev, lang())),
             criticalAlert: (alert) => {
               const grouped = alertThrottle.take(`${tenant}:${account}`);
               if (grouped) notify(criticalAlertMessage(account, alert, grouped, lang()));

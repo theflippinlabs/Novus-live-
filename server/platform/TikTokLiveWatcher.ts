@@ -1,5 +1,6 @@
 import type { LiveEvent } from "../../shared/types";
 import { mapChat, mapFollow, mapGift, mapJoin, mapViewerCount } from "./tiktokMapping";
+import { tiktokSafetyAdapter } from "./safetyEvents";
 import { pickStreamUrl } from "../video/streamUrl";
 
 /*
@@ -320,6 +321,8 @@ export class TikTokLiveWatcher {
     on("member", mapJoin);
     on("follow", mapFollow);
     on("roomUser", mapViewerCount);
+    // Safety events (TikTok warnings, restrictions, suspensions…) from the same connection.
+    for (const name of tiktokSafetyAdapter.events) on(name, (raw) => tiktokSafetyAdapter.map(name, raw) as Draft | null);
     // Likes are not stored but prove the room is alive.
     conn.on("like", () => {
       if (gen !== this.generation || this.conn !== conn) return;

@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ChatLine, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
+import type { ChatLine, LiveSafetyEvent, LiveSessionInfo, Settings, StreamReport, ViewerFlag } from "../../shared/types";
 import { OWNER_TENANT, type GiftLedgerRow, type PersistBatch, type Repository, type SessionFilter } from "./Repository";
 
 interface FileState {
@@ -11,6 +11,8 @@ interface FileState {
   secrets?: Record<string, unknown>;
   /** Gifts per donor, LIVE and gift type (bounded). */
   gifts?: GiftLedgerRow[];
+  /** Safety events (bounded; same id = same event, updated in place). */
+  safety?: LiveSafetyEvent[];
 }
 
 /**
@@ -128,6 +130,18 @@ export class MemoryRepository implements Repository {
     }
     while (this.chat.size > 20) this.chat.delete(this.chat.keys().next().value as string);
 
+    const safety = batch.events.filter((e): e is LiveSafetyEvent => e.type === "safety");
+    if (safety.length) {
+      const list = this.state.safety ?? [];
+      for (const ev of safety) {
+        const i = list.findIndex((x) => x.id === ev.id);
+        if (i >= 0) list[i] = ev;
+        else list.push(ev);
+      }
+      this.state.safety = list.slice(-5000);
+      await this.persist();
+    }
+
     // Donor directory: aggregate gift events per donor, LIVE and gift type.
     const gifts = batch.events.filter((e) => e.type === "gift");
     if (gifts.length) {
@@ -149,6 +163,11 @@ export class MemoryRepository implements Repository {
       this.state.gifts = ledger.slice(-20_000);
       await this.persist();
     }
+  }
+
+  async getSafetyEvents(sessionIds: string[]): Promise<LiveSafetyEvent[]> {
+    const ids = new Set(sessionIds);
+    return (this.state.safety ?? []).filter((e) => ids.has(e.sessionId)).sort((a, b) => a.timestamp - b.timestamp);
   }
 
   async giftLedger(sinceMs?: number, account?: string): Promise<GiftLedgerRow[]> {

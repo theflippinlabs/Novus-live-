@@ -5,6 +5,7 @@ import { TopBar } from "./components/TopBar";
 import { BrandLogo } from "./components/ui";
 import { LangToggle } from "./components/LangToggle";
 import { ViewerSheet } from "./components/ViewerSheet";
+import { SafetyLayer } from "./components/SafetyPanel";
 import { useLang, useT } from "./i18n";
 import { handleChatSenderReturn, refreshChatSender } from "./chatSender";
 import { loadMe } from "./permissions";
@@ -109,6 +110,7 @@ function Shell() {
       </main>
       <BottomNav />
       <ViewerSheet />
+      <SafetyLayer />
       <UpgradeSheet />
       {toast ? (
         <div className={`toast ${toast.tone}`} role="status" key={toast.id}>

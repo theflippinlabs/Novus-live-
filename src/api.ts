@@ -30,8 +30,7 @@ import type {
   TikTokIntegrationStatus,
   ViewerFlag,
   ViewerListItem,
-  ViewerProfile,
-} from "../shared/types";
+  ViewerProfile, LiveSafetyEvent, SafetyCounts } from "../shared/types";
 import { getState } from "./store";
 
 // Thin typed client. The browser only ever talks to the Novus server —
@@ -147,6 +146,10 @@ export const api = {
   historyInsights: (id: string) => request<StatsInsights>("GET", `/history/${encodeURIComponent(id)}/insights`),
   askStats: (question: string, history: CopilotTurn[], sessionId: string | undefined, lang: "en" | "fr") => request<{ text: string }>("POST", "/analytics/ask", { question, history, sessionId, lang }),
   history: () => request<{ entries: HistoryEntry[] }>("GET", "/history"),
+  /** Safety events of the current LIVE (no id) or of a past one. */
+  safety: (sessionId?: string) => request<{ events: LiveSafetyEvent[] }>("GET", sessionId ? `/history/${encodeURIComponent(sessionId)}/safety` : "/safety"),
+  analyzeSafety: (eventId: string, sessionId: string | undefined, lang: "en" | "fr") => request<{ event: LiveSafetyEvent }>("POST", `/safety/${encodeURIComponent(eventId)}/analysis`, { sessionId, lang }),
+  safetySummary: (days = 0) => request<{ lives: number; totals: SafetyCounts; perLive: number | null; perHour: number | null }>("GET", `/safety/summary?days=${days}`),
   historyDetail: (id: string) => request<{ entry: HistoryEntry; analytics: AnalyticsSummary }>("GET", `/history/${encodeURIComponent(id)}`),
 
   settings: () => request<Settings>("GET", "/settings"),

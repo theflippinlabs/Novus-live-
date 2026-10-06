@@ -4220,3 +4220,111 @@ main.view {
   border-radius: 3px 3px 0 0;
   background: linear-gradient(180deg, var(--gold), rgba(217, 174, 106, 0.35));
 }
+
+/* ------------------------------------------------------------------ LIVE safety events */
+
+/* The metrics row adapts to the metrics shown (the safety one included). */
+.topbar .metrics {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+@media (max-width: 430px) {
+  .topbar .metric.optional {
+    display: none;
+  }
+}
+.status-tag.crit {
+  background: var(--r-critical);
+  color: #fff;
+}
+.safety-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  margin-top: 8px;
+  overflow: hidden;
+}
+.safety-item.high,
+.safety-item.critical {
+  border-color: rgba(229, 38, 62, 0.45);
+}
+.safety-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+.safety-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.safety-body {
+  padding: 4px 12px 12px;
+  border-top: 1px solid var(--border);
+}
+.safety-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.safety-facts {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.safety-quote {
+  margin-top: 4px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.safety-analysis {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+}
+.safety-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(229, 38, 62, 0.6);
+  background: rgba(30, 8, 12, 0.96);
+  color: var(--text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+}
+.safety-banner .ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.safety-count.hot {
+  color: #ff8b98;
+  font-weight: 700;
+}

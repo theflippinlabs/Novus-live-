@@ -3,6 +3,7 @@ import { DonorsView } from "./DonorsView";
 import { LeaderboardView } from "./LeaderboardView";
 import { useCallback, useEffect, useState } from "react";
 import type { AnalyticsSummary, Category, HistoryEntry, StatsInsights } from "../../shared/types";
+import { SafetySheet } from "../components/SafetyPanel";
 import { api, fetchExport, saveFile } from "../api";
 import { BarChart, LineChart } from "../components/Charts";
 import { Avatar, Segmented } from "../components/ui";
@@ -485,6 +486,7 @@ function HistoryList({ onOpen }: { onOpen: (id: string) => void }) {
           <input type="checkbox" checked={demos} onChange={(e) => setDemos(e.target.checked)} /> {tx.showDemos}
         </label>
       </div>
+      <SafetySummaryCard />
       {shown.length === 0 ? <div className="card muted">{onlyVideos ? tx.noVideos : tx.noHistory}</div> : null}
       {shown.map((e) => (
         <button key={e.sessionId} className="card history-row" onClick={() => onOpen(e.sessionId)}>
@@ -502,10 +504,90 @@ function HistoryList({ onOpen }: { onOpen: (id: string) => void }) {
             <span>🎁 {n(e.gifts)}</span>
             <span><span className="gold">◆</span> {n(e.diamonds)}</span>
             <span>⚠ {n(e.alerts)}</span>
+            {e.safety ? (
+              <span className={e.safety.critical ? "safety-count hot" : "safety-count"}>
+                🛡 {lang === "fr" ? "Sécurité" : "Safety"} {n(e.safety.total)}
+              </span>
+            ) : null}
           </div>
         </button>
       ))}
     </>
+  );
+}
+
+/** Safety events of one past LIVE: count, and the timeline with context on tap. */
+function SafetyHistoryCard({ entry }: { entry: HistoryEntry }) {
+  const lang = useLang();
+  const fr = lang === "fr";
+  const [open, setOpen] = useState(false);
+  if (!entry.safety)
+    return (
+      <div className="card small muted">
+        🛡 {fr ? "Sécurité : non suivie pour ce LIVE (enregistré avant le suivi des événements de sécurité)." : "Safety: not tracked for this LIVE (recorded before safety events were captured)."}
+      </div>
+    );
+  const s = entry.safety;
+  return (
+    <>
+      <button className="card history-row" onClick={() => setOpen(true)} style={{ textAlign: "left" }}>
+        <div className="row" style={{ gap: 8 }}>
+          <b style={{ flex: 1 }}>
+            🛡 {fr ? "Événements de sécurité" : "Safety events"} : {s.total}
+          </b>
+          <span className="small muted">{fr ? "Voir →" : "View →"}</span>
+        </div>
+        <div className="small muted" style={{ marginTop: 2 }}>
+          {s.total
+            ? `${fr ? "Avertissements" : "Warnings"} ${s.warnings} · Restrictions ${s.restrictions} · ${fr ? "Critiques" : "Critical"} ${s.critical} · ${fr ? "Capturé par NOVUS LIVE" : "Captured by NOVUS LIVE"}`
+            : fr
+              ? "Aucun événement de sécurité détecté."
+              : "No safety events detected."}
+        </div>
+      </button>
+      {open ? <SafetySheet sessionId={entry.sessionId} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
+/** Safety totals over the LIVEs captured since safety events exist (per LIVE and per streaming hour). */
+function SafetySummaryCard() {
+  const lang = useLang();
+  const fr = lang === "fr";
+  const [d, setD] = useState<Awaited<ReturnType<typeof api.safetySummary>> | null>(null);
+  useEffect(() => {
+    api
+      .safetySummary()
+      .then(setD)
+      .catch(() => undefined);
+  }, []);
+  if (!d || !d.lives) return null;
+  const num = (v: number | null) => (v === null ? "—" : v.toLocaleString(fr ? "fr-FR" : "en-GB"));
+  return (
+    <div className="card">
+      <div className="card-title">🛡 {fr ? "Sécurité des LIVE" : "LIVE safety"}</div>
+      <div className="hub-kpis">
+        <div className="hub-kpi">
+          <div className="v">{d.totals.total}</div>
+          <div className="l">{fr ? "Événements" : "Events"}</div>
+        </div>
+        <div className="hub-kpi">
+          <div className="v">{d.totals.warnings}</div>
+          <div className="l">{fr ? "Avertis." : "Warnings"}</div>
+        </div>
+        <div className="hub-kpi">
+          <div className="v">{d.totals.restrictions}</div>
+          <div className="l">Restrict.</div>
+        </div>
+        <div className={`hub-kpi ${d.totals.critical ? "hot" : ""}`}>
+          <div className="v">{d.totals.critical}</div>
+          <div className="l">{fr ? "Critiques" : "Critical"}</div>
+        </div>
+      </div>
+      <div className="small muted" style={{ marginTop: 8 }}>
+        {num(d.perLive)} {fr ? "par LIVE" : "per LIVE"} · {num(d.perHour)} {fr ? "par heure de LIVE" : "per streaming hour"} · {d.lives} LIVE {fr ? "suivis" : "tracked"}
+      </div>
+    </div>
   );
 }
 
@@ -534,6 +616,7 @@ function HistoryDetail({ id, onBack }: { id: string; onBack: () => void }) {
       {detail ? (
         <>
           {detail.entry.status === "interrupted" ? <div className="card small muted">{tx.interruptedHint}</div> : null}
+          <SafetyHistoryCard entry={detail.entry} />
           <AnalyticsBody d={detail.analytics} sessionId={detail.entry.sessionId} interactive={false} insights={insights} />
         </>
       ) : null}
