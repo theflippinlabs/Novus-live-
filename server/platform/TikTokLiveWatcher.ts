@@ -128,7 +128,9 @@ export function defaultConnectionFactory(signApiKey?: string, log?: (m: string) 
             if (url) return url;
             const hosts = streamHosts(answer);
             const data = (answer as { data?: Record<string, unknown> } | null)?.data ?? (answer as Record<string, unknown> | null);
-            failures.push(`${name}: no stream URL (${hosts.length ? `hosts ${hosts.join(",")}` : `keys ${Object.keys(data ?? {}).slice(0, 12).join(",")}`})`);
+            const said = (answer as { code?: unknown; message?: unknown } | null) ?? {};
+            const note = typeof said.message === "string" ? `${String(said.code ?? "")} ${said.message}`.trim().slice(0, 160) : "";
+            failures.push(`${name}: no stream URL (${note || (hosts.length ? `hosts ${hosts.join(",")}` : `keys ${Object.keys(data ?? {}).slice(0, 12).join(",")}`)})`);
           } catch (e) {
             failures.push(`${name}: ${describeError(e).slice(0, 140)}`);
           }
