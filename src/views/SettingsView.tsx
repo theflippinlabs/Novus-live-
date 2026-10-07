@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { isNativeApp } from "../native";
 import { PRESET_THRESHOLDS } from "../../shared/settings";
 import { CATEGORIES, type Sensitivity, type Settings, type Thresholds } from "../../shared/types";
 import { api, ApiError } from "../api";
@@ -183,7 +184,7 @@ function SettingsMenu() {
       <div className="menu-group">
         <MenuRow icon={<IconUser {...icon} />} label={PAGE_TITLE.profile[lang]} detail={fr ? "Nom, e-mail, code d'accès" : "Name, e-mail, access code"} onClick={() => openSettings("profile")} />
         <MenuRow icon={<IconBell {...icon} />} label={PAGE_TITLE.notifications[lang]} detail={fr ? "LIVE, alertes critiques, résumés" : "LIVEs, critical alerts, summaries"} onClick={() => openSettings("notifications")} />
-        {isFounder ? <MenuRow icon={<IconCard {...icon} />} label={PAGE_TITLE.billing[lang]} detail={[id.plan, statusText].filter(Boolean).join(" · ")} onClick={() => openSettings("billing")} /> : null}
+        {isFounder && !isNativeApp() ? <MenuRow icon={<IconCard {...icon} />} label={PAGE_TITLE.billing[lang]} detail={[id.plan, statusText].filter(Boolean).join(" · ")} onClick={() => openSettings("billing")} /> : null}
         {teamEnabled && canTeam ? <MenuRow icon={<IconUsers {...icon} />} label={PAGE_TITLE.team[lang]} detail={fr ? "Membres et autorisations" : "Members and permissions"} onClick={() => openSettings("team")} /> : null}
         {isAdmin ? <MenuRow icon={<IconChart {...icon} />} label={fr ? "Tableau de bord admin" : "Admin dashboard"} detail={fr ? "Clients, revenus, coûts" : "Customers, revenue, costs"} onClick={() => navigate("admin")} /> : null}
       </div>
@@ -216,7 +217,7 @@ function SettingsMenu() {
 
       <div className="menu-group-title">{fr ? "Application" : "App"}</div>
       <div className="menu-group">
-        <MenuRow icon={<IconGlobe {...icon} />} label={PAGE_TITLE.app[lang]} detail={`${settings.language === "fr" ? "Français" : "English"} · ${t("install")}`} onClick={() => openSettings("app")} />
+        <MenuRow icon={<IconGlobe {...icon} />} label={PAGE_TITLE.app[lang]} detail={isNativeApp() ? (settings.language === "fr" ? "Français" : "English") : `${settings.language === "fr" ? "Français" : "English"} · ${t("install")}`} onClick={() => openSettings("app")} />
       </div>
 
       <LogoutButton />
@@ -470,10 +471,14 @@ function AppPage() {
           </div>
         </>
       ) : null}
-      <div className="section-title">{t("install")}</div>
-      <div className="card">
-        <div className="small">{t("installHint")}</div>
-      </div>
+      {isNativeApp() ? null : (
+        <>
+          <div className="section-title">{t("install")}</div>
+          <div className="card">
+            <div className="small">{t("installHint")}</div>
+          </div>
+        </>
+      )}
     </>
   );
 }

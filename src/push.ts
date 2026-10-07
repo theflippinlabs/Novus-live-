@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { isNativeApp, nativeEndpoint, nativePushToken, setNativeEndpoint } from "./native";
 
 /*
  * Web push on this device. iPhone: only in the app added to the home screen (iOS 16.4+),
@@ -17,6 +18,8 @@ const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.p
 const standalone = () => window.matchMedia?.("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
 export function pushSupport(): PushSupport {
+  // The App Store app: native notifications (APNs).
+  if (isNativeApp()) return "ok";
   if (isIOS() && !standalone()) return "install";
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "unsupported";
   if (Notification.permission === "denied") return "denied";
@@ -35,13 +38,22 @@ function keyBytes(base64url: string): Uint8Array {
 }
 
 /** This device's subscription, if notifications are on. */
-export async function currentSubscription(): Promise<PushSubscription | null> {
+export async function currentSubscription(): Promise<{ endpoint: string } | null> {
+  if (isNativeApp()) {
+    const endpoint = nativeEndpoint();
+    return endpoint ? { endpoint } : null;
+  }
   if (pushSupport() !== "ok") return null;
   return (await registration()).pushManager.getSubscription();
 }
 
 /** Ask the permission (must run from a tap) and register this device. */
 export async function enablePush(prefs: PushPrefs): Promise<PushPrefs> {
+  if (isNativeApp()) {
+    const r = await api.pushNativeSubscribe(await nativePushToken(), prefs);
+    setNativeEndpoint(r.endpoint);
+    return r.prefs;
+  }
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error(permission === "denied" ? "push_denied" : "push_dismissed");
   const { publicKey } = await api.pushConfig();
@@ -54,10 +66,16 @@ export async function enablePush(prefs: PushPrefs): Promise<PushPrefs> {
 }
 
 export async function disablePush(): Promise<void> {
+  if (isNativeApp()) {
+    const endpoint = nativeEndpoint();
+    if (endpoint) await api.pushUnsubscribe(endpoint).catch(() => undefined);
+    setNativeEndpoint(null);
+    return;
+  }
   const sub = await currentSubscription();
   if (!sub) return;
   await api.pushUnsubscribe(sub.endpoint).catch(() => undefined);
-  await sub.unsubscribe().catch(() => undefined);
+  await (sub as PushSubscription).unsubscribe().catch(() => undefined);
 }
 
 /** The app is on screen: clear the icon badge and the notifications already shown. */
@@ -68,4 +86,15 @@ export function markNotificationsSeen(): void {
   } catch {
     /* not supported */
   }
+}
+
+/** Native app: the device token changed — move this device's registration to it, same choices. */
+export async function refreshNativeToken(token: string): Promise<void> {
+  const old = nativeEndpoint();
+  const next = `apns:${token.toLowerCase()}`;
+  if (!old || old === next) return;
+  const status = await api.pushStatus(old).catch(() => null);
+  const r = await api.pushNativeSubscribe(token, status?.prefs ?? { live: true, alerts: true, summary: true });
+  setNativeEndpoint(r.endpoint);
+  await api.pushUnsubscribe(old).catch(() => undefined);
 }

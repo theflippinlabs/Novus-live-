@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import type { Repository } from "../persistence/Repository";
+import { APNS_PREFIX, type ApnsMessage, type ApnsResult } from "./Apns";
 
 /*
  * Web Push (iPhone home-screen app since iOS 16.4, Android, desktop): a LIVE starting,
@@ -60,6 +61,8 @@ export class PushService {
       spaceRepo: (spaceId: string) => Pick<Repository, "loadSecret" | "saveSecret">;
       subject: string;
       send?: Sender;
+      /** Native iPhone app devices (APNs); absent when no APNs key is configured. */
+      apns?: { send(deviceToken: string, msg: ApnsMessage): Promise<ApnsResult> };
       log?: (m: string) => void;
     },
   ) {}
@@ -105,6 +108,16 @@ export class PushService {
     return entry;
   }
 
+  /** The native app can get notifications (an APNs key is configured). */
+  get nativeEnabled(): boolean {
+    return Boolean(this.deps.apns);
+  }
+
+  /** Register (or refresh) a device of the native iPhone app by its APNs token. */
+  async subscribeNative(spaceId: string, owner: PushOwner, deviceToken: string, prefs: PushPrefs = DEFAULT_PREFS): Promise<StoredSubscription> {
+    return this.subscribe(spaceId, owner, { endpoint: `${APNS_PREFIX}${deviceToken.toLowerCase()}`, keys: { p256dh: "", auth: "" } }, prefs);
+  }
+
   async find(spaceId: string, endpoint: string): Promise<StoredSubscription | undefined> {
     return (await this.list(spaceId)).find((s) => s.endpoint === endpoint);
   }
@@ -137,10 +150,31 @@ export class PushService {
   }
 
   private async deliver(spaceId: string, targets: StoredSubscription[], msg: PushMessage): Promise<number> {
+    if (!targets.length) return 0;
+    const native = targets.filter((s) => s.endpoint.startsWith(APNS_PREFIX));
+    const web = this.vapid ? targets.filter((s) => !s.endpoint.startsWith(APNS_PREFIX)) : [];
+    const gone: string[] = [];
+    let sent = 0;
+    const apns = this.deps.apns;
+    if (apns && native.length) {
+      const m: ApnsMessage = { title: msg.title, body: msg.body, url: msg.url, tag: msg.tag, urgent: msg.kind === "alerts", ttlSeconds: msg.kind === "summary" ? 24 * 3600 : 3600 };
+      await Promise.all(
+        native.map(async (s) => {
+          const r = await apns.send(s.endpoint.slice(APNS_PREFIX.length), m).catch((): ApnsResult => "failed");
+          if (r === "sent") sent += 1;
+          else if (r === "gone") gone.push(s.endpoint);
+        }),
+      );
+    }
+    sent += await this.deliverWeb(web, msg, gone);
+    if (gone.length) await this.save(spaceId, (await this.list(spaceId)).filter((s) => !gone.includes(s.endpoint)));
+    return sent;
+  }
+
+  private async deliverWeb(targets: StoredSubscription[], msg: PushMessage, gone: string[]): Promise<number> {
     if (!this.vapid || !targets.length) return 0;
     const send: Sender = this.deps.send ?? ((sub, payload, opts) => webpush.sendNotification(sub, payload, opts));
     const payload = JSON.stringify({ title: msg.title, body: msg.body, url: msg.url, tag: msg.tag, kind: msg.kind });
-    const gone: string[] = [];
     let sent = 0;
     await Promise.all(
       targets.map(async (s) => {
@@ -160,7 +194,6 @@ export class PushService {
         }
       }),
     );
-    if (gone.length) await this.save(spaceId, (await this.list(spaceId)).filter((s) => !gone.includes(s.endpoint)));
     return sent;
   }
 }

@@ -30,6 +30,7 @@ import {
   pushEndpointSchema,
   pushPrefsUpdateSchema,
   pushSubscribeSchema,
+  pushNativeSubscribeSchema,
   recoverCompleteSchema,
   recoverSchema,
   recordingSchema,
@@ -51,6 +52,7 @@ import { aiCostSummary, funnel, saasMetrics, workspaceEconomics } from "./billin
 import { AnthropicCostReport } from "./billing/AnthropicCost";
 import { ResendMailer, type Mailer } from "./mail/Mailer";
 import { recoveryMail } from "./mail/templates";
+import { privacyPage } from "./legal/privacy";
 import { deriveInsights } from "./analytics/insights";
 import { buildDonors, donorsCsv } from "./analytics/donors";
 import { buildLeaderboard } from "./analytics/leaderboard";
@@ -1017,7 +1019,18 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     if (msg.kind === "alerts" && !can(p, "moderate")) return false;
     return canSeeAccount(p, msg.account);
   });
-  api.get("/push/config", h(() => ({ publicKey: push?.publicKey ?? null })));
+  api.get("/push/config", h(() => ({ publicKey: push?.publicKey ?? null, native: Boolean(push?.nativeEnabled) })));
+  /** The native iPhone app registers its APNs device token. */
+  api.post(
+    "/push/native-subscribe",
+    rateLimit("push", 20),
+    h(async (req) => {
+      const { token, prefs } = parse(pushNativeSubscribeSchema, req.body);
+      if (!push?.nativeEnabled) throw new HttpError(503, "push_unavailable");
+      const entry = await push.subscribeNative(sp(req).id, pushOwner(req), token, prefs ?? DEFAULT_PREFS);
+      return { subscribed: true, prefs: entry.prefs, endpoint: entry.endpoint };
+    }),
+  );
   api.post(
     "/push/subscribe",
     rateLimit("push", 20),
@@ -1778,6 +1791,12 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   api.use((_req, _res, next) => next(new HttpError(404, "not_found")));
 
   app.use("/api", api);
+
+  // ---------------------------------------------------------------- privacy policy (App Store listing)
+  app.get(["/privacy", "/confidentialite"], (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.type("html").send(privacyPage({ supportEmail: config.supportEmail, updated: "7 octobre 2026 / October 7, 2026" }));
+  });
 
   // ---------------------------------------------------------------- static PWA
   const webDir = resolve(config.webDir);

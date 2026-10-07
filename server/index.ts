@@ -13,6 +13,7 @@ import { MemoryBillingStore, SupabaseBillingStore, type BillingStore } from "./b
 import { AnthropicProvider } from "./ai/AnthropicProvider";
 import { NovusRuntime, type RuntimeEvents } from "./core/NovusRuntime";
 import { AlertThrottle, PushService } from "./push/Push";
+import { ApnsSender } from "./push/Apns";
 import { criticalAlertMessage, safetyEventMessage, liveEndedMessage, liveStartedMessage } from "./push/messages";
 import { MemoryRepository } from "./persistence/MemoryRepository";
 import { OWNER_TENANT, type Repository } from "./persistence/Repository";
@@ -118,12 +119,24 @@ async function main() {
   });
 
   // ---------------------------------------------------------------- push notifications
+  /** APNs for the native app; a bad key must not stop the server (web push keeps working). */
+  const apnsSender = () => {
+    if (!config.apns) return undefined;
+    try {
+      return new ApnsSender(config.apns, (m) => console.warn(m));
+    } catch (e) {
+      console.error(`[novus] APNs key unreadable: ${e instanceof Error ? e.message : e}`);
+      return undefined;
+    }
+  };
   const push = new PushService({
     serverRepo: repo.scoped(OWNER_TENANT),
     spaceRepo: (tenant) => repo.scoped(tenant),
     subject: config.publicUrl ?? (config.supportEmail ? `mailto:${config.supportEmail}` : "https://novus-live-production.up.railway.app"),
+    apns: apnsSender(),
     log: (m) => console.warn(m),
   });
+  console.log(`[novus] iPhone app notifications (APNs): ${config.apns ? "on" : "off (set APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY)"}`);
   await push.init().catch((e) => console.error(`[novus] push notifications unavailable: ${e instanceof Error ? e.message : e}`));
   const alertThrottle = new AlertThrottle();
 

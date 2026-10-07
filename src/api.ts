@@ -120,6 +120,7 @@ export const api = {
   pulse: () => request<ChatPulse>("GET", "/assistant/pulse"),
   pushConfig: () => request<{ publicKey: string | null }>("GET", "/push/config"),
   pushSubscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }, prefs: PushPrefs) => request<{ subscribed: boolean; prefs: PushPrefs }>("POST", "/push/subscribe", { subscription, prefs }),
+  pushNativeSubscribe: (token: string, prefs: PushPrefs) => request<{ subscribed: boolean; prefs: PushPrefs; endpoint: string }>("POST", "/push/native-subscribe", { token, prefs }),
   pushStatus: (endpoint: string) => request<{ subscribed: boolean; prefs: PushPrefs }>("POST", "/push/status", { endpoint }),
   pushPrefs: (endpoint: string, prefs: PushPrefs) => request<{ prefs: PushPrefs }>("PUT", "/push/prefs", { endpoint, prefs }),
   pushUnsubscribe: (endpoint: string) => request<{ subscribed: boolean }>("POST", "/push/unsubscribe", { endpoint }),

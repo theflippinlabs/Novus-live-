@@ -10,7 +10,8 @@ import { useLang, useT } from "./i18n";
 import { handleChatSenderReturn, refreshChatSender } from "./chatSender";
 import { loadMe } from "./permissions";
 import { connectRealtime, navigate, openSettings, switchRoom, useStore, type View } from "./store";
-import { markNotificationsSeen } from "./push";
+import { markNotificationsSeen, refreshNativeToken } from "./push";
+import { initNative, isNativeApp } from "./native";
 import { refreshBilling, showUpgrade } from "./billing";
 import { BillingBanner, UpgradeSheet } from "./components/BillingSection";
 import { AdminView } from "./views/AdminView";
@@ -60,9 +61,11 @@ function Login({ onDone }: { onDone: () => void }) {
         </button>
         <LostCodeLink />
       </div>
-      <a className="link-btn" href="/pricing?from=login" style={{ display: "block", textAlign: "center", marginTop: 16 }}>
-        {t("noAccount")}
-      </a>
+      {isNativeApp() ? null : (
+        <a className="link-btn" href="/pricing?from=login" style={{ display: "block", textAlign: "center", marginTop: 16 }}>
+          {t("noAccount")}
+        </a>
+      )}
     </div>
   );
 }
@@ -75,7 +78,7 @@ function openFromUrl(href: string): void {
   const view = params.get("view");
   const room = params.get("room");
   if (room && /^(main|tt:[\w.]{1,64})$/.test(room)) switchRoom(room);
-  if (view === "billing") openSettings("billing");
+  if (view === "billing") openSettings(isNativeApp() ? null : "billing");
   else if (view === "settings") openSettings(null);
   else if (view && (VIEWS as string[]).includes(view)) navigate(view as View);
 }
@@ -124,6 +127,11 @@ function Shell() {
 export function App() {
   // Public pages (no login): pricing and the post-checkout confirmation.
   const path = location.pathname;
+  // The App Store app never shows plans or checkout (App Store rules): the app itself instead.
+  if (isNativeApp() && (path.startsWith("/pricing") || path.startsWith("/billing/success"))) {
+    history.replaceState(null, "", "/");
+    return <AppAuthed />;
+  }
   if (path.startsWith("/pricing")) return <PricingPage />;
   if (path.startsWith("/billing/success")) return <PricingPage success />;
   if (path.startsWith("/recover")) return <RecoverPage />;
@@ -159,6 +167,7 @@ function AppAuthed() {
       history.replaceState(null, "", "/");
     }
     markNotificationsSeen();
+    void initNative(openFromUrl, (token) => void refreshNativeToken(token).catch(() => undefined));
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       void refreshChatSender();

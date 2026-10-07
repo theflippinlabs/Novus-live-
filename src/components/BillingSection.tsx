@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isNativeApp } from "../native";
 import type { BillingMe } from "../../shared/types";
 import { ApiError } from "../api";
 import { billingApi, NEXT_PLAN, PLAN_NAMES, refreshBilling, track } from "../billing";
@@ -200,6 +201,8 @@ const BANNER = {
     reactivate: "Reactivate",
     upgrade: "Upgrade",
     plans: "See plans",
+    // Native (App Store) app: state only, no purchase or call to buy (App Store rules).
+    native: { past_due: "Your workspace has a payment issue.", restricted: "Your workspace is read-only: history and exports stay available.", canceled: "This workspace's subscription has ended. Your history is kept.", not_started: "This workspace is not active yet.", trial_quota: "This workspace has reached its trial limit." },
   },
   fr: {
     past_due: "Votre dernier paiement a échoué. Mettez à jour votre moyen de paiement pour continuer la surveillance.",
@@ -212,6 +215,7 @@ const BANNER = {
     reactivate: "Réactiver",
     upgrade: "Passer à l'offre",
     plans: "Voir les offres",
+    native: { past_due: "Votre espace a un problème de paiement.", restricted: "Votre espace est en lecture seule : historique et exports restent disponibles.", canceled: "L'abonnement de cet espace est terminé. Votre historique est conservé.", not_started: "Cet espace n'est pas encore actif.", trial_quota: "Cet espace a atteint la limite de l'essai." },
   },
 };
 
@@ -242,6 +246,15 @@ export function BillingBanner() {
     text = tx.trialEnds(days);
   }
   if (!text) return null;
+  if (isNativeApp()) {
+    const key = b.status === "past_due" ? "past_due" : b.access === "restricted" ? (b.reason === "canceled" ? "canceled" : b.reason === "not_started" ? "not_started" : "restricted") : b.reason === "trial_quota" ? "trial_quota" : null;
+    if (!key) return null;
+    return (
+      <div className={`billing-banner ${bad ? "bad" : ""}`} role="status">
+        <span>{tx.native[key]}</span>
+      </div>
+    );
+  }
 
   const go = async () => {
     if (action?.portal) {
@@ -296,6 +309,9 @@ const UPGRADE = {
   },
 };
 
+/** Native (App Store) app: the limit is stated, nothing to buy (App Store rules). */
+const UPGRADE_NATIVE = { en: "This isn't included in this workspace's current plan.", fr: "Ce n'est pas inclus dans la formule actuelle de cet espace." };
+
 /** Contextual upgrade prompt, shown when the API refuses an action because of the plan. */
 export function UpgradeSheet() {
   const lang = useLang();
@@ -304,14 +320,14 @@ export function UpgradeSheet() {
   const founder = useStore((s) => !s.me || s.me.kind === "founder");
   if (!code) return null;
   const tx = UPGRADE[lang];
-  const text = (tx as Record<string, string>)[code];
-  if (!text) return null;
+  const text = isNativeApp() ? UPGRADE_NATIVE[lang] : (tx as Record<string, string>)[code];
+  if (!text || !(code in tx)) return null;
   return (
     <div className="sheet-backdrop" role="dialog" aria-modal="true" onClick={() => setState({ upgrade: null })}>
       <div className="sheet-card" onClick={(e) => e.stopPropagation()}>
         <p style={{ margin: 0 }}>{text}</p>
         <div className="row">
-          {founder && code === "plan_video_option" ? (
+          {isNativeApp() ? null : founder && code === "plan_video_option" ? (
             <button
               className="btn gold"
               onClick={() => {

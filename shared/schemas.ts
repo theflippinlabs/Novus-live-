@@ -287,8 +287,12 @@ export const pushSubscribeSchema = z
     prefs: pushPrefsSchema.optional(),
   })
   .strict();
-export const pushEndpointSchema = z.object({ endpoint: pushEndpoint }).strict();
-export const pushPrefsUpdateSchema = z.object({ endpoint: pushEndpoint, prefs: pushPrefsSchema }).strict();
+/** A device of the native iPhone app: "apns:" + its APNs token (hex). */
+const nativeEndpoint = z.string().regex(/^apns:[0-9a-f]{32,200}$/);
+const anyEndpoint = z.union([nativeEndpoint, pushEndpoint]);
+export const pushEndpointSchema = z.object({ endpoint: anyEndpoint }).strict();
+export const pushPrefsUpdateSchema = z.object({ endpoint: anyEndpoint, prefs: pushPrefsSchema }).strict();
+export const pushNativeSubscribeSchema = z.object({ token: z.string().regex(/^[0-9a-fA-F]{32,200}$/), prefs: pushPrefsSchema.optional() }).strict();
 
 export const profileSchema = z.object({ name: z.string().trim().min(2).max(60) }).strict();
 

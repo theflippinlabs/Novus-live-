@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff1cf"/><stop offset="0.35" stop-color="#e6c07f"/><stop offset="0.7" stop-color="#b8863f"/><stop offset="1" stop-color="#f3d9a0"/>
+    </linearGradient>
+  </defs>
+  <rect width="2732" height="2732" fill="#070708"/>
+  <g transform="translate(1366 1250) scale(0.42) translate(-512 -512)">
+    <circle cx="512" cy="512" r="300" fill="none" stroke="url(#gold)" stroke-width="54"/>
+    <path d="M512 330 C 530 450, 574 494, 694 512 C 574 530, 530 574, 512 694 C 494 574, 450 530, 330 512 C 450 494, 494 450, 512 330 Z" fill="url(#gold)"/>
+  </g>
+  <text x="1366" y="1560" text-anchor="middle" font-family="Helvetica Neue, Arial, sans-serif" font-size="120" font-weight="700" letter-spacing="40" fill="url(#gold)">NOVUS</text>
+  <text x="1366" y="1680" text-anchor="middle" font-family="Helvetica Neue, Arial, sans-serif" font-size="64" font-weight="300" letter-spacing="48" fill="#d8d2c8">LIVE</text>
+</svg>

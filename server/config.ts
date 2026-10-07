@@ -44,6 +44,8 @@ export interface Config {
    * logged-out requests. Never sent to the browser.
    */
   tiktokSessionId?: string;
+  /** Native iPhone app notifications (APNs .p8 key from the Apple Developer account). */
+  apns?: { keyId: string; teamId: string; key: string; bundleId: string; sandbox: boolean };
   tiktokTargetIdc?: string;
   /** Euler Stream OAuth client for "Send in chat" (optional). */
   eulerClientId?: string;
@@ -119,6 +121,10 @@ export function loadConfig(): Config {
     tiktokLiveConnector: (process.env.TIKTOK_LIVE_CONNECTOR ?? "on").toLowerCase() !== "off",
     eulerApiKey: str("EULER_API_KEY"),
     tiktokSessionId: str("TIKTOK_SESSION_ID"),
+    apns:
+      str("APNS_KEY_ID") && str("APNS_TEAM_ID") && str("APNS_KEY")
+        ? { keyId: str("APNS_KEY_ID")!, teamId: str("APNS_TEAM_ID")!, key: str("APNS_KEY")!, bundleId: str("APNS_BUNDLE_ID") ?? "com.novuslive.app", sandbox: str("APNS_SANDBOX") === "true" }
+        : undefined,
     tiktokTargetIdc: str("TIKTOK_TT_TARGET_IDC"),
     eulerClientId: str("EULER_CLIENT_ID"),
     eulerClientSecret: str("EULER_CLIENT_SECRET"),
