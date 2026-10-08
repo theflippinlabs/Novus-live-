@@ -252,6 +252,43 @@ function LogoutButton() {
   );
 }
 
+/** Ask for the workspace and its data to be deleted (App Store rule 5.1.1(v); GDPR right to erasure). */
+function DeleteWorkspaceCard({ name }: { name: string }) {
+  const lang = useLang();
+  const fr = lang === "fr";
+  const [email, setEmail] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/support.json")
+      .then((r) => r.json() as Promise<{ email: string | null }>)
+      .then((d) => setEmail(d.email))
+      .catch(() => undefined);
+  }, []);
+  const subject = fr ? `Suppression de mon espace NOVUS LIVE : ${name}` : `Delete my NOVUS LIVE workspace: ${name}`;
+  const body = fr
+    ? `Bonjour,\n\nJe demande la suppression de mon espace « ${name} » et de toutes ses données (historique, vidéos, équipe).\n\nMerci.`
+    : `Hello,\n\nPlease delete my workspace "${name}" and all its data (history, videos, team).\n\nThank you.`;
+  return (
+    <div className="card">
+      <div className="card-title">{fr ? "Supprimer mon espace" : "Delete my workspace"}</div>
+      <div className="small muted">
+        {fr
+          ? "Supprime l'espace, son historique, ses vidéos et son équipe, sous 30 jours. Un abonnement en cours est arrêté."
+          : "Deletes the workspace, its history, videos and team within 30 days. A running subscription is stopped."}
+      </div>
+      {email ? (
+        <a className="btn" style={{ marginTop: 10, color: "#ff8b98" }} href={`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}>
+          {fr ? "Demander la suppression" : "Request deletion"}
+        </a>
+      ) : (
+        <div className="small" style={{ marginTop: 10 }}>
+          {fr ? "Écris-nous via la page Assistance : " : "Write to us through the Support page: "}
+          <a href="/support">/support</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProfilePage() {
   const lang = useLang();
   const fr = lang === "fr";
@@ -313,6 +350,8 @@ function ProfilePage() {
           ) : null}
         </div>
       ) : null}
+
+      {isFounder ? <DeleteWorkspaceCard name={b?.name ?? id.name} /> : null}
 
       {id.member && me ? (
         <div className="card">

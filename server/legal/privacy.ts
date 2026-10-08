@@ -77,3 +77,41 @@ ${toggle}
 ${body}
 </main></body></html>`;
 }
+
+/** Support page (App Store "Support URL"): how to reach NOVUS LIVE, in one language with a FR/EN switch. */
+export function supportPage(opts: { supportEmail?: string; lang: "fr" | "en" }): string {
+  const fr = opts.lang === "fr";
+  const mail = opts.supportEmail ? `<a href="mailto:${esc(opts.supportEmail)}">${esc(opts.supportEmail)}</a>` : null;
+  const toggle = `<nav class="lang"><a href="?lang=fr" class="${fr ? "on" : ""}">FR</a><a href="?lang=en" class="${fr ? "" : "on"}">EN</a></nav>`;
+  const body = fr
+    ? `<h1>NOVUS LIVE — Assistance</h1>
+<p>Une question, un problème, une demande sur vos données ? Écrivez-nous${mail ? ` : ${mail}` : " depuis l'application"}. Nous répondons sous 48 h ouvrées.</p>
+<h2>Questions fréquentes</h2>
+<p><b>Comment me connecter ?</b> Avec le code d'accès reçu à la création de votre espace (ou celui donné par votre agence). Code perdu : « Code perdu ? » sur l'écran de connexion.</p>
+<p><b>Comment suivre un LIVE ?</b> Réglages › Comptes TikTok : ajoutez le @ du créateur. NOVUS rejoint ses LIVE automatiquement.</p>
+<p><b>Comment recevoir les alertes ?</b> Réglages › Notifications › Activer.</p>
+<p><b>Supprimer mon espace et mes données ?</b> Réglages › Profil › « Supprimer mon espace », ou écrivez-nous. La suppression est faite sous 30 jours.</p>
+<p><a href="/privacy?lang=fr">Politique de confidentialité</a></p>`
+    : `<h1>NOVUS LIVE — Support</h1>
+<p>A question, a problem, a request about your data? Write to us${mail ? `: ${mail}` : " from within the app"}. We answer within 2 business days.</p>
+<h2>FAQ</h2>
+<p><b>How do I sign in?</b> With the access code you received when your workspace was created (or the one your agency gave you). Lost code: "Lost your code?" on the sign-in screen.</p>
+<p><b>How do I follow a LIVE?</b> Settings › TikTok accounts: add the creator's @. NOVUS joins their LIVEs automatically.</p>
+<p><b>How do I get alerts?</b> Settings › Notifications › Turn on.</p>
+<p><b>Delete my workspace and data?</b> Settings › Profile › "Delete my workspace", or write to us. Deletion is done within 30 days.</p>
+<p><a href="/privacy?lang=en">Privacy policy</a></p>`;
+  return `<!doctype html>
+<html lang="${opts.lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${fr ? "NOVUS LIVE — Assistance" : "NOVUS LIVE — Support"}</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #070708; color: #e9e4da; font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 18px 64px; }
+  h1 { color: #e6c07f; letter-spacing: .06em; font-size: 22px; } h2 { color: #e6c07f; font-size: 17px; margin-top: 28px; }
+  a { color: #e6c07f; }
+  .lang { display: flex; justify-content: flex-end; gap: 6px; }
+  .lang a { padding: 6px 14px; border: 1px solid #3a352d; border-radius: 99px; text-decoration: none; font-weight: 700; color: #9a9488; }
+  .lang a.on { background: #e6c07f; color: #070708; border-color: #e6c07f; }
+</style></head>
+<body><main>${toggle}${body}</main></body></html>`;
+}

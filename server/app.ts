@@ -52,7 +52,7 @@ import { aiCostSummary, funnel, saasMetrics, workspaceEconomics } from "./billin
 import { AnthropicCostReport } from "./billing/AnthropicCost";
 import { ResendMailer, type Mailer } from "./mail/Mailer";
 import { recoveryMail } from "./mail/templates";
-import { privacyPage } from "./legal/privacy";
+import { privacyPage, supportPage } from "./legal/privacy";
 import { deriveInsights } from "./analytics/insights";
 import { buildDonors, donorsCsv } from "./analytics/donors";
 import { buildLeaderboard } from "./analytics/leaderboard";
@@ -1793,6 +1793,17 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   app.use("/api", api);
 
   // ---------------------------------------------------------------- privacy policy (App Store listing)
+  app.get(["/support", "/assistance"], (req, res) => {
+    const asked = req.query.lang === "en" || req.query.lang === "fr" ? req.query.lang : null;
+    const lang = asked ?? (req.path === "/assistance" || /^fr\b/i.test(req.headers["accept-language"] ?? "") ? "fr" : "en");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Vary", "Accept-Language");
+    res.type("html").send(supportPage({ supportEmail: config.supportEmail, lang }));
+  });
+  /** Public: where to write (support, data deletion requests). */
+  app.get("/support.json", (_req, res) => {
+    res.json({ email: config.supportEmail ?? null });
+  });
   app.get(["/privacy", "/confidentialite"], (req, res) => {
     // ?lang=fr|en, else the phone's language (French by default on /confidentialite).
     const asked = req.query.lang === "en" || req.query.lang === "fr" ? req.query.lang : null;

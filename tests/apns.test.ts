@@ -77,3 +77,14 @@ describe("Privacy policy page", () => {
     expect(privacyPage({ updated, lang: "en" })).not.toContain("mailto:");
   });
 });
+
+describe("Support page", () => {
+  it("shows how to reach support and how to delete a workspace, one language at a time", async () => {
+    const { supportPage } = await import("../server/legal/privacy");
+    const fr = supportPage({ supportEmail: "help@example.com", lang: "fr" });
+    expect(fr).toContain("mailto:help@example.com");
+    expect(fr).toContain("Supprimer mon espace");
+    expect(fr).not.toContain("FAQ");
+    expect(supportPage({ lang: "en" })).toContain("Delete my workspace");
+  });
+});
