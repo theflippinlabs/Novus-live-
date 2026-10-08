@@ -66,10 +66,14 @@ describe("APNs (native iPhone app notifications)", () => {
 describe("Privacy policy page", () => {
   it("is public and states what the app really does", async () => {
     const { privacyPage } = await import("../server/legal/privacy");
-    const html = privacyPage({ supportEmail: "support@example.com", updated: "today" });
-    expect(html).toContain("mailto:support@example.com");
-    expect(html).toContain("ne propose aucun achat");
-    expect(html).toContain("never identifies who reported a LIVE");
-    expect(privacyPage({ updated: "x" })).not.toContain("mailto:");
+    const updated = { fr: "aujourd'hui", en: "today" };
+    const fr = privacyPage({ supportEmail: "support@example.com", updated, lang: "fr" });
+    expect(fr).toContain("mailto:support@example.com");
+    expect(fr).toContain("ne propose aucun achat");
+    expect(fr).not.toContain("Privacy policy");
+    const en = privacyPage({ supportEmail: "support@example.com", updated, lang: "en" });
+    expect(en).toContain("never identifies who reported a LIVE");
+    expect(en).not.toContain("Politique de confidentialité");
+    expect(privacyPage({ updated, lang: "en" })).not.toContain("mailto:");
   });
 });

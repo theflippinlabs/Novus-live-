@@ -1793,9 +1793,13 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
   app.use("/api", api);
 
   // ---------------------------------------------------------------- privacy policy (App Store listing)
-  app.get(["/privacy", "/confidentialite"], (_req, res) => {
+  app.get(["/privacy", "/confidentialite"], (req, res) => {
+    // ?lang=fr|en, else the phone's language (French by default on /confidentialite).
+    const asked = req.query.lang === "en" || req.query.lang === "fr" ? req.query.lang : null;
+    const lang = asked ?? (req.path === "/confidentialite" || /^fr\b/i.test(req.headers["accept-language"] ?? "") ? "fr" : "en");
     res.setHeader("Cache-Control", "public, max-age=3600");
-    res.type("html").send(privacyPage({ supportEmail: config.supportEmail, updated: "7 octobre 2026 / October 7, 2026" }));
+    res.setHeader("Vary", "Accept-Language");
+    res.type("html").send(privacyPage({ supportEmail: config.supportEmail, updated: { fr: "8 octobre 2026", en: "October 8, 2026" }, lang }));
   });
 
   // ---------------------------------------------------------------- static PWA
