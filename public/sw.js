@@ -1,8 +1,8 @@
 // NOVUS LIVE service worker: app-shell caching for installability and fast start, and push
 // notifications (with the red badge on the home-screen icon).
 // API calls and the realtime stream are never cached.
-const CACHE = "novus-live-v3";
-const SHELL = ["/", "/manifest.webmanifest", "/icons/logo-mark.webp", "/icons/icon-192.png", "/icons/icon-512.png"];
+const CACHE = "novus-live-v4";
+const SHELL = ["/", "/manifest.webmanifest", "/icons/logo-mark.png", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

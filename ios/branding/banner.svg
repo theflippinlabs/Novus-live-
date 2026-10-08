@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="508" viewBox="0 0 960 508">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff1cf"/><stop offset="0.35" stop-color="#e6c07f"/><stop offset="0.7" stop-color="#b8863f"/><stop offset="1" stop-color="#f3d9a0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffd58a" stop-opacity="0.35"/><stop offset="1" stop-color="#ffd58a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="480" cy="170" r="150" fill="url(#glow)"/>
+  <g transform="translate(480 170) scale(0.36) translate(-512 -512)">
+    <circle cx="512" cy="512" r="300" fill="#0b0a09"/>
+    <circle cx="512" cy="512" r="300" fill="none" stroke="url(#gold)" stroke-width="54"/>
+    <path d="M512 330 C 530 450, 574 494, 694 512 C 574 530, 530 574, 512 694 C 494 574, 450 530, 330 512 C 450 494, 494 450, 512 330 Z" fill="url(#gold)"/>
+    <circle cx="752" cy="262" r="46" fill="#e5263e"/>
+    <circle cx="752" cy="262" r="46" fill="none" stroke="#070708" stroke-width="14"/>
+  </g>
+  <text x="493" y="400" text-anchor="middle" font-family="Helvetica Neue, Arial, sans-serif" font-size="92" font-weight="700" letter-spacing="26" fill="url(#gold)">NOVUS</text>
+  <line x1="250" y1="452" x2="345" y2="452" stroke="#b8863f" stroke-width="3"/>
+  <line x1="625" y1="452" x2="720" y2="452" stroke="#b8863f" stroke-width="3"/>
+  <text x="495" y="466" text-anchor="middle" font-family="Helvetica Neue, Arial, sans-serif" font-size="42" font-weight="300" letter-spacing="30" fill="#e9e4da">LIVE</text>
+</svg>

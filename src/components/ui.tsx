@@ -87,12 +87,12 @@ export function Segmented<T extends string | number>({
 
 /** The Novus mascot mark (cropped from the app logo). */
 export function Logo({ size = 28 }: { size?: number }) {
-  return <img src="/icons/logo-mark.webp" width={size} height={size} alt="" style={{ borderRadius: size * 0.22 }} />;
+  return <img src="/icons/logo-mark.png" width={size} height={size} alt="" style={{ borderRadius: size * 0.22 }} />;
 }
 
 /** The NOVUS LIVE banner (mascot, wordmark and LIVE dashboards), full width of its container. */
 export function BrandLogo({ maxWidth = 480 }: { maxWidth?: number }) {
-  return <img className="brand-logo" src="/icons/logo-banner.webp" width={960} height={508} alt="NOVUS LIVE" style={{ maxWidth }} />;
+  return <img className="brand-logo" src="/icons/logo-banner.png" width={960} height={508} alt="NOVUS LIVE" style={{ maxWidth }} />;
 }
 
 /** A row of filters that always stays on one line (equal columns, optional count under each). */
