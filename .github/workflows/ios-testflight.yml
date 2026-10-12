@@ -90,6 +90,14 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+          # The export re-signs with the entitlements of the archived app, so give it a local signature
+          # carrying them (codesign itself, which Xcode 26 still allows; the build setting is refused).
+          APP="$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app"
+          if [ -d "$APP/Frameworks" ]; then
+            find "$APP/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -exec codesign -f -s - {} \;
+          fi
+          codesign -f -s - --entitlements ios/App/App/App.entitlements "$APP"
+          codesign -d --entitlements - "$APP"
 
       - name: Sign for the App Store and check
         if: steps.keys.outputs.ready == 'true'
