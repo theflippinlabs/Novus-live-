@@ -113,16 +113,17 @@ jobs:
           echo "$ENT"
           echo "$ENT" | grep -q aps-environment || { echo "::error::Push entitlement missing from the signed app"; exit 1; }
 
+      # The checked .ipa is uploaded with altool (xcodebuild's own upload fails to authenticate the
+      # API key with App Store Connect, although the same key works for signing).
       - name: Upload to TestFlight
         if: steps.keys.outputs.ready == 'true'
         run: |
-          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/upload" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          cp "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" "$HOME/.appstoreconnect/private_keys/"
+          xcrun altool --upload-app -t ios -f "$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" --output-format normal
           echo "Uploaded build ${{ github.run_number }} (version $VERSION). It appears in App Store Connect › TestFlight after Apple's processing (10–30 min)."
 
       - name: Remove the key
         if: always()
-        run: rm -rf "$RUNNER_TEMP/keys"
+        run: rm -rf "$RUNNER_TEMP/keys" "$HOME/.appstoreconnect/private_keys"
