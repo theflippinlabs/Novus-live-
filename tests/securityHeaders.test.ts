@@ -13,13 +13,13 @@ describe("Content-Security-Policy", () => {
     const { csp, called } = run(["https://abc.supabase.co"]);
     expect(called).toBe(true);
     expect(csp).toContain("media-src 'self' blob: https://abc.supabase.co");
-    expect(csp).toContain("connect-src 'self' https://abc.supabase.co");
-    expect(csp).toContain("script-src 'self';");
+    expect(csp).toContain("connect-src 'self' https://abc.supabase.co https://www.novarys.tech https://novarys.tech");
+    expect(csp).toContain("script-src 'self' https://www.novarys.tech https://novarys.tech;");
   });
 
   it("stays same-origin without storage (the LIVE itself is relayed by the app)", () => {
     const { csp } = run([]);
     expect(csp).toContain("media-src 'self' blob:;");
-    expect(csp).toContain("connect-src 'self';");
+    expect(csp).toContain("connect-src 'self' https://www.novarys.tech https://novarys.tech;");
   });
 });

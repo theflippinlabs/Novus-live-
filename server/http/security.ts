@@ -5,14 +5,18 @@ import type { NextFunction, Request, Response } from "express";
  * Security headers. `mediaOrigins`: where LIVE videos are read from (the Supabase storage host):
  * the player loads the pieces straight from there (native HLS on iPhone, hls.js elsewhere).
  */
+/** Novarys Beacon: first-party analytics (page views, CTA clicks). Script and events come from these hosts. */
+export const BEACON_ORIGINS = ["https://www.novarys.tech", "https://novarys.tech"];
+
 export function securityHeaders(mediaOrigins: string[] = []): (req: Request, res: Response, next: NextFunction) => void {
   const media = mediaOrigins.length ? ` ${mediaOrigins.join(" ")}` : "";
+  const beacon = ` ${BEACON_ORIGINS.join(" ")}`;
   const policy = [
       "default-src 'self'",
-      "script-src 'self'",
+      `script-src 'self'${beacon}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
-      `connect-src 'self'${media}`,
+      `connect-src 'self'${media}${beacon}`,
       `media-src 'self' blob:${media}`,
       "font-src 'self'",
       "manifest-src 'self'",
