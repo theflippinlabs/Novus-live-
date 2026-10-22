@@ -57,6 +57,30 @@ export class SupabaseRepository implements Repository {
   }
 
   async giftLedger(sinceMs?: number, account?: string): Promise<GiftLedgerRow[]> {
+    // One call returning the whole ledger as JSON; the paged read below is kept for a database
+    // that does not have the function yet.
+    type Tuple = [string, string | null, string | null, string | null, string | null, string, string, number, number, number, number];
+    const since = sinceMs ? new Date(sinceMs).toISOString() : null;
+    const { data, error } = await this.db.rpc("gift_ledger_json", { p_tenant: this.tenant, p_since: since, p_account: account ?? null });
+    if (!error && Array.isArray(data)) {
+      return (data as Tuple[]).map((t) => ({
+        viewerId: t[0],
+        username: t[1] ?? t[0],
+        displayName: t[2] ?? undefined,
+        avatarUrl: t[3] ?? undefined,
+        account: t[4],
+        sessionId: t[5],
+        giftName: t[6],
+        gifts: Number(t[7]),
+        diamonds: Number(t[8]),
+        firstAt: Number(t[9]),
+        lastAt: Number(t[10]),
+      }));
+    }
+    return this.giftLedgerPaged(sinceMs, account);
+  }
+
+  private async giftLedgerPaged(sinceMs?: number, account?: string): Promise<GiftLedgerRow[]> {
     type Row = { viewer_id: string; username: string | null; display_name: string | null; avatar_url: string | null; account: string | null; session_id: string; gift_name: string; gifts: number; diamonds: number; first_at: string; last_at: string };
     // The API answers at most 1,000 rows per call: read the whole ledger page by page,
     // in a fixed order so no row is skipped or read twice.

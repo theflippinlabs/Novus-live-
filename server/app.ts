@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createHmac, randomUUID } from "node:crypto";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { z, type ZodType } from "zod";
 import {
   actionRequestSchema,
@@ -122,6 +124,8 @@ function parse<T>(schema: ZodType<T>, data: unknown): T {
   if (!r.success) throw new HttpError(400, "invalid_input", r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })));
   return r.data;
 }
+
+const gzipAsync = promisify(gzip);
 
 type Handler = (req: Request, res: Response) => Promise<unknown> | unknown;
 const h = (fn: Handler) => (req: Request, res: Response, next: NextFunction) => {
@@ -1306,7 +1310,19 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     const rows = (await sp(req).rooms.main.runtime.repository.giftLedger(since || undefined, account ?? undefined)).filter((r) => canSeeAccount(p, r.account ?? undefined) && (!account || r.account === account));
     return buildDonors(rows, Date.now());
   };
-  api.get("/donors", h(async (req) => donorsFor(req)));
+  // A large space's directory is several MB of JSON: sent gzipped when the client accepts it.
+  api.get(
+    "/donors",
+    h(async (req, res) => {
+      const body = JSON.stringify(await donorsFor(req));
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Vary", "Accept-Encoding");
+      if (body.length > 64_000 && /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) {
+        res.setHeader("Content-Encoding", "gzip");
+        res.send(await gzipAsync(body));
+      } else res.send(body);
+    }),
+  );
 
   // ---------------------------------------------------------------- weekly goals of the room's streamer
   api.get(
