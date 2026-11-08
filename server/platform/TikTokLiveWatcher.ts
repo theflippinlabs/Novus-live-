@@ -58,6 +58,57 @@ interface RoomIdConfig {
   skipFetchRoomInfoFromApiLiveRoute: boolean;
 }
 
+/*
+ * Euler quota savers. Every signed connection counts against Euler's daily quota, and
+ * without the bulk LIVE check every followed account is tried one by one, every minute.
+ *
+ * - Dead rooms: after a LIVE ends, TikTok keeps serving cloud servers a cached page that
+ *   points at the ended room. Connecting to it again only spends quota (twice silent = dead),
+ *   so a room that showed no activity is not signed again; a new LIVE has a new room id.
+ * - Euler's room-id lookup (for that same stale-page case) runs at most every few minutes
+ *   per account instead of on every poll.
+ * - Once Euler says the day's quota is spent, nobody signs until a probe gets through.
+ */
+const DEAD_ROOM_MS = 12 * 3600_000;
+const EULER_LOOKUP_MS = 5 * 60_000;
+const QUOTA_PAUSE_MS = 30 * 60_000;
+const deadRooms = new Map<string, Map<string, number>>();
+const lastEulerLookup = new Map<string, number>();
+let quotaPausedUntil = 0;
+
+const accountKey = (username: string) => username.replace(/^@/, "").trim().toLowerCase();
+
+/** This account's room was connected to and showed no LIVE activity: do not sign it again. */
+export function markDeadRoom(username: string, roomId: string | undefined, now = Date.now()): void {
+  if (!roomId) return;
+  const key = accountKey(username);
+  const rooms = deadRooms.get(key) ?? new Map<string, number>();
+  for (const [id, at] of rooms) if (now - at > DEAD_ROOM_MS) rooms.delete(id);
+  rooms.set(roomId, now);
+  deadRooms.set(key, rooms);
+}
+
+/** Until when Euler's daily quota is known to be spent (0 when it is not). */
+export const quotaPausedUntilMs = (): number => quotaPausedUntil;
+
+/** Test helper: forget dead rooms, lookup times and the quota pause. */
+export function resetConnectState(): void {
+  deadRooms.clear();
+  lastEulerLookup.clear();
+  quotaPausedUntil = 0;
+}
+
+const isDayQuota = (err: unknown): boolean => /rate_limit_account_day|reached the rate limit for your plan/i.test(describeError(err));
+
+export class QuotaPausedError extends Error {
+  constructor(until: number) {
+    super(`Euler Stream daily quota reached — new LIVE connections resume after ${new Date(until).toISOString().slice(11, 16)} UTC`);
+    this.name = "QuotaPausedError";
+  }
+}
+
+const notLive = (roomId: string) => Object.assign(new Error(`The requested user isn't online (room ${roomId} already showed no activity)`), { name: "UserOfflineError" });
+
 // TikTok often serves cloud servers a cached profile page that still points at the
 // previous (ended) room, so the library reports "offline" during a real LIVE.
 // Before believing it, ask Euler Stream for the current room id and retry once.
@@ -66,15 +117,31 @@ export async function connectWithFallback(
   cfg: RoomIdConfig,
   username: string,
   log?: (m: string) => void,
+  now: () => number = Date.now,
 ): Promise<unknown> {
-  // Always start from TikTok's own lookups enabled.
-  cfg.skipFetchRoomInfoFromHtmlRoute = false;
-  cfg.skipFetchRoomInfoFromApiLiveRoute = false;
-  try {
-    return await conn.connect();
-  } catch (err) {
-    if (!isOffline(err)) throw err;
-    const stale = conn.roomId;
+  const key = accountKey(username);
+  if (quotaPausedUntil > now()) throw new QuotaPausedError(quotaPausedUntil);
+  const dead = deadRooms.get(key);
+  for (const [id, at] of dead ?? []) if (now() - at > DEAD_ROOM_MS) dead!.delete(id);
+
+  const signed = async (roomId?: string) => {
+    try {
+      const result = await conn.connect(roomId);
+      if (quotaPausedUntil) log?.("[tiktok] Euler Stream quota available again");
+      quotaPausedUntil = 0;
+      return result;
+    } catch (err) {
+      if (isDayQuota(err)) {
+        if (quotaPausedUntil <= now()) log?.(`[tiktok] Euler Stream daily quota reached — pausing new LIVE connections for ${QUOTA_PAUSE_MS / 60_000} min`);
+        quotaPausedUntil = now() + QUOTA_PAUSE_MS;
+      }
+      throw err;
+    }
+  };
+
+  const eulerRetry = async (stale: string | undefined, err: unknown): Promise<unknown> => {
+    if (now() - (lastEulerLookup.get(key) ?? -Infinity) < EULER_LOOKUP_MS) throw err;
+    lastEulerLookup.set(key, now());
     let fresh: string | undefined;
     try {
       cfg.skipFetchRoomInfoFromHtmlRoute = true;
@@ -87,9 +154,26 @@ export async function connectWithFallback(
       cfg.skipFetchRoomInfoFromHtmlRoute = false;
       cfg.skipFetchRoomInfoFromApiLiveRoute = false;
     }
-    if (!fresh || fresh === stale) throw err;
+    if (!fresh || fresh === stale || dead?.has(fresh)) throw err;
     log?.(`[tiktok] @${username}: TikTok page had stale room ${stale}; retrying with room ${fresh}`);
-    return conn.connect(fresh);
+    return signed(fresh);
+  };
+
+  // Always start from TikTok's own lookups enabled.
+  cfg.skipFetchRoomInfoFromHtmlRoute = false;
+  cfg.skipFetchRoomInfoFromApiLiveRoute = false;
+  // A known dead room: find TikTok's room id first (the connection would look it up anyway)
+  // and do not sign it again.
+  let roomId: string | undefined;
+  if (dead?.size) {
+    roomId = await conn.fetchRoomId().catch(() => undefined);
+    if (roomId && dead.has(roomId)) return eulerRetry(roomId, notLive(roomId));
+  }
+  try {
+    return await signed(roomId);
+  } catch (err) {
+    if (!isOffline(err)) throw err;
+    return eulerRetry(conn.roomId, err);
   }
 }
 
@@ -406,6 +490,11 @@ export class TikTokLiveWatcher {
         this.loggedOffline = true;
         this.sink.waiting(`Waiting for @${username} to go LIVE`);
         this.schedule(gen, this.opts.pollMs);
+      } else if (e instanceof QuotaPausedError) {
+        // Already logged once when the quota ran out; wait for the pause to end.
+        this.loggedOffline = false;
+        this.sink.error(e.message);
+        this.schedule(gen, Math.max(this.opts.errorBackoffMs, quotaPausedUntilMs() - Date.now() + Math.random() * 60_000));
       } else {
         const msg = e instanceof Error ? e.message : String(e);
         this.loggedOffline = false;
@@ -426,6 +515,8 @@ export class TikTokLiveWatcher {
       if (this.live || this.conn !== conn || gen !== this.generation) return;
       // TikTok pointed at a room that shows no activity: not a LIVE. Look again later.
       this.opts.log?.(`[tiktok] @${username}: connected but the room shows no activity — not counted as a LIVE`);
+      // Silent twice in a row: TikTok is pointing at an ended room; do not pay to connect to it again.
+      if (this.silentRetry) markDeadRoom(username, conn.roomId);
       this.dropConnection();
       this.sink.waiting(`Waiting for @${username} to go LIVE`);
       // A silent first connection is often a LIVE whose events never reached us: a fresh

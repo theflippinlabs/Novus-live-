@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LiveEvent } from "../shared/types";
 import { TikTokAdapter } from "../server/platform/TikTokAdapter";
-import { connectWithFallback, serialized, TikTokLiveWatcher, type LiveConnectionLike } from "../server/platform/TikTokLiveWatcher";
+import { connectWithFallback, markDeadRoom, QuotaPausedError, resetConnectState, serialized, TikTokLiveWatcher, type LiveConnectionLike } from "../server/platform/TikTokLiveWatcher";
 import { mapChat, mapGift, mapViewerCount } from "../server/platform/tiktokMapping";
 import { createRuntime } from "./helpers";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  resetConnectState();
+});
 
 class FakeConnection implements LiveConnectionLike {
   handlers = new Map<string, ((d: unknown) => void)[]>();
@@ -245,6 +248,71 @@ describe("TikTok connect fallback", () => {
     const conn2 = { ...conn, fetchRoomId: async () => Promise.reject(new Error("lack of permission")) };
     await expect(connectWithFallback(conn2, cfg, "someone")).rejects.toThrow(/isn't online/);
     expect(cfg).toEqual({ skipFetchRoomInfoFromHtmlRoute: false, skipFetchRoomInfoFromApiLiveRoute: false });
+  });
+
+  it("asks Euler for the room id at most every 5 minutes per account", async () => {
+    const cfg = { skipFetchRoomInfoFromHtmlRoute: false, skipFetchRoomInfoFromApiLiveRoute: false };
+    let lookups = 0;
+    const conn = {
+      roomId: "old",
+      connect: async () => Promise.reject(offline()),
+      fetchRoomId: async () => (lookups++, "old"),
+    };
+    let t = 1_000_000;
+    const now = () => t;
+    await expect(connectWithFallback(conn, cfg, "quiet", undefined, now)).rejects.toThrow(/isn't online/);
+    t += 60_000;
+    await expect(connectWithFallback(conn, cfg, "quiet", undefined, now)).rejects.toThrow(/isn't online/);
+    expect(lookups).toBe(1);
+    t += 5 * 60_000;
+    await expect(connectWithFallback(conn, cfg, "quiet", undefined, now)).rejects.toThrow(/isn't online/);
+    expect(lookups).toBe(2);
+  });
+
+  it("does not sign a connection to a room that already showed no activity", async () => {
+    const cfg = { skipFetchRoomInfoFromHtmlRoute: false, skipFetchRoomInfoFromApiLiveRoute: false };
+    const signed: (string | undefined)[] = [];
+    let tiktokRoom = "ended";
+    const conn = {
+      roomId: "",
+      async connect(roomId?: string) {
+        signed.push(roomId);
+        return { roomId };
+      },
+      fetchRoomId: async () => (cfg.skipFetchRoomInfoFromHtmlRoute ? "ended" : tiktokRoom),
+    };
+    markDeadRoom("@Stale.Page", "ended");
+    await expect(connectWithFallback(conn, cfg, "stale.page")).rejects.toThrow(/isn't online/);
+    expect(signed).toEqual([]);
+    expect(cfg).toEqual({ skipFetchRoomInfoFromHtmlRoute: false, skipFetchRoomInfoFromApiLiveRoute: false });
+    // A new LIVE has a new room id: it connects.
+    tiktokRoom = "new";
+    await connectWithFallback(conn, cfg, "stale.page");
+    expect(signed).toEqual(["new"]);
+  });
+
+  it("stops signing once Euler's daily quota is spent, then probes again later", async () => {
+    const cfg = { skipFetchRoomInfoFromHtmlRoute: false, skipFetchRoomInfoFromApiLiveRoute: false };
+    let calls = 0;
+    let limited = true;
+    const conn = {
+      roomId: "",
+      async connect() {
+        calls++;
+        if (limited) throw Object.assign(new Error("[Rate Limited] (rate_limit_account_day) Too many connections started, try again later."), { name: "SignatureRateLimitError" });
+        return {};
+      },
+      fetchRoomId: async () => "1",
+    };
+    let t = 5_000_000;
+    const now = () => t;
+    await expect(connectWithFallback(conn, cfg, "a", undefined, now)).rejects.toThrow(/rate_limit_account_day/);
+    await expect(connectWithFallback(conn, cfg, "b", undefined, now)).rejects.toBeInstanceOf(QuotaPausedError);
+    expect(calls).toBe(1);
+    t += 31 * 60_000;
+    limited = false;
+    await connectWithFallback(conn, cfg, "b", undefined, now);
+    expect(calls).toBe(2);
   });
 
   it("never runs two connection attempts at the same time", async () => {
