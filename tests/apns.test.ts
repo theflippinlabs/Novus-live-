@@ -71,8 +71,11 @@ describe("Privacy policy page", () => {
     expect(fr).toContain("mailto:support@example.com");
     expect(fr).toContain("ne propose aucun achat");
     expect(fr).not.toContain("Privacy policy");
+    expect(fr).toContain("Novarys Beacon");
     const en = privacyPage({ supportEmail: "support@example.com", updated, lang: "en" });
     expect(en).toContain("never identifies who reported a LIVE");
+    expect(fr).toContain("ne sont pas liées à votre identité");
+    expect(en).toContain("not linked to your identity");
     expect(en).not.toContain("Politique de confidentialité");
     expect(privacyPage({ updated, lang: "en" })).not.toContain("mailto:");
   });

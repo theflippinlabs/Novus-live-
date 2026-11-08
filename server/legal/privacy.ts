@@ -27,10 +27,12 @@ export function privacyPage(opts: { supportEmail?: string; updated: { fr: string
 <h2>6. Paiement</h2>
 <p>Les abonnements sont gérés par Stripe sur notre site. Nous ne voyons ni ne stockons votre numéro de carte. L'application iPhone ne propose aucun achat.</p>
 <h2>7. Prestataires</h2>
-<p>Hébergement et base de données : Railway, Supabase. Connexion aux LIVE TikTok : Euler Stream. E-mails : Resend. Paiement : Stripe. IA : Anthropic, OpenAI, ElevenLabs. Ils traitent les données uniquement pour fournir le service ; certains peuvent être situés hors de l'Union européenne, avec les garanties prévues par le RGPD.</p>
-<h2>8. Ce que nous ne faisons pas</h2>
+<p>Hébergement et base de données : Railway, Supabase. Connexion aux LIVE TikTok : Euler Stream. E-mails : Resend. Paiement : Stripe. Mesure d'audience : Novarys Beacon. IA : Anthropic, OpenAI, ElevenLabs. Ils traitent les données uniquement pour fournir le service ; certains peuvent être situés hors de l'Union européenne, avec les garanties prévues par le RGPD.</p>
+<h2>8. Mesure d'audience</h2>
+<p>Pour savoir quelles pages sont utilisées et quels boutons fonctionnent, l'application compte les pages vues et les clics sur ses boutons d'action, avec notre outil Novarys Beacon. Ces mesures ne sont pas liées à votre identité ni à votre compte, ne contiennent aucun contenu de vos LIVE et ne servent ni à la publicité ni à vous suivre d'une application ou d'un site à l'autre.</p>
+<h2>9. Ce que nous ne faisons pas</h2>
 <p>Pas de publicité, pas de revente de données, pas de suivi publicitaire entre applications. NOVUS LIVE n'identifie jamais qui a signalé un LIVE : TikTok ne le communique pas.</p>
-<h2>9. Vos droits</h2>
+<h2>10. Vos droits</h2>
 <p>Vous pouvez demander l'accès, la correction, l'export ou la suppression de vos données et de votre espace, ou vous opposer à un traitement, en écrivant à ${contact}. Vous pouvez aussi saisir la CNIL.</p>`
     : `<h1>NOVUS LIVE — Privacy policy</h1>
 <p class="muted">Last updated: ${esc(opts.updated.en)}</p>
@@ -48,10 +50,12 @@ export function privacyPage(opts: { supportEmail?: string; updated: { fr: string
 <h2>6. Payment</h2>
 <p>Subscriptions are handled by Stripe on our website. We never see or store your card number. The iPhone app offers no purchase.</p>
 <h2>7. Service providers</h2>
-<p>Hosting and database: Railway, Supabase. TikTok LIVE connection: Euler Stream. E-mail: Resend. Payment: Stripe. AI: Anthropic, OpenAI, ElevenLabs. They process data only to provide the service; some may be located outside the European Union, with the safeguards required by the GDPR.</p>
-<h2>8. What we don't do</h2>
+<p>Hosting and database: Railway, Supabase. TikTok LIVE connection: Euler Stream. E-mail: Resend. Payment: Stripe. Audience measurement: Novarys Beacon. AI: Anthropic, OpenAI, ElevenLabs. They process data only to provide the service; some may be located outside the European Union, with the safeguards required by the GDPR.</p>
+<h2>8. Audience measurement</h2>
+<p>To know which pages are used and which buttons work, the app counts page views and clicks on its call-to-action buttons, with our Novarys Beacon tool. These measurements are not linked to your identity or your account, contain none of your LIVE content, and are used neither for advertising nor to track you across apps or websites.</p>
+<h2>9. What we don't do</h2>
 <p>No advertising, no sale of data, no cross-app advertising tracking. NOVUS LIVE never identifies who reported a LIVE: TikTok does not disclose it.</p>
-<h2>9. Your rights</h2>
+<h2>10. Your rights</h2>
 <p>You can ask to access, correct, export or delete your data and your workspace, or object to a processing, by writing to ${contact}. You can also complain to your data protection authority (CNIL in France).</p>`;
   return `<!doctype html>
 <html lang="${opts.lang}">

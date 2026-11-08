@@ -32,6 +32,12 @@ puis 10–30 min de traitement chez Apple : la version apparaît dans App Store 
 
 - Captures : dossier `ios/appstore/` (iPhone 6,9" et iPad 13").
 - Confidentialité : `https://novus-live-production.up.railway.app/privacy`
+- **Confidentialité de l'app** (App Store Connect › Confidentialité de l'app) — une seule donnée à déclarer,
+  pour le tracker Novarys Beacon (pages vues, clics sur les boutons d'action) :
+  - Type : **Données d'utilisation › Interactions avec le produit** (*Usage Data › Product Interaction*)
+  - Utilisation : **Analytique** (*Analytics*) uniquement
+  - Liée à l'identité : **Non** · Utilisée pour le suivi (tracking) : **Non**
+  - Pas de bannière ATT (App Tracking Transparency) à afficher : aucun suivi entre apps.
 - Catégorie : Productivité (ou Réseaux sociaux) · Âge : 17+ (contenus de chat non filtrés affichés).
 - **Compte de démonstration pour Apple** (obligatoire) : un code d'accès à un espace de test, à mettre
   dans « Informations de vérification de l'app ».

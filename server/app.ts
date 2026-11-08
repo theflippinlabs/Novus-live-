@@ -1826,7 +1826,7 @@ export function createApp({ config, rooms: singleRooms, chat: singleChat, spaces
     const lang = asked ?? (req.path === "/confidentialite" || /^fr\b/i.test(req.headers["accept-language"] ?? "") ? "fr" : "en");
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.setHeader("Vary", "Accept-Language");
-    res.type("html").send(privacyPage({ supportEmail: config.supportEmail, updated: { fr: "8 octobre 2026", en: "October 8, 2026" }, lang }));
+    res.type("html").send(privacyPage({ supportEmail: config.supportEmail, updated: { fr: "8 novembre 2026", en: "November 8, 2026" }, lang }));
   });
 
   // ---------------------------------------------------------------- static PWA
